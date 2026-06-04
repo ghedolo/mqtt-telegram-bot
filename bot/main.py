@@ -15,9 +15,17 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+_DEBUG_LEVELS = {
+    0: logging.CRITICAL,
+    1: logging.INFO,
+    2: logging.DEBUG,
+}
+
 
 async def main():
     cfg = load("sensors.yaml", "credentials.yaml")
+    level = _DEBUG_LEVELS.get(cfg.debug, logging.INFO)
+    logging.getLogger().setLevel(level)
     db.init()
 
     for sc in cfg.sensors.values():

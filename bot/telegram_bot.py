@@ -30,6 +30,7 @@ class TelegramBot:
     def __init__(self, cfg: AppConfig):
         self._cfg = cfg
         self._app = Application.builder().token(cfg.telegram_token).build()
+        self._sensor_index = {k.lower(): k for k in cfg.sensors}
         self._app.add_handler(CommandHandler("list", self._cmd_list))
         self._app.add_handler(CommandHandler("get", self._cmd_get))
         self._app.add_handler(CommandHandler("setalarm", self._cmd_setalarm))
@@ -37,6 +38,9 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("graph", self._cmd_graph))
         self._app.add_handler(CommandHandler("silence", self._cmd_silence))
         self._app.add_handler(CommandHandler("help", self._cmd_help))
+
+    def _find_sensor(self, arg: str) -> Optional[str]:
+        return self._sensor_index.get(arg.lower())
 
     async def send(self, text: str):
         await self._app.bot.send_message(chat_id=self._cfg.telegram_group_id, text=text)
@@ -82,9 +86,9 @@ class TelegramBot:
             await self._list_all(update)
             return
 
-        name = ctx.args[0].lower()
-        if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}")
+        name = self._find_sensor(ctx.args[0])
+        if name is None:
+            await update.message.reply_text(f"Unknown sensor: {ctx.args[0]}")
             return
         row = db.get_latest(name)
         if row is None:
@@ -107,9 +111,9 @@ class TelegramBot:
             await update.message.reply_text("Usage: /setAlarm <sensor> <value>")
             return
 
-        name = ctx.args[0].lower()
-        if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}")
+        name = self._find_sensor(ctx.args[0])
+        if name is None:
+            await update.message.reply_text(f"Unknown sensor: {ctx.args[0]}")
             return
 
         try:
@@ -131,9 +135,9 @@ class TelegramBot:
             await update.message.reply_text("\n".join(lines))
             return
 
-        name = ctx.args[0].lower()
-        if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}")
+        name = self._find_sensor(ctx.args[0])
+        if name is None:
+            await update.message.reply_text(f"Unknown sensor: {ctx.args[0]}")
             return
 
         thr = db.get_threshold(name)
@@ -147,14 +151,19 @@ class TelegramBot:
             await update.message.reply_text("Usage: /graph <sensor>")
             return
 
-        name = ctx.args[0].lower()
-        if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}")
+        name = self._find_sensor(ctx.args[0])
+        if name is None:
+            await update.message.reply_text(f"Unknown sensor: {ctx.args[0]}")
             return
 
         sc = self._cfg.sensors[name]
         thr = db.get_threshold(name)
-        buf = graph.build(name, threshold=thr, unit=sc.unit)
+        try:
+            buf = graph.build(name, threshold=thr, unit=sc.unit)
+        except Exception as e:
+            log.exception("graph.build failed for %s", name)
+            await update.message.reply_text(f"Graph error: {e}")
+            return
         await update.message.reply_photo(photo=buf, caption=f"Sensor: {name} — last 8h")
 
     async def _cmd_silence(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -166,9 +175,9 @@ class TelegramBot:
             await update.message.reply_text("Usage: /silence <sensor>")
             return
 
-        name = ctx.args[0].lower()
-        if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}")
+        name = self._find_sensor(ctx.args[0])
+        if name is None:
+            await update.message.reply_text(f"Unknown sensor: {ctx.args[0]}")
             return
 
         db.silence_sensor(name)

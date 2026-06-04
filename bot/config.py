@@ -29,6 +29,7 @@ class AppConfig:
     retention_days: int
     alarm_threshold_repeat: int
     alarm_offline_repeat: int
+    debug: int
 
 
 def _load_yaml(path: str) -> dict:
@@ -75,4 +76,5 @@ def load(
         retention_days=int(defaults.get("retention_days", 30)),
         alarm_threshold_repeat=int(defaults.get("alarm_threshold_repeat", 720)),
         alarm_offline_repeat=int(defaults.get("alarm_offline_repeat", 3600)),
+        debug=int(defaults.get("debug", 1)),
     )

@@ -38,3 +38,4 @@ defaults:
   retention_days: 30     # days of readings to keep in DB
   alarm_threshold_repeat: 720    # seconds between threshold alarm repeats (12 min)
   alarm_offline_repeat: 3600     # seconds between offline alarm repeats (60 min)
+  debug: 1                       # 0=silent, 1=info, 2=debug (verbose)

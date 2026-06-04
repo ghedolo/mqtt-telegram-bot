@@ -1,5 +1,4 @@
 import io
-import time
 from typing import Optional
 
 import matplotlib
@@ -19,24 +18,20 @@ def build(sensor: str, threshold: Optional[float] = None, unit: str = "") -> io.
 
     fig, ax = plt.subplots(figsize=(10, 4))
 
+    if rows:
+        t_from = datetime.fromtimestamp(rows[0]["ts"]).strftime("%d/%m %H:%M")
+        t_to   = datetime.fromtimestamp(rows[-1]["ts"]).strftime("%d/%m %H:%M")
+        range_str = f"{sensor}   {t_from} - {t_to}"
+    else:
+        range_str = f"{sensor}   no data"
+
     if values:
-        ax.plot(times, values, color="#2196F3", linewidth=1.5, label=unit or "value")
-        if threshold is not None:
-            ax.axhline(y=threshold, color="#F44336", linewidth=1.2,
-                       linestyle="--", label=f"Alarm: {threshold}{' ' + unit if unit else ''}")
-        ax.legend(fontsize=9)
+        ax.plot(times, values, color="#2196F3", linewidth=1.5)
     else:
         ax.text(0.5, 0.5, "No data", transform=ax.transAxes,
                 ha="center", va="center", fontsize=12, color="gray")
 
-    last_ts = rows[-1]["ts"] if rows else None
-    last_val = rows[-1]["value"] if rows else None
-    subtitle = ""
-    if last_ts:
-        u = f" {unit}" if unit else ""
-        subtitle = f"Last: {last_val:.1f}{u}  @  {datetime.fromtimestamp(last_ts).strftime('%H:%M:%S')}"
-
-    ax.set_title(f"Sensor: {sensor}  —  last 8h\n{subtitle}", fontsize=11)
+    ax.set_title(range_str, fontsize=11, loc="left")
     ax.set_ylabel(unit if unit else "")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.xaxis.set_major_locator(mdates.AutoDateLocator())
