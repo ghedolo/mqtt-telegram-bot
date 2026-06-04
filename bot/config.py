@@ -1,5 +1,5 @@
 import yaml
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -11,6 +11,7 @@ class SensorConfig:
     interval: int
     info: str
     unit: str
+    alarm: Optional[float]
 
 
 @dataclass
@@ -30,9 +31,17 @@ class AppConfig:
     alarm_offline_repeat: int
 
 
-def load(path: str = "config.yaml") -> AppConfig:
+def _load_yaml(path: str) -> dict:
     with open(path) as f:
-        raw = yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
+
+
+def load(
+    public: str = "config.yaml",
+    secret: str = "config.secret.yaml",
+) -> AppConfig:
+    raw = _load_yaml(public)
+    sec = _load_yaml(secret)
 
     defaults = raw.get("defaults", {})
     default_interval = defaults.get("interval", 300)
@@ -46,10 +55,11 @@ def load(path: str = "config.yaml") -> AppConfig:
             interval=sc.get("interval", default_interval),
             info=sc.get("info", "")[:25],
             unit=sc.get("unit", ""),
+            alarm=float(sc["alarm"]) if "alarm" in sc else None,
         )
 
-    tg = raw["telegram"]
-    mq = raw["mqtt"]
+    tg = sec["telegram"]
+    mq = sec["mqtt"]
 
     return AppConfig(
         telegram_token=tg["token"],

@@ -17,8 +17,13 @@ log = logging.getLogger(__name__)
 
 
 async def main():
-    cfg = load("config.yaml")
+    cfg = load("config.yaml", "config.secret.yaml")
     db.init()
+
+    for sc in cfg.sensors.values():
+        if sc.alarm is not None and db.get_threshold(sc.name) is None:
+            db.set_threshold(sc.name, sc.alarm)
+            log.info("Threshold for %s set from config: %s", sc.name, sc.alarm)
 
     tg = TelegramBot(cfg)
 
