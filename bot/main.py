@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 
 async def main():
-    cfg = load("config.yaml", "config.secret.yaml")
+    cfg = load("sensors.yaml", "credentials.yaml")
     db.init()
 
     for sc in cfg.sensors.values():

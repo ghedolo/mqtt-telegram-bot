@@ -2,7 +2,7 @@
 tmp/
 data/
 diary.md
-config.secret.yaml
+credentials.yaml
 telegramData.txt
 __pycache__/
 *.pyc

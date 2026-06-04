@@ -4,6 +4,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/app/data
-      - ./config.yaml:/app/config.yaml:ro
+      - ./sensors.yaml:/app/sensors.yaml:ro
+      - ./credentials.yaml:/app/credentials.yaml:ro
     environment:
       - TZ=Europe/Rome

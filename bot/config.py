@@ -37,8 +37,8 @@ def _load_yaml(path: str) -> dict:
 
 
 def load(
-    public: str = "config.yaml",
-    secret: str = "config.secret.yaml",
+    public: str = "sensors.yaml",
+    secret: str = "credentials.yaml",
 ) -> AppConfig:
     raw = _load_yaml(public)
     sec = _load_yaml(secret)
