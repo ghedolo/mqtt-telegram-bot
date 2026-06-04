@@ -1,0 +1,10 @@
+.venv/
+tmp/
+data/
+diary.md
+config.yaml
+telegramData.txt
+__pycache__/
+*.pyc
+*.egg-info/
+.DS_Store
