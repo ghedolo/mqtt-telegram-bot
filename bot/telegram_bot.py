@@ -37,9 +37,37 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("silence", self._cmd_silence))
         self._app.add_handler(CommandHandler("help", self._cmd_help))
         self._app.add_handler(CommandHandler("myid", self._cmd_myid))
+        self._app.add_handler(CommandHandler("lastAlarm", self._cmd_lastalarm))
+        self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
 
     async def send(self, text: str):
         await self._app.bot.send_message(chat_id=self._cfg.telegram_group_id, text=text)
+
+    def _fmt_alarms(self, rows) -> str:
+        if not rows:
+            return "No alarms recorded."
+        return "\n\n".join(
+            f"[{_fmt_ts(r['ts'])}] {r['message']}" for r in rows
+        )
+
+    async def _cmd_lastalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        sensor = ctx.args[0] if ctx.args else None
+        if sensor and sensor not in self._cfg.sensors:
+            await update.message.reply_text(f"Unknown sensor: {sensor}", **_SILENT)
+            return
+        rows = db.get_last_alarms(sensor=sensor, n=1)
+        await update.message.reply_text(self._fmt_alarms(rows), **_SILENT)
+
+    async def _cmd_last5alarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not ctx.args:
+            await update.message.reply_text("Usage: /last5Alarm <sensor>", **_SILENT)
+            return
+        name = ctx.args[0]
+        if name not in self._cfg.sensors:
+            await update.message.reply_text(f"Unknown sensor: {name}", **_SILENT)
+            return
+        rows = db.get_last_alarms(sensor=name, n=5)
+        await update.message.reply_text(self._fmt_alarms(rows), **_SILENT)
 
     async def _cmd_myid(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Your Telegram ID: {update.effective_user.id}", **_SILENT)
@@ -51,6 +79,8 @@ class TelegramBot:
             "/get <name> — get current value (no args = same as /list)\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <name> — chart last 8h\n"
+            "/lastAlarm [name] — last alarm (all sensors or one)\n"
+            "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/myid — show your Telegram user ID\n"
             "\nAdmin only:\n"
             "/setAlarm <name> <value> — set alarm threshold\n"

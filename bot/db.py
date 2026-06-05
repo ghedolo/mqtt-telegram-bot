@@ -41,6 +41,16 @@ def init():
                 sensor    TEXT PRIMARY KEY,
                 silenced_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS alarms (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                sensor    TEXT    NOT NULL,
+                kind      TEXT    NOT NULL,
+                message   TEXT    NOT NULL,
+                ts        INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_alarms_sensor_ts
+                ON alarms(sensor, ts);
         """)
 
 
@@ -123,6 +133,27 @@ def is_silenced(sensor: str) -> bool:
             "SELECT sensor FROM silenced WHERE sensor=?", (sensor,)
         ).fetchone()
         return row is not None
+
+
+def insert_alarm(sensor: str, kind: str, message: str):
+    with _conn() as con:
+        con.execute(
+            "INSERT INTO alarms (sensor, kind, message, ts) VALUES (?, ?, ?, ?)",
+            (sensor, kind, message, int(time.time())),
+        )
+
+
+def get_last_alarms(sensor: Optional[str] = None, n: int = 1) -> list[sqlite3.Row]:
+    with _conn() as con:
+        if sensor:
+            return con.execute(
+                "SELECT sensor, kind, message, ts FROM alarms WHERE sensor=? ORDER BY ts DESC LIMIT ?",
+                (sensor, n),
+            ).fetchall()
+        return con.execute(
+            "SELECT sensor, kind, message, ts FROM alarms ORDER BY ts DESC LIMIT ?",
+            (n,),
+        ).fetchall()
 
 
 def purge_old_readings(retention_days: int):
