@@ -82,11 +82,15 @@ class TelegramBot:
             "/graph <name> — chart last 8h\n"
             "/lastAlarm [name] — last alarm (all sensors or one)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
-            "/myid — show your Telegram user ID\n"
-            "\nAdmin only:\n"
-            "/setAlarm <name> <value> — set alarm threshold\n"
-            "/silence <name> — silence offline alarm"
+            "/myid — show your Telegram user ID"
         )
+        if _is_admin(update.effective_user.id, self._cfg):
+            text += (
+                "\n\nAdmin commands:\n"
+                "/setAlarm <name> <value> — set alarm threshold\n"
+                "/silence <name> — silence offline alarm\n"
+                "/forgetSensor <name> — delete all data for a sensor"
+            )
         await update.effective_chat.send_message(text, **_SILENT)
 
     async def _list_all(self, update: Update):
