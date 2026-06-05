@@ -11,7 +11,7 @@ class SensorConfig:
     interval: int
     info: str
     unit: str
-    alarm: Optional[float]
+    default_alarm: Optional[float]
 
 
 @dataclass
@@ -56,7 +56,7 @@ def load(
             interval=sc.get("interval", default_interval),
             info=sc.get("info", "")[:25],
             unit=sc.get("unit", ""),
-            alarm=float(sc["alarm"]) if "alarm" in sc else None,
+            default_alarm=float(sc["defaultAlarm"]) if "defaultAlarm" in sc else None,
         )
 
     tg = sec["telegram"]

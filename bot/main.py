@@ -29,11 +29,11 @@ async def main():
     db.init()
 
     for sc in cfg.sensors.values():
-        if sc.alarm is not None and db.get_threshold(sc.name) is None:
-            db.set_threshold(sc.name, sc.alarm)
-            log.info("Threshold for %s set from config: %s", sc.name, sc.alarm)
+        if sc.default_alarm is not None and db.get_threshold(sc.name) is None:
+            db.set_threshold(sc.name, sc.default_alarm)
+            log.info("Threshold for %s set from config: %s", sc.name, sc.default_alarm)
 
-    tg = TelegramBot(cfg)
+    tg = TelegramBot(cfg, reload_fn=lambda: load("sensors.yaml", "credentials.yaml"))
 
     async def notify(text: str):
         try:

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from telegram import Update
 from telegram.ext import (
@@ -26,8 +26,9 @@ def _fmt_ts(ts: int) -> str:
 
 
 class TelegramBot:
-    def __init__(self, cfg: AppConfig):
+    def __init__(self, cfg: AppConfig, reload_fn: Optional[Callable[[], AppConfig]] = None):
         self._cfg = cfg
+        self._reload_fn = reload_fn
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("list", self._cmd_list))
         self._app.add_handler(CommandHandler("get", self._cmd_get))
@@ -40,6 +41,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("lastAlarm", self._cmd_lastalarm))
         self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
         self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
+        self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
 
     async def send(self, text: str):
         await self._app.bot.send_message(chat_id=self._cfg.telegram_group_id, text=text)
@@ -89,7 +91,8 @@ class TelegramBot:
                 "\n\nAdmin commands:\n"
                 "/setAlarm <name> <value> — set alarm threshold\n"
                 "/ackOff <name> — acknowledge offline alarm (auto-clears when sensor reconnects)\n"
-                "/forgetSensor <name> — delete all data for a sensor"
+                "/forgetSensor <name> — delete all data for a sensor\n"
+                "/reloadConfig — reload sensors.yaml and credentials.yaml"
             )
         await update.effective_chat.send_message(text, **_SILENT)
 
@@ -238,6 +241,41 @@ class TelegramBot:
 
         db.forget_sensor(name)
         await update.effective_chat.send_message("Sensor data deleted.", **_SILENT)
+
+    async def _cmd_reloadconfig(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not _is_admin(update.effective_user.id, self._cfg):
+            await update.effective_chat.send_message("Not authorized.", **_SILENT)
+            return
+        if self._reload_fn is None:
+            await update.effective_chat.send_message("Reload not configured.", **_SILENT)
+            return
+        try:
+            new = self._reload_fn()
+        except Exception as e:
+            await update.effective_chat.send_message(f"Reload failed: {e}", **_SILENT)
+            return
+
+        self._cfg.admin_ids = new.admin_ids
+        self._cfg.retention_days = new.retention_days
+        self._cfg.alarm_threshold_repeat = new.alarm_threshold_repeat
+        self._cfg.alarm_offline_repeat = new.alarm_offline_repeat
+        self._cfg.debug = new.debug
+
+        # update sensors in-place so run_offline_checks sees the change
+        for name in list(self._cfg.sensors):
+            if name not in new.sensors:
+                del self._cfg.sensors[name]
+        for name, sc in new.sensors.items():
+            if name not in self._cfg.sensors:
+                self._cfg.sensors[name] = sc
+                if sc.default_alarm is not None and db.get_threshold(name) is None:
+                    db.set_threshold(name, sc.default_alarm)
+            else:
+                self._cfg.sensors[name] = sc
+
+        await update.effective_chat.send_message(
+            "Config reloaded.\nNote: new sensor MQTT subscriptions require a restart.", **_SILENT
+        )
 
     async def run(self):
         await self._app.initialize()
