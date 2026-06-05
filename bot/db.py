@@ -156,6 +156,14 @@ def get_last_alarms(sensor: Optional[str] = None, n: int = 1) -> list[sqlite3.Ro
         ).fetchall()
 
 
+def forget_sensor(sensor: str):
+    with _conn() as con:
+        con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))
+        con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
+        con.execute("DELETE FROM thresholds WHERE sensor=?", (sensor,))
+        con.execute("DELETE FROM silenced WHERE sensor=?", (sensor,))
+
+
 def purge_old_readings(retention_days: int):
     cutoff = int(time.time()) - retention_days * 86400
     with _conn() as con:

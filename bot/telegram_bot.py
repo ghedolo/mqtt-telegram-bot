@@ -39,6 +39,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("myid", self._cmd_myid))
         self._app.add_handler(CommandHandler("lastAlarm", self._cmd_lastalarm))
         self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
+        self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
 
     async def send(self, text: str):
         await self._app.bot.send_message(chat_id=self._cfg.telegram_group_id, text=text)
@@ -216,6 +217,23 @@ class TelegramBot:
         await update.effective_chat.send_message(
             "Offline alarm silenced. Will auto-clear when sensor comes back.", **_SILENT
         )
+
+    async def _cmd_forgetsensor(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not _is_admin(update.effective_user.id, self._cfg):
+            await update.effective_chat.send_message("Not authorized.", **_SILENT)
+            return
+
+        if not ctx.args:
+            await update.effective_chat.send_message("Usage: /forgetSensor <sensor>", **_SILENT)
+            return
+
+        name = ctx.args[0]
+        if name not in self._cfg.sensors:
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
+            return
+
+        db.forget_sensor(name)
+        await update.effective_chat.send_message("Sensor data deleted.", **_SILENT)
 
     async def run(self):
         await self._app.initialize()
