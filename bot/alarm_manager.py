@@ -52,18 +52,18 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"ALARM {sensor}: temperature {value:.1f} above threshold {threshold:.1f}"
+                msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(msg)
             elif (now - state.last_notified) >= repeat:
                 state.last_notified = now
-                msg = f"ALARM {sensor}: still {value:.1f} (threshold {threshold:.1f})"
+                msg = f"ALARM {sensor}: still {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(msg)
         else:
             if state.active:
                 state.active = False
-                msg = f"OK {sensor}: temperature {value:.1f} back below threshold {threshold:.1f}"
+                msg = f"OK {sensor}: {value:.1f} < thr {threshold:.1f}"
                 db.insert_alarm(sensor, "OK", msg)
                 await self._notify(msg)
 
