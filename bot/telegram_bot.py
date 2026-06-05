@@ -49,7 +49,7 @@ class TelegramBot:
     def _fmt_alarms(self, rows) -> str:
         if not rows:
             return "No alarms recorded."
-        return "\n\n".join(
+        return "\n".join(
             f"[{_fmt_ts(r['ts'])}] {r['message']}" for r in rows
         )
 
