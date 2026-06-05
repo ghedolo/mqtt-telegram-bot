@@ -53,7 +53,7 @@ class TelegramBot:
     async def _cmd_lastalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         sensor = ctx.args[0] if ctx.args else None
         if sensor and sensor not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {sensor}", **_SILENT)
+            await update.message.reply_text("Unknown sensor.", **_SILENT)
             return
         rows = db.get_last_alarms(sensor=sensor, n=1)
         await update.message.reply_text(self._fmt_alarms(rows), **_SILENT)
@@ -64,7 +64,7 @@ class TelegramBot:
             return
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}", **_SILENT)
+            await update.message.reply_text("Unknown sensor.", **_SILENT)
             return
         rows = db.get_last_alarms(sensor=name, n=5)
         await update.message.reply_text(self._fmt_alarms(rows), **_SILENT)
@@ -120,11 +120,11 @@ class TelegramBot:
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}", **_SILENT)
+            await update.message.reply_text("Unknown sensor.", **_SILENT)
             return
         row = db.get_latest(name)
         if row is None:
-            await update.message.reply_text(f"{name}: no data yet", **_SILENT)
+            await update.message.reply_text("No data yet.", **_SILENT)
             return
         sc = self._cfg.sensors[name]
         unit = f" {sc.unit}" if sc.unit else ""
@@ -145,7 +145,7 @@ class TelegramBot:
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}", **_SILENT)
+            await update.message.reply_text("Unknown sensor.", **_SILENT)
             return
 
         try:
@@ -155,7 +155,7 @@ class TelegramBot:
             return
 
         db.set_threshold(name, value)
-        await update.message.reply_text(f"Threshold for {name} set to {value}", **_SILENT)
+        await update.message.reply_text("Threshold updated.", **_SILENT)
 
     async def _cmd_getalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
@@ -169,14 +169,14 @@ class TelegramBot:
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}", **_SILENT)
+            await update.message.reply_text("Unknown sensor.", **_SILENT)
             return
 
         thr = db.get_threshold(name)
         if thr is None:
-            await update.message.reply_text(f"{name}: no alarm threshold set", **_SILENT)
+            await update.message.reply_text("No alarm threshold set.", **_SILENT)
         else:
-            await update.message.reply_text(f"{name}: alarm threshold = {thr}", **_SILENT)
+            await update.message.reply_text(f"Alarm threshold: {thr}", **_SILENT)
 
     async def _cmd_graph(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
@@ -185,7 +185,7 @@ class TelegramBot:
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}", **_SILENT)
+            await update.message.reply_text("Unknown sensor.", **_SILENT)
             return
 
         sc = self._cfg.sensors[name]
@@ -196,7 +196,7 @@ class TelegramBot:
             log.exception("graph.build failed for %s", name)
             await update.message.reply_text(f"Graph error: {e}", **_SILENT)
             return
-        await update.message.reply_photo(photo=buf, caption=f"Sensor: {name} — last 8h", **_SILENT)
+        await update.message.reply_photo(photo=buf, caption="Last 8h", **_SILENT)
 
     async def _cmd_silence(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):
@@ -209,12 +209,12 @@ class TelegramBot:
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text(f"Unknown sensor: {name}", **_SILENT)
+            await update.message.reply_text("Unknown sensor.", **_SILENT)
             return
 
         db.silence_sensor(name)
         await update.message.reply_text(
-            f"{name} offline alarm silenced. Will auto-clear when sensor comes back.", **_SILENT
+            "Offline alarm silenced. Will auto-clear when sensor comes back.", **_SILENT
         )
 
     async def run(self):
