@@ -57,7 +57,7 @@ class AlarmManager:
                 await self._notify(msg)
             elif (now - state.last_notified) >= repeat:
                 state.last_notified = now
-                msg = f"ALARM {sensor}: still {value:.1f} > thr {threshold:.1f}"
+                msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(msg)
         else:
