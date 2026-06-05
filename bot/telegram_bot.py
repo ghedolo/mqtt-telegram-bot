@@ -34,7 +34,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("setalarm", self._cmd_setalarm))
         self._app.add_handler(CommandHandler("getAlarm", self._cmd_getalarm))
         self._app.add_handler(CommandHandler("graph", self._cmd_graph))
-        self._app.add_handler(CommandHandler("silence", self._cmd_silence))
+        self._app.add_handler(CommandHandler("ackOff", self._cmd_ackoff))
         self._app.add_handler(CommandHandler("help", self._cmd_help))
         self._app.add_handler(CommandHandler("myid", self._cmd_myid))
         self._app.add_handler(CommandHandler("lastAlarm", self._cmd_lastalarm))
@@ -88,7 +88,7 @@ class TelegramBot:
             text += (
                 "\n\nAdmin commands:\n"
                 "/setAlarm <name> <value> — set alarm threshold\n"
-                "/silence <name> — silence offline alarm\n"
+                "/ackOff <name> — acknowledge offline alarm (auto-clears when sensor reconnects)\n"
                 "/forgetSensor <name> — delete all data for a sensor"
             )
         await update.effective_chat.send_message(text, **_SILENT)
@@ -203,13 +203,13 @@ class TelegramBot:
             return
         await update.effective_chat.send_photo(photo=buf, caption="Last 8h", **_SILENT)
 
-    async def _cmd_silence(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    async def _cmd_ackoff(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):
             await update.effective_chat.send_message("Not authorized.", **_SILENT)
             return
 
         if not ctx.args:
-            await update.effective_chat.send_message("Usage: /silence <sensor>", **_SILENT)
+            await update.effective_chat.send_message("Usage: /ackOff <sensor>", **_SILENT)
             return
 
         name = ctx.args[0]
@@ -219,7 +219,7 @@ class TelegramBot:
 
         db.silence_sensor(name)
         await update.effective_chat.send_message(
-            "Offline alarm silenced. Will auto-clear when sensor comes back.", **_SILENT
+            "Offline alarm acknowledged. Will auto-clear when sensor comes back online.", **_SILENT
         )
 
     async def _cmd_forgetsensor(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
