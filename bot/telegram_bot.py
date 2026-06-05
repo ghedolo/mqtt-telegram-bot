@@ -34,18 +34,24 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("graph", self._cmd_graph))
         self._app.add_handler(CommandHandler("silence", self._cmd_silence))
         self._app.add_handler(CommandHandler("help", self._cmd_help))
+        self._app.add_handler(CommandHandler("myid", self._cmd_myid))
 
     async def send(self, text: str):
         await self._app.bot.send_message(chat_id=self._cfg.telegram_group_id, text=text)
 
+    async def _cmd_myid(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(f"Your Telegram ID: {update.effective_user.id}")
+
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         text = (
+            "Commands:\n"
             "/list — list all sensors\n"
             "/get <name> — get current value (no args = same as /list)\n"
-            "/setAlarm <name> <value> — set alarm threshold (admin)\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <name> — chart last 8h\n"
-            "/silence <name> — silence offline alarm (admin)"
+            "\nAdmin only:\n"
+            "/setAlarm <name> <value> — set alarm threshold\n"
+            "/silence <name> — silence offline alarm"
         )
         await update.message.reply_text(text)
 
