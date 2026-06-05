@@ -53,24 +53,24 @@ class TelegramBot:
     async def _cmd_lastalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         sensor = ctx.args[0] if ctx.args else None
         if sensor and sensor not in self._cfg.sensors:
-            await update.message.reply_text("Unknown sensor.", **_SILENT)
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
         rows = db.get_last_alarms(sensor=sensor, n=1)
-        await update.message.reply_text(self._fmt_alarms(rows), **_SILENT)
+        await update.effective_chat.send_message(self._fmt_alarms(rows), **_SILENT)
 
     async def _cmd_last5alarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
-            await update.message.reply_text("Usage: /last5Alarm <sensor>", **_SILENT)
+            await update.effective_chat.send_message("Usage: /last5Alarm <sensor>", **_SILENT)
             return
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text("Unknown sensor.", **_SILENT)
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
         rows = db.get_last_alarms(sensor=name, n=5)
-        await update.message.reply_text(self._fmt_alarms(rows), **_SILENT)
+        await update.effective_chat.send_message(self._fmt_alarms(rows), **_SILENT)
 
     async def _cmd_myid(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(f"Your Telegram ID: {update.effective_user.id}", **_SILENT)
+        await update.effective_chat.send_message(f"Your Telegram ID: {update.effective_user.id}", **_SILENT)
 
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         text = (
@@ -86,14 +86,14 @@ class TelegramBot:
             "/setAlarm <name> <value> — set alarm threshold\n"
             "/silence <name> — silence offline alarm"
         )
-        await update.message.reply_text(text, **_SILENT)
+        await update.effective_chat.send_message(text, **_SILENT)
 
     async def _list_all(self, update: Update):
         sensors = self._cfg.sensors
         rows = db.get_all_latest()
         thresholds = db.get_all_thresholds()
         if not sensors:
-            await update.message.reply_text("No sensors configured.", **_SILENT)
+            await update.effective_chat.send_message("No sensors configured.", **_SILENT)
             return
         seen = {r["sensor"]: r for r in rows}
         blocks = []
@@ -108,7 +108,7 @@ class TelegramBot:
             else:
                 block += "\n  no data"
             blocks.append(block)
-        await update.message.reply_text("\n\n".join(blocks), parse_mode="Markdown", **_SILENT)
+        await update.effective_chat.send_message("\n\n".join(blocks), parse_mode="Markdown", **_SILENT)
 
     async def _cmd_list(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await self._list_all(update)
@@ -120,42 +120,42 @@ class TelegramBot:
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text("Unknown sensor.", **_SILENT)
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
         row = db.get_latest(name)
         if row is None:
-            await update.message.reply_text("No data yet.", **_SILENT)
+            await update.effective_chat.send_message("No data yet.", **_SILENT)
             return
         sc = self._cfg.sensors[name]
         unit = f" {sc.unit}" if sc.unit else ""
         thr = db.get_threshold(name)
         thr_str = f"\nAlarm: {thr}{unit}" if thr is not None else ""
-        await update.message.reply_text(
+        await update.effective_chat.send_message(
             f"{name}: {row['value']:.1f}{unit}\n{_fmt_ts(row['ts'])}{thr_str}", **_SILENT
         )
 
     async def _cmd_setalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):
-            await update.message.reply_text("Not authorized.", **_SILENT)
+            await update.effective_chat.send_message("Not authorized.", **_SILENT)
             return
 
         if len(ctx.args) != 2:
-            await update.message.reply_text("Usage: /setAlarm <sensor> <value>", **_SILENT)
+            await update.effective_chat.send_message("Usage: /setAlarm <sensor> <value>", **_SILENT)
             return
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text("Unknown sensor.", **_SILENT)
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
 
         try:
             value = float(ctx.args[1])
         except ValueError:
-            await update.message.reply_text("Value must be a number.", **_SILENT)
+            await update.effective_chat.send_message("Value must be a number.", **_SILENT)
             return
 
         db.set_threshold(name, value)
-        await update.message.reply_text("Threshold updated.", **_SILENT)
+        await update.effective_chat.send_message("Threshold updated.", **_SILENT)
 
     async def _cmd_getalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
@@ -164,28 +164,28 @@ class TelegramBot:
             for name in self._cfg.sensors:
                 thr = thresholds.get(name)
                 lines.append(f"{name}: {thr}" if thr is not None else f"{name}: not set")
-            await update.message.reply_text("\n".join(lines), **_SILENT)
+            await update.effective_chat.send_message("\n".join(lines), **_SILENT)
             return
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text("Unknown sensor.", **_SILENT)
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
 
         thr = db.get_threshold(name)
         if thr is None:
-            await update.message.reply_text("No alarm threshold set.", **_SILENT)
+            await update.effective_chat.send_message("No alarm threshold set.", **_SILENT)
         else:
-            await update.message.reply_text(f"Alarm threshold: {thr}", **_SILENT)
+            await update.effective_chat.send_message(f"Alarm threshold: {thr}", **_SILENT)
 
     async def _cmd_graph(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
-            await update.message.reply_text("Usage: /graph <sensor>", **_SILENT)
+            await update.effective_chat.send_message("Usage: /graph <sensor>", **_SILENT)
             return
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text("Unknown sensor.", **_SILENT)
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
 
         sc = self._cfg.sensors[name]
@@ -194,26 +194,26 @@ class TelegramBot:
             buf = graph.build(name, threshold=thr, unit=sc.unit)
         except Exception as e:
             log.exception("graph.build failed for %s", name)
-            await update.message.reply_text(f"Graph error: {e}", **_SILENT)
+            await update.effective_chat.send_message(f"Graph error: {e}", **_SILENT)
             return
-        await update.message.reply_photo(photo=buf, caption="Last 8h", **_SILENT)
+        await update.effective_chat.send_photo(photo=buf, caption="Last 8h", **_SILENT)
 
     async def _cmd_silence(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):
-            await update.message.reply_text("Not authorized.", **_SILENT)
+            await update.effective_chat.send_message("Not authorized.", **_SILENT)
             return
 
         if not ctx.args:
-            await update.message.reply_text("Usage: /silence <sensor>", **_SILENT)
+            await update.effective_chat.send_message("Usage: /silence <sensor>", **_SILENT)
             return
 
         name = ctx.args[0]
         if name not in self._cfg.sensors:
-            await update.message.reply_text("Unknown sensor.", **_SILENT)
+            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
 
         db.silence_sensor(name)
-        await update.message.reply_text(
+        await update.effective_chat.send_message(
             "Offline alarm silenced. Will auto-clear when sensor comes back.", **_SILENT
         )
 
