@@ -9,39 +9,43 @@ from datetime import datetime
 
 from . import db
 
+_COLORS = ["#2196F3", "#FF9800", "#9C27B0", "#009688", "#E91E63", "#795548"]
+_STYLES = ["-", "--", "-.", ":"]
 
-def build(sensor: str, threshold: Optional[float] = None, unit: str = "", hours: int = 8) -> io.BytesIO:
-    rows = db.get_history(sensor, seconds=hours * 3600)
 
-    times = [datetime.fromtimestamp(r["ts"]) for r in rows]
-    values = [r["value"] for r in rows]
-
+def build(sensors: list[tuple[str, Optional[float], str]], hours: int = 8) -> io.BytesIO:
     fig, ax = plt.subplots(figsize=(10, 4))
+    title_lines = []
+    any_data = False
 
-    if rows:
-        t_from = datetime.fromtimestamp(rows[0]["ts"]).strftime("%d/%m %H:%M")
-        t_to   = datetime.fromtimestamp(rows[-1]["ts"]).strftime("%d/%m %H:%M")
-        n = len(rows)
+    for i, (name, threshold, unit) in enumerate(sensors):
+        rows = db.get_history(name, seconds=hours * 3600)
+        times = [datetime.fromtimestamp(r["ts"]) for r in rows]
+        values = [r["value"] for r in rows]
+        color = _COLORS[i % len(_COLORS)]
+        style = _STYLES[i % len(_STYLES)]
+
         if values:
+            any_data = True
             vmin, vmax = min(values), max(values)
-            range_str = f"{sensor}   {vmin:.1f}/{vmax:.1f}   {t_from} - {t_to}   ({n})"
+            t_from = datetime.fromtimestamp(rows[0]["ts"]).strftime("%d/%m %H:%M")
+            t_to   = datetime.fromtimestamp(rows[-1]["ts"]).strftime("%d/%m %H:%M")
+            title_lines.append(f"{name}   {vmin:.1f}/{vmax:.1f}   {t_from} - {t_to}   ({len(rows)})")
+            ax.plot(times, values, color=color, linestyle=style, linewidth=1.5)
+            idx_min = values.index(min(values))
+            idx_max = values.index(max(values))
+            ax.plot(times[idx_min], values[idx_min], "o", color="#4CAF50", markersize=6, zorder=5)
+            ax.plot(times[idx_max], values[idx_max], "o", color="#F44336", markersize=6, zorder=5)
         else:
-            range_str = f"{sensor}   {t_from} - {t_to}   ({n})"
-    else:
-        range_str = f"{sensor}   no data"
+            title_lines.append(f"{name}   no data")
 
-    if values:
-        ax.plot(times, values, color="#2196F3", linewidth=1.5)
-        idx_min = values.index(min(values))
-        idx_max = values.index(max(values))
-        ax.plot(times[idx_min], values[idx_min], "o", color="#4CAF50", markersize=6, zorder=5)
-        ax.plot(times[idx_max], values[idx_max], "o", color="#F44336", markersize=6, zorder=5)
-    else:
+    if not any_data:
         ax.text(0.5, 0.5, "No data", transform=ax.transAxes,
                 ha="center", va="center", fontsize=12, color="gray")
 
-    ax.set_title(range_str, fontsize=11, loc="left")
-    ax.set_ylabel(unit if unit else "")
+    units = list({u for _, _, u in sensors if u})
+    ax.set_ylabel(units[0] if len(units) == 1 else "")
+    ax.set_title("\n".join(title_lines), fontsize=9, loc="left")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.xaxis.set_major_locator(mdates.AutoDateLocator())
     fig.autofmt_xdate()

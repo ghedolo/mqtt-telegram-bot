@@ -261,16 +261,14 @@ class TelegramBot:
             await update.effective_chat.send_message("No matching sensors.", **_SILENT)
             return
 
-        for name in names:
-            sc = self._cfg.sensors[name]
-            thr = db.get_threshold(name)
-            try:
-                buf = graph.build(name, threshold=thr, unit=sc.unit, hours=hours)
-            except Exception as e:
-                log.exception("graph.build failed for %s", name)
-                await update.effective_chat.send_message(f"Graph error ({name}): {e}", **_SILENT)
-                continue
-            await update.effective_chat.send_photo(photo=buf, caption=f"Last {hours}h", **_SILENT)
+        sensor_list = [(n, db.get_threshold(n), self._cfg.sensors[n].unit) for n in names]
+        try:
+            buf = graph.build(sensor_list, hours=hours)
+        except Exception as e:
+            log.exception("graph.build failed")
+            await update.effective_chat.send_message(f"Graph error: {e}", **_SILENT)
+            return
+        await update.effective_chat.send_photo(photo=buf, caption=f"Last {hours}h", **_SILENT)
 
     async def _cmd_ackoff(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):
