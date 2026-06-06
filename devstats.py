@@ -101,18 +101,21 @@ All {s['sessions']} sessions ran with caveman mode active — a Claude Code skil
 def update_readme(block):
     with open(README) as f:
         content = f.read()
+    if not re.search(r"<!-- devstats:start -->", content):
+        print("ERROR: devstats markers not found in README.md", file=sys.stderr)
+        sys.exit(1)
     updated = re.sub(
         r"<!-- devstats:start -->.*?<!-- devstats:end -->",
         block,
         content,
         flags=re.DOTALL,
     )
-    if updated == content:
-        print("WARNING: devstats markers not found in README.md", file=sys.stderr)
-        sys.exit(1)
-    with open(README, "w") as f:
-        f.write(updated)
-    print("README.md updated.")
+    if updated != content:
+        with open(README, "w") as f:
+            f.write(updated)
+        print("README.md updated.")
+    else:
+        print("README.md already up to date.")
 
 
 if __name__ == "__main__":
