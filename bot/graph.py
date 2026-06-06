@@ -10,8 +10,8 @@ from datetime import datetime
 from . import db
 
 
-def build(sensor: str, threshold: Optional[float] = None, unit: str = "") -> io.BytesIO:
-    rows = db.get_history(sensor, seconds=8 * 3600)
+def build(sensor: str, threshold: Optional[float] = None, unit: str = "", hours: int = 8) -> io.BytesIO:
+    rows = db.get_history(sensor, seconds=hours * 3600)
 
     times = [datetime.fromtimestamp(r["ts"]) for r in rows]
     values = [r["value"] for r in rows]

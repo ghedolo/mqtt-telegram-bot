@@ -241,7 +241,7 @@ class TelegramBot:
 
     async def _cmd_graph(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
-            await update.effective_chat.send_message("Usage: /graph <sensor>", **_SILENT)
+            await update.effective_chat.send_message("Usage: /graph <sensor> [Nh]", **_SILENT)
             return
 
         name = ctx.args[0]
@@ -249,15 +249,24 @@ class TelegramBot:
             await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
             return
 
+        hours = 8
+        if len(ctx.args) >= 2:
+            raw = ctx.args[1]
+            if raw.endswith("h") and raw[:-1].isdigit():
+                hours = max(1, min(24, int(raw[:-1])))
+            else:
+                await update.effective_chat.send_message("Time format must be Nh (e.g. 3h), max 24h.", **_SILENT)
+                return
+
         sc = self._cfg.sensors[name]
         thr = db.get_threshold(name)
         try:
-            buf = graph.build(name, threshold=thr, unit=sc.unit)
+            buf = graph.build(name, threshold=thr, unit=sc.unit, hours=hours)
         except Exception as e:
             log.exception("graph.build failed for %s", name)
             await update.effective_chat.send_message(f"Graph error: {e}", **_SILENT)
             return
-        await update.effective_chat.send_photo(photo=buf, caption="Last 8h", **_SILENT)
+        await update.effective_chat.send_photo(photo=buf, caption=f"Last {hours}h", **_SILENT)
 
     async def _cmd_ackoff(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):
