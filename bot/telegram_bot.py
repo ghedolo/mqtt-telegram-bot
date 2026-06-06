@@ -44,6 +44,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
         self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
         self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
+        self._app.add_handler(CommandHandler("helpExpr", self._cmd_helpexpr))
 
     async def send(self, text: str, silent: bool = False):
         await self._app.bot.send_message(
@@ -109,7 +110,7 @@ class TelegramBot:
         text = (
             "Commands:\n"
             "/list — list all sensors\n"
-            "/get <name> — get current value (no args = same as /list)\n"
+            "/get [expr] — show sensors (no args = digest sensors; /helpExpr for syntax)\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <name> — chart last 8h\n"
             "/lastAlarm [name] — last alarm (all sensors or one)\n"
@@ -161,6 +162,24 @@ class TelegramBot:
                 block += "\n  no data"
             blocks.append(block)
         await update.effective_chat.send_message("\n\n".join(blocks), parse_mode="Markdown", **_SILENT)
+
+    async def _cmd_helpexpr(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        await update.effective_chat.send_message(
+            "/get [expr] — sensor filter expression\n\n"
+            "No args: digest sensors only\n"
+            "* : all sensors\n"
+            "NAME : exact sensor name\n"
+            "PREFIX* : sensors starting with PREFIX\n"
+            "*SUFFIX : sensors ending with SUFFIX\n"
+            "*SUB* : sensors containing SUB\n\n"
+            "Multiple patterns: space- or comma-separated\n"
+            "Examples:\n"
+            "  /get DEI*\n"
+            "  /get *_T\n"
+            "  /get DEI-P2_T UG_T\n"
+            "  /get *_T,*_P",
+            **_SILENT,
+        )
 
     async def _list_all(self, update: Update):
         await self._show_sensors(update, list(self._cfg.sensors.keys()))
