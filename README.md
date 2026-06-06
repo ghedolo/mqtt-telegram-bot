@@ -22,7 +22,7 @@ Data flow: MQTT messages → `on_reading()` → SQLite. `AlarmManager` polls for
 
 ## Prerequisites
 
-- Docker and Docker Compose
+- Docker v20.10+ (includes Compose as a built-in plugin)
 - An MQTT broker (TLS or plain)
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather)) and a group chat
 
