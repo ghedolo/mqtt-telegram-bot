@@ -2,6 +2,7 @@ import asyncio
 import logging
 import signal
 import sys
+import time as _time
 
 from .config import load
 from . import db
@@ -23,6 +24,7 @@ _DEBUG_LEVELS = {
 
 
 async def main():
+    bot_start = _time.time()
     cfg = load("sensors.yaml", "credentials.yaml")
     level = _DEBUG_LEVELS.get(cfg.debug, logging.INFO)
     logging.getLogger().setLevel(level)
@@ -65,9 +67,24 @@ async def main():
             await asyncio.sleep(3600)
             db.purge_old_readings(cfg.retention_days)
 
+    async def digest_loop():
+        from datetime import datetime, timedelta
+        h, m = (int(x) for x in cfg.digest_time.split(":"))
+        while True:
+            now = datetime.now()
+            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if target <= now:
+                target += timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            try:
+                await tg.send(tg.build_digest(bot_start), silent=True)
+            except Exception:
+                log.exception("Failed to send daily digest")
+
     tasks = [
         asyncio.create_task(alarms.run_offline_checks(cfg.sensors)),
         asyncio.create_task(purge_loop()),
+        asyncio.create_task(digest_loop()),
     ]
 
     stop_event = asyncio.Event()

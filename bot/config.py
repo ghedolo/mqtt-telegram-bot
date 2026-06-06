@@ -12,6 +12,7 @@ class SensorConfig:
     info: str
     unit: str
     default_alarm: Optional[float]
+    digest: bool = False
 
 
 @dataclass
@@ -30,6 +31,7 @@ class AppConfig:
     alarm_threshold_repeat: int
     alarm_offline_repeat: int
     debug: int
+    digest_time: str
 
 
 def _load_yaml(path: str) -> dict:
@@ -57,6 +59,7 @@ def load(
             info=sc.get("info", "")[:25],
             unit=sc.get("unit", ""),
             default_alarm=float(sc["defaultAlarm"]) if "defaultAlarm" in sc else None,
+            digest=bool(sc.get("digest", False)),
         )
 
     tg = sec["telegram"]
@@ -77,4 +80,5 @@ def load(
         alarm_threshold_repeat=int(defaults.get("alarm_threshold_repeat", 720)),
         alarm_offline_repeat=int(defaults.get("alarm_offline_repeat", 3600)),
         debug=int(defaults.get("debug", 1)),
+        digest_time=str(tg.get("digest_time", "15:00")),
     )

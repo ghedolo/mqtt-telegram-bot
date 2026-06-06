@@ -4,6 +4,7 @@ sensors:
     info: "DEI Piano 2 - Temp"
     unit: "°C"
     defaultAlarm: 30.0
+    digest: true
   DEI-P2_P:
     topic: "esp32LRX/1/lora/dataRx/1/pressure"
     info: "DEI Piano 2 - Press"
@@ -21,6 +22,7 @@ sensors:
     info: "Piano Terra - Temp"
     unit: "°C"
     defaultAlarm: 30.0
+    digest: true
   UG_P:
     topic: "esp32LRX/1/lora/dataRx/2/pressure"
     info: "Piano Terra - Press"

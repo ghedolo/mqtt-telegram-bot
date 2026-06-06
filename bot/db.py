@@ -156,6 +156,15 @@ def get_last_alarms(sensor: Optional[str] = None, n: int = 1) -> list[sqlite3.Ro
         ).fetchall()
 
 
+def has_threshold_alarm_since(sensor: str, since_ts: int) -> bool:
+    with _conn() as con:
+        row = con.execute(
+            "SELECT id FROM alarms WHERE sensor=? AND kind='threshold' AND ts>=? LIMIT 1",
+            (sensor, since_ts),
+        ).fetchone()
+        return row is not None
+
+
 def forget_sensor(sensor: str):
     with _conn() as con:
         con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))

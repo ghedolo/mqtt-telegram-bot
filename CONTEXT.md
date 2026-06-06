@@ -43,6 +43,8 @@
 | `/ackOff <name>` | Acknowledge offline alarm (suppresses repeats until sensor reconnects) |
 | `/forgetSensor <name>` | Delete all data for a sensor (readings, alarms, threshold, silence state) |
 
+**Daily Digest** — a scheduled silent message sent once per day at a configurable time (`digest_time` in credentials config, default `15:00`). Shows bot uptime and current readings for selected sensors. A sensor is included by setting `digest: true` in Sensor Config. Format: `🟢 live since 3d 4h` on first line, then one line per sensor as `name:value` with trailing ` *` if a threshold Alarm occurred in the last 24h. Offline sensors show `--` as value.
+
 ## Notification behaviour
 
 - Alarm messages sent with sound (standard Telegram notification).

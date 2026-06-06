@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime
 from typing import Callable, Optional
 
@@ -43,8 +44,36 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
         self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
 
-    async def send(self, text: str):
-        await self._app.bot.send_message(chat_id=self._cfg.telegram_group_id, text=text)
+    async def send(self, text: str, silent: bool = False):
+        await self._app.bot.send_message(
+            chat_id=self._cfg.telegram_group_id,
+            text=text,
+            disable_notification=silent,
+        )
+
+    def build_digest(self, bot_start: float) -> str:
+        uptime = int(time.time() - bot_start)
+        days = uptime // 86400
+        hours = (uptime % 86400) // 3600
+        if days > 0 and hours > 0:
+            uptime_str = f"{days}d {hours}h"
+        elif days > 0:
+            uptime_str = f"{days}d"
+        elif hours > 0:
+            uptime_str = f"{hours}h"
+        else:
+            uptime_str = "<1h"
+
+        since_ts = int(time.time()) - 86400
+        lines = [f"🟢 live since {uptime_str}"]
+        for name, sc in self._cfg.sensors.items():
+            if not sc.digest:
+                continue
+            row = db.get_latest(name)
+            val = f"{row['value']:.1f}" if row else "--"
+            flag = " *" if db.has_threshold_alarm_since(name, since_ts) else ""
+            lines.append(f"{name}:{val}{flag}")
+        return "\n".join(lines)
 
     def _fmt_alarms(self, rows) -> str:
         if not rows:
