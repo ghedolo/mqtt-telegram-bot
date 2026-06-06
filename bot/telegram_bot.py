@@ -241,32 +241,36 @@ class TelegramBot:
 
     async def _cmd_graph(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
-            await update.effective_chat.send_message("Usage: /graph <sensor> [Nh]", **_SILENT)
+            await update.effective_chat.send_message("Usage: /graph <expr> [Nh]", **_SILENT)
             return
 
-        name = ctx.args[0]
-        if name not in self._cfg.sensors:
-            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
-            return
-
+        args = list(ctx.args)
         hours = 8
-        if len(ctx.args) >= 2:
-            raw = ctx.args[1]
-            if raw.endswith("h") and raw[:-1].isdigit():
-                hours = max(1, min(24, int(raw[:-1])))
-            else:
-                await update.effective_chat.send_message("Time format must be Nh (e.g. 3h), max 24h.", **_SILENT)
-                return
-
-        sc = self._cfg.sensors[name]
-        thr = db.get_threshold(name)
-        try:
-            buf = graph.build(name, threshold=thr, unit=sc.unit, hours=hours)
-        except Exception as e:
-            log.exception("graph.build failed for %s", name)
-            await update.effective_chat.send_message(f"Graph error: {e}", **_SILENT)
+        if args[-1].endswith("h") and args[-1][:-1].isdigit():
+            hours = max(1, min(24, int(args[-1][:-1])))
+            args = args[:-1]
+        if not args:
+            await update.effective_chat.send_message("Usage: /graph <expr> [Nh]", **_SILENT)
             return
-        await update.effective_chat.send_photo(photo=buf, caption=f"Last {hours}h", **_SILENT)
+        if hours != max(1, min(24, hours)):
+            await update.effective_chat.send_message("Time must be 1h–24h.", **_SILENT)
+            return
+
+        names = self._resolve_sensors(args)
+        if not names:
+            await update.effective_chat.send_message("No matching sensors.", **_SILENT)
+            return
+
+        for name in names:
+            sc = self._cfg.sensors[name]
+            thr = db.get_threshold(name)
+            try:
+                buf = graph.build(name, threshold=thr, unit=sc.unit, hours=hours)
+            except Exception as e:
+                log.exception("graph.build failed for %s", name)
+                await update.effective_chat.send_message(f"Graph error ({name}): {e}", **_SILENT)
+                continue
+            await update.effective_chat.send_photo(photo=buf, caption=f"Last {hours}h", **_SILENT)
 
     async def _cmd_ackoff(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):

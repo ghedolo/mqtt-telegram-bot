@@ -21,12 +21,21 @@ def build(sensor: str, threshold: Optional[float] = None, unit: str = "", hours:
     if rows:
         t_from = datetime.fromtimestamp(rows[0]["ts"]).strftime("%d/%m %H:%M")
         t_to   = datetime.fromtimestamp(rows[-1]["ts"]).strftime("%d/%m %H:%M")
-        range_str = f"{sensor}   {t_from} - {t_to}"
+        n = len(rows)
+        if values:
+            vmin, vmax = min(values), max(values)
+            range_str = f"{sensor}   {vmin:.1f}/{vmax:.1f}   {t_from} - {t_to}   ({n})"
+        else:
+            range_str = f"{sensor}   {t_from} - {t_to}   ({n})"
     else:
         range_str = f"{sensor}   no data"
 
     if values:
         ax.plot(times, values, color="#2196F3", linewidth=1.5)
+        idx_min = values.index(min(values))
+        idx_max = values.index(max(values))
+        ax.plot(times[idx_min], values[idx_min], "o", color="#4CAF50", markersize=6, zorder=5)
+        ax.plot(times[idx_max], values[idx_max], "o", color="#F44336", markersize=6, zorder=5)
     else:
         ax.text(0.5, 0.5, "No data", transform=ax.transAxes,
                 ha="center", va="center", fontsize=12, color="gray")
