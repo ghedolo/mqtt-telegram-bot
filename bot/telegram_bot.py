@@ -1,4 +1,6 @@
+import csv
 import fnmatch
+import io
 import logging
 import time
 from datetime import datetime
@@ -45,6 +47,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
         self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
         self._app.add_handler(CommandHandler("helpExpr", self._cmd_helpexpr))
+        self._app.add_handler(CommandHandler("csv", self._cmd_csv))
 
     async def send(self, text: str, silent: bool = False):
         await self._app.bot.send_message(
@@ -112,7 +115,8 @@ class TelegramBot:
             "/list — list all sensors\n"
             "/get [expr] — show sensors (no args = digest sensors; /helpExpr for syntax)\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
-            "/graph <name> — chart last 8h\n"
+            "/graph <expr> [Nh] — chart (default 8h)\n"
+            "/csv <expr> [Nh] — download readings as CSV\n"
             "/lastAlarm [name] — last alarm (all sensors or one)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/myid — show your Telegram user ID"
@@ -339,6 +343,41 @@ class TelegramBot:
 
         await update.effective_chat.send_message(
             "Config reloaded.\nNote: new sensor MQTT subscriptions require a restart.", **_SILENT
+        )
+
+    async def _cmd_csv(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not ctx.args:
+            await update.effective_chat.send_message("Usage: /csv <expr> [Nh]", **_SILENT)
+            return
+
+        args = list(ctx.args)
+        hours = 8
+        if args[-1].endswith("h") and args[-1][:-1].isdigit():
+            hours = max(1, min(24, int(args[-1][:-1])))
+            args = args[:-1]
+        if not args:
+            await update.effective_chat.send_message("Usage: /csv <expr> [Nh]", **_SILENT)
+            return
+
+        names = self._resolve_sensors(args)
+        if not names:
+            await update.effective_chat.send_message("No matching sensors.", **_SILENT)
+            return
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["timestamp", "sensor", "value"])
+        for name in names:
+            rows = db.get_history(name, seconds=hours * 3600)
+            for r in rows:
+                writer.writerow([_fmt_ts(r["ts"]), name, r["value"]])
+
+        data = buf.getvalue().encode()
+        filename = f"sensors_{hours}h.csv"
+        await update.effective_chat.send_document(
+            document=io.BytesIO(data),
+            filename=filename,
+            **_SILENT,
         )
 
     async def run(self):
