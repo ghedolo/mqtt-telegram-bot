@@ -67,6 +67,7 @@ def load_stats():
         output=totals["output"],
         cache_read=totals["cache_read"],
         cache_write=totals["cache_write"],
+        output_per_msg=round(totals["output"] / totals["asst"]) if totals["asst"] else 0,
     )
 
 
@@ -90,6 +91,10 @@ Numbers extracted from local session transcripts.
 | Cache write | {s['cache_write']:,} |
 | Cache read | {s['cache_read']:,} |
 | **Total** | **~{(s['input']+s['output']+s['cache_read']+s['cache_write'])//1_000_000} M** |
+
+### Caveman mode
+
+All {s['sessions']} sessions ran with caveman mode active — a Claude Code skill that drops filler words, articles, and pleasantries from assistant responses while keeping full technical content. The assistant produced an average of **{s['output_per_msg']} output tokens per message**. The saving is modest compared to prose-heavy projects because the dominant output here is code, which caveman leaves untouched.
 <!-- devstats:end -->"""
 
 
