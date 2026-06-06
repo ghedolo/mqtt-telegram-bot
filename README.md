@@ -139,16 +139,16 @@ Numbers extracted from local session transcripts.
 
 - **First message:** 2026-06-03
 - **Last message:** 2026-06-06
-- **Sessions:** 5 — 1428 messages (605 user + 823 assistant)
-- **Active conversation time:** ~371 min (~6h 11m)
+- **Sessions:** 5 — 1447 messages (612 user + 835 assistant)
+- **Active conversation time:** ~376 min (~6h 16m)
 
 *Active time: sum of consecutive gaps ≤ 5 min across all sessions. Longer gaps discarded.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 2,216 |
-| Output | 331,377 |
-| Cache write | 1,217,912 |
-| Cache read | 52,527,268 |
-| **Total** | **~54 M** |
+| Input (non-cache) | 2,234 |
+| Output | 333,734 |
+| Cache write | 1,224,731 |
+| Cache read | 53,926,496 |
+| **Total** | **~55 M** |
 <!-- devstats:end -->
