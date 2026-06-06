@@ -367,18 +367,30 @@ class TelegramBot:
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(["timestamp", "sensor", "value"])
+        total = 0
         for name in names:
             rows = db.get_history(name, seconds=hours * 3600)
             for r in rows:
                 writer.writerow([_fmt_ts(r["ts"]), name, r["value"]])
+                total += 1
+
+        if total == 0:
+            await update.effective_chat.send_message(f"No data in last {hours}h.", **_SILENT)
+            return
 
         data = buf.getvalue().encode()
         filename = f"sensors_{hours}h.csv"
-        await update.effective_chat.send_document(
-            document=io.BytesIO(data),
-            filename=filename,
-            **_SILENT,
-        )
+        file_buf = io.BytesIO(data)
+        file_buf.name = filename
+        try:
+            await update.effective_chat.send_document(
+                document=file_buf,
+                filename=filename,
+                **_SILENT,
+            )
+        except Exception as e:
+            log.exception("send_document failed")
+            await update.effective_chat.send_message(f"CSV error: {e}", **_SILENT)
 
     async def run(self):
         await self._app.initialize()
