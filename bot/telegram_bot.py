@@ -48,6 +48,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
         self._app.add_handler(CommandHandler("helpExpr", self._cmd_helpexpr))
         self._app.add_handler(CommandHandler("csv", self._cmd_csv))
+        self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
 
     async def send(self, text: str, silent: bool = False):
         await self._app.bot.send_message(
@@ -117,6 +118,7 @@ class TelegramBot:
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h)\n"
             "/csv <expr> [Nh] — download readings as CSV\n"
+            "/xlsx <expr> [Nh] — download readings as Excel (one sheet per sensor)\n"
             "/lastAlarm [name] — last alarm (all sensors or one)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/myid — show your Telegram user ID"
@@ -345,6 +347,18 @@ class TelegramBot:
             "Config reloaded.\nNote: new sensor MQTT subscriptions require a restart.", **_SILENT
         )
 
+    def _parse_graph_args(self, ctx_args: list[str], default_hours: int = 8):
+        """Return (names, hours) or (None, error_str) on bad input."""
+        args = list(ctx_args)
+        hours = default_hours
+        if args and args[-1].endswith("h") and args[-1][:-1].isdigit():
+            hours = max(1, min(24, int(args[-1][:-1])))
+            args = args[:-1]
+        if not args:
+            return None, None
+        names = self._resolve_sensors(args)
+        return names, hours
+
     async def _cmd_csv(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
             await update.effective_chat.send_message("Usage: /csv <expr> [Nh]", **_SILENT)
@@ -391,6 +405,56 @@ class TelegramBot:
         except Exception as e:
             log.exception("send_document failed")
             await update.effective_chat.send_message(f"CSV error: {e}", **_SILENT)
+
+    async def _cmd_xlsx(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not ctx.args:
+            await update.effective_chat.send_message("Usage: /xlsx <expr> [Nh]", **_SILENT)
+            return
+
+        args = list(ctx.args)
+        hours = 8
+        if args[-1].endswith("h") and args[-1][:-1].isdigit():
+            hours = max(1, min(24, int(args[-1][:-1])))
+            args = args[:-1]
+        if not args:
+            await update.effective_chat.send_message("Usage: /xlsx <expr> [Nh]", **_SILENT)
+            return
+
+        names = self._resolve_sensors(args)
+        if not names:
+            await update.effective_chat.send_message("No matching sensors.", **_SILENT)
+            return
+
+        try:
+            import openpyxl
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+            total = 0
+            for name in names:
+                ws = wb.create_sheet(title=name[:31])
+                ws.append(["timestamp", "value"])
+                rows = db.get_history(name, seconds=hours * 3600)
+                for r in rows:
+                    ws.append([_fmt_ts(r["ts"]), r["value"]])
+                    total += 1
+
+            if total == 0:
+                await update.effective_chat.send_message(f"No data in last {hours}h.", **_SILENT)
+                return
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            filename = f"sensors_{hours}h.xlsx"
+            buf.name = filename
+            await update.effective_chat.send_document(
+                document=buf,
+                filename=filename,
+                **_SILENT,
+            )
+        except Exception as e:
+            log.exception("xlsx failed")
+            await update.effective_chat.send_message(f"XLSX error: {e}", **_SILENT)
 
     async def run(self):
         await self._app.initialize()
