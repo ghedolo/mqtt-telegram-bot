@@ -1,3 +1,4 @@
+import fnmatch
 import logging
 import time
 from datetime import datetime
@@ -125,21 +126,35 @@ class TelegramBot:
             )
         await update.effective_chat.send_message(text, **_SILENT)
 
-    async def _list_all(self, update: Update):
-        sensors = self._cfg.sensors
-        rows = db.get_all_latest()
-        thresholds = db.get_all_thresholds()
-        if not sensors:
-            await update.effective_chat.send_message("No sensors configured.", **_SILENT)
+    def _resolve_sensors(self, args: list[str]) -> list[str]:
+        patterns = []
+        for a in args:
+            patterns.extend(p.strip() for p in a.split(",") if p.strip())
+        all_names = list(self._cfg.sensors.keys())
+        result, seen = [], set()
+        for pat in patterns:
+            for n in all_names:
+                if n not in seen and fnmatch.fnmatch(n, pat):
+                    result.append(n)
+                    seen.add(n)
+        return result
+
+    async def _show_sensors(self, update: Update, names: list[str]):
+        if not names:
+            await update.effective_chat.send_message("No matching sensors.", **_SILENT)
             return
-        seen = {r["sensor"]: r for r in rows}
+        rows_map = {r["sensor"]: r for r in db.get_all_latest()}
+        thresholds = db.get_all_thresholds()
         blocks = []
-        for name, sc in sensors.items():
-            r = seen.get(name)
+        for name in names:
+            sc = self._cfg.sensors.get(name)
+            if sc is None:
+                continue
+            r = rows_map.get(name)
             block = f"*{name}*"
             if r:
-                thr = thresholds.get(name)
                 unit = f" {sc.unit}" if sc.unit else ""
+                thr = thresholds.get(name)
                 thr_str = f"  (alarm: {thr}{unit})" if thr is not None else ""
                 block += f"\n  {r['value']:.1f}{unit}  {_fmt_ts(r['ts'])}{thr_str}"
             else:
@@ -147,29 +162,19 @@ class TelegramBot:
             blocks.append(block)
         await update.effective_chat.send_message("\n\n".join(blocks), parse_mode="Markdown", **_SILENT)
 
+    async def _list_all(self, update: Update):
+        await self._show_sensors(update, list(self._cfg.sensors.keys()))
+
     async def _cmd_list(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await self._list_all(update)
 
     async def _cmd_get(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not ctx.args:
-            await self._list_all(update)
+            names = [n for n, sc in self._cfg.sensors.items() if sc.digest]
+            await self._show_sensors(update, names)
             return
-
-        name = ctx.args[0]
-        if name not in self._cfg.sensors:
-            await update.effective_chat.send_message("Unknown sensor.", **_SILENT)
-            return
-        row = db.get_latest(name)
-        if row is None:
-            await update.effective_chat.send_message("No data yet.", **_SILENT)
-            return
-        sc = self._cfg.sensors[name]
-        unit = f" {sc.unit}" if sc.unit else ""
-        thr = db.get_threshold(name)
-        thr_str = f"\nAlarm: {thr}{unit}" if thr is not None else ""
-        await update.effective_chat.send_message(
-            f"{name}: {row['value']:.1f}{unit}\n{_fmt_ts(row['ts'])}{thr_str}", **_SILENT
-        )
+        names = self._resolve_sensors(ctx.args)
+        await self._show_sensors(update, names)
 
     async def _cmd_setalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not _is_admin(update.effective_user.id, self._cfg):
