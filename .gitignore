@@ -3,6 +3,7 @@ tmp/
 data/
 diary.md
 credentials.yaml
+sensors.yaml
 telegramData.txt
 __pycache__/
 *.pyc
