@@ -93,7 +93,11 @@ class TelegramBot:
         try:
             await self._app.bot.send_message(
                 chat_id=group_id,
-                text="Per ricevere risposte e notifiche in privato, avvia il bot:",
+                text=(
+                    "Replies and alarm notifications are sent via private message.\n"
+                    "Tap the button below to open the bot chat, then press Start inside that window.\n"
+                    "After that, you can use all commands directly from the private chat."
+                ),
                 reply_markup=keyboard,
                 **_SILENT,
             )
