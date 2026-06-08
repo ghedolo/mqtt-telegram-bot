@@ -5,10 +5,13 @@ sensors:
     unit: "°C"
     defaultAlarm: 30.0
     digest: true
+    admins: [ops,dei]
+
   DEI-P2_P:
     topic: "esp32LRX/1/lora/dataRx/1/pressure"
     info: "DEI Piano 2 - Press"
     unit: "hPa"
+    viewers: [ops]
   DEI-P2_rssi:
     topic: "esp32LRX/1/lora/dataRx/1/rssiAtTX"
     info: "DEI Piano 2 - RSSI"

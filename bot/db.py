@@ -51,6 +51,11 @@ def init():
             );
             CREATE INDEX IF NOT EXISTS idx_alarms_sensor_ts
                 ON alarms(sensor, ts);
+
+            CREATE TABLE IF NOT EXISTS dm_registered (
+                chat_id      INTEGER PRIMARY KEY,
+                registered_at INTEGER NOT NULL
+            );
         """)
 
 
@@ -171,6 +176,28 @@ def forget_sensor(sensor: str):
         con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM thresholds WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM silenced WHERE sensor=?", (sensor,))
+
+
+def register_dm(chat_id: int):
+    with _conn() as con:
+        con.execute(
+            "INSERT OR REPLACE INTO dm_registered (chat_id, registered_at) VALUES (?, ?)",
+            (chat_id, int(time.time())),
+        )
+
+
+def is_dm_registered(chat_id: int) -> bool:
+    with _conn() as con:
+        row = con.execute(
+            "SELECT chat_id FROM dm_registered WHERE chat_id=?", (chat_id,)
+        ).fetchone()
+        return row is not None
+
+
+def get_all_dm_registered() -> list[int]:
+    with _conn() as con:
+        rows = con.execute("SELECT chat_id FROM dm_registered").fetchall()
+        return [r["chat_id"] for r in rows]
 
 
 def purge_old_readings(retention_days: int):

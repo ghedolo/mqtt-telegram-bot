@@ -1,5 +1,5 @@
 import yaml
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -13,13 +13,15 @@ class SensorConfig:
     unit: str
     default_alarm: Optional[float]
     digest: bool = False
+    viewers: list[str] = field(default_factory=list)
+    admins: list[str] = field(default_factory=list)
 
 
 @dataclass
 class AppConfig:
     telegram_token: str
     telegram_group_id: int
-    admin_ids: list[int]
+    groups: dict[str, list[int]]
     poll_interval: int
     mqtt_host: str
     mqtt_port: int
@@ -32,6 +34,36 @@ class AppConfig:
     alarm_offline_repeat: int
     debug: int
     digest_time: str
+
+    def _members(self, group_names: list[str]) -> set[int]:
+        result: set[int] = set()
+        for g in group_names:
+            result.update(self.groups.get(g, []))
+        return result
+
+    def viewers_of(self, sensor: str) -> set[int]:
+        sc = self.sensors.get(sensor)
+        if sc is None:
+            return set()
+        return self._members(sc.viewers) | self._members(sc.admins)
+
+    def admins_of(self, sensor: str) -> set[int]:
+        sc = self.sensors.get(sensor)
+        if sc is None:
+            return set()
+        return self._members(sc.admins)
+
+    def is_viewer(self, user_id: int, sensor: str) -> bool:
+        return user_id in self.viewers_of(sensor)
+
+    def is_admin(self, user_id: int, sensor: str) -> bool:
+        return user_id in self.admins_of(sensor)
+
+    def is_any_admin(self, user_id: int) -> bool:
+        return any(user_id in self.admins_of(s) for s in self.sensors)
+
+    def visible_sensors(self, user_id: int) -> list[str]:
+        return [n for n in self.sensors if self.is_viewer(user_id, n)]
 
 
 def _load_yaml(path: str) -> dict:
@@ -60,15 +92,19 @@ def load(
             unit=sc.get("unit", ""),
             default_alarm=float(sc["defaultAlarm"]) if "defaultAlarm" in sc else None,
             digest=bool(sc.get("digest", False)),
+            viewers=list(sc.get("viewers", [])),
+            admins=list(sc.get("admins", [])),
         )
 
     tg = sec["telegram"]
     mq = sec["mqtt"]
+    raw_groups = sec.get("groups", {})
+    groups = {g: [int(i) for i in members] for g, members in raw_groups.items()}
 
     return AppConfig(
         telegram_token=tg["token"],
         telegram_group_id=int(tg["group_id"]),
-        admin_ids=[int(i) for i in tg.get("admin_ids", [])],
+        groups=groups,
         poll_interval=max(1, min(10, int(tg.get("poll_interval", 3)))),
         mqtt_host=mq["host"],
         mqtt_port=int(mq.get("port", 1883)),

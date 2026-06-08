@@ -53,6 +53,8 @@ sensors:
     defaultAlarm: 30.0             # optional, seeds DB threshold on first run
     digest: true                   # include in daily digest (default: false)
     interval: 300                  # expected publish interval in seconds
+    viewers: [group_name]          # groups that can read this sensor
+    admins: [ops]                  # groups that can administer this sensor (implies viewer)
 
 defaults:
   interval: 300
@@ -62,9 +64,13 @@ defaults:
   debug: 0                        # 0=silent 1=info 2=verbose
 ```
 
+Sensors without `viewers` or `admins` are visible to nobody (fail-closed). See [`sensors.yaml.example`](sensors.yaml.example) for a full example.
+
 ### `credentials.yaml`
 
 See [`credentials.yaml.example`](credentials.yaml.example).
+
+Access Groups are defined at the top level of `credentials.yaml` and referenced by name in `sensors.yaml`.
 
 ---
 
@@ -109,10 +115,17 @@ See [`credentials.yaml.example`](credentials.yaml.example).
 
 ---
 
+## Access control
+
+Access is configured via named **Access Groups** in `credentials.yaml`. Each group is a list of Telegram `chat_id`s. Sensors reference group names under `viewers` and `admins`. Admin implies viewer for the same sensor. Users with no group assignment see no sensors.
+
+**DM registration** is required before the bot can send private replies. When a user sends a command from the Telegram Group and has not yet activated DM, the bot sends a registration prompt with a signed button. Users can also send `/start` directly to the bot in DM.
+
 ## Notifications
 
-- **Alarm messages** — sent with sound.
-- **Command replies and digest** — sent silently (`disable_notification=True`).
+- **Alarm messages and daily digest** — sent via DM to each user, filtered to their visible sensors.
+- **Command replies** — sent via DM, silently (`disable_notification=True`).
+- **Telegram Group** — used only for DM registration prompts and `/help`. No sensor data is ever sent to the Group.
 - Bot replies never quote or echo user input.
 
 ---

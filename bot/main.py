@@ -37,11 +37,11 @@ async def main():
 
     tg = TelegramBot(cfg, reload_fn=lambda: load("sensors.yaml", "credentials.yaml"))
 
-    async def notify(text: str):
+    async def notify(sensor: str, text: str):
         try:
-            await tg.send(text)
+            await tg.notify_sensor(sensor, text)
         except Exception:
-            log.exception("Failed to send Telegram message")
+            log.exception("Failed to send alarm notification for %s", sensor)
 
     alarms = AlarmManager(
         threshold_repeat=cfg.alarm_threshold_repeat,
@@ -59,7 +59,7 @@ async def main():
     mqtt.start(loop)
 
     await tg.run()
-    await notify("🐶 LorTe is alive & sniffing! You can always say /help")
+    await tg.send("🐶 LorTe is alive & sniffing! You can always say /help")
 
     # periodic tasks
     async def purge_loop():
@@ -76,10 +76,13 @@ async def main():
             if target <= now:
                 target += timedelta(days=1)
             await asyncio.sleep((target - now).total_seconds())
-            try:
-                await tg.send(tg.build_digest(bot_start), silent=True)
-            except Exception:
-                log.exception("Failed to send daily digest")
+            for chat_id in db.get_all_dm_registered():
+                try:
+                    text = tg.build_digest(bot_start, chat_id)
+                    if text:
+                        await tg.send_dm_to(chat_id, text, silent=True)
+                except Exception:
+                    log.exception("Failed to send daily digest to %s", chat_id)
 
     tasks = [
         asyncio.create_task(alarms.run_offline_checks(cfg.sensors)),

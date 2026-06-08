@@ -14,13 +14,21 @@
 
 **AckOff** — an Admin action that acknowledges an offline Alarm, suppressing repeat notifications until the Sensor comes back online (auto-clears on reconnect).
 
-**Admin** — a Telegram user identified by chat_id, listed in config. Can issue all commands including set, ackOff, forgetSensor.
+**Access Group** — a named set of users (identified by chat_id) defined in credentials config. Referenced by Sensors as `viewers` or `admins`. A user belongs to zero or more Access Groups.
 
-**User** — any member of the Telegram Group. Can issue read-only commands.
+**Viewer** — a member of an Access Group assigned as `viewers` for a Sensor. Can issue read-only commands for that Sensor.
 
-**Telegram Group** — the single group where all notifications and commands occur.
+**Admin** — a member of an Access Group assigned as `admins` for a Sensor. Can issue all commands for that Sensor. Implies Viewer access for the same Sensor.
 
-**Sensor Config** — YAML file mapping each Sensor name to its Topic, optional `json_field`, optional `interval`. Global default interval: 300s.
+**User** — any Telegram user whose chat_id appears in at least one Access Group. Users with no Access Group membership have no access to any Sensor.
+
+**Telegram Group** — the single Telegram group where users send commands. The bot never replies with sensor data in the Group; all data replies are sent via DM.
+
+**DM Registration** — the process by which a User activates private messaging with the bot. Triggered by clicking an HMAC-signed deep link sent by the bot in the Telegram Group. Required before the bot can send DM notifications or command replies to that User.
+
+**HMAC Token** — a time-limited (24h TTL) signed token embedded in a Telegram start deep link (`t.me/botname?start=<token>`). Encodes the target chat_id and a timestamp. Verified on `/start` to ensure only the intended User completes DM Registration.
+
+**Sensor Config** — YAML file mapping each Sensor name to its Topic, optional `json_field`, optional `interval`, and optional `viewers`/`admins` Access Group references. Global default interval: 300s. Sensors without `viewers` or `admins` are visible to nobody (fail-closed).
 
 ## Bot Commands
 
@@ -47,6 +55,9 @@
 
 ## Notification behaviour
 
-- Alarm messages sent with sound (standard Telegram notification).
-- Command replies sent silently (`disable_notification=True`).
+- Alarm messages and Daily Digest sent via DM to each User, filtered to only the Sensors that User can see (Viewer or Admin).
+- Command replies sent via DM, silently (`disable_notification=True`).
+- Bot never sends sensor data in the Telegram Group. Group messages are limited to DM Registration prompts.
+- If DM Registration is not yet completed for a User, the bot replies in the Telegram Group with a registration prompt and HMAC Token deep link, and no sensor data.
 - Bot replies never quote or echo user input (`send_message` not `reply_text`).
+- If a Sensor is not visible to the requesting User, the bot responds as if the Sensor does not exist.

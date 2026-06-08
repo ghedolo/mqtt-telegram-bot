@@ -22,7 +22,7 @@ class AlarmManager:
         self,
         threshold_repeat: int,
         offline_repeat: int,
-        notify_fn: Callable[[str], Awaitable[None]],
+        notify_fn: Callable[[str, str], Awaitable[None]],
     ):
         self._threshold_repeat = threshold_repeat
         self._offline_repeat = offline_repeat
@@ -54,18 +54,18 @@ class AlarmManager:
                 state.last_notified = now
                 msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
-                await self._notify(msg)
+                await self._notify(sensor, msg)
             elif (now - state.last_notified) >= repeat:
                 state.last_notified = now
                 msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
-                await self._notify(msg)
+                await self._notify(sensor, msg)
         else:
             if state.active:
                 state.active = False
                 msg = f"OK {sensor}: {value:.1f} < thr {threshold:.1f}"
                 db.insert_alarm(sensor, "OK", msg)
-                await self._notify(msg)
+                await self._notify(sensor, msg)
 
     async def check_offline(self, sensor: str, interval: int):
         if db.is_silenced(sensor):
@@ -86,19 +86,19 @@ class AlarmManager:
                 state.last_notified = now
                 msg = f"OFFLINE {sensor}: no data received for >{offline_after}s"
                 db.insert_alarm(sensor, "OFFLINE", msg)
-                await self._notify(msg)
+                await self._notify(sensor, msg)
             elif (now - state.last_notified) >= repeat:
                 state.last_notified = now
                 msg = f"OFFLINE {sensor}: still no data"
                 db.insert_alarm(sensor, "OFFLINE", msg)
-                await self._notify(msg)
+                await self._notify(sensor, msg)
         else:
             if state.active:
                 state.active = False
                 db.unsilence_sensor(sensor)
                 msg = f"ONLINE {sensor}: sensor back online"
                 db.insert_alarm(sensor, "ONLINE", msg)
-                await self._notify(msg)
+                await self._notify(sensor, msg)
 
     async def run_offline_checks(self, sensors: dict):
         while True:
