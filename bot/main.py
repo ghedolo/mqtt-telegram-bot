@@ -31,9 +31,12 @@ async def main():
     db.init()
 
     for sc in cfg.sensors.values():
-        if sc.default_alarm is not None and db.get_threshold(sc.name) is None:
-            db.set_threshold(sc.name, sc.default_alarm)
-            log.info("Threshold for %s set from config: %s", sc.name, sc.default_alarm)
+        if sc.default_alarm_high is not None and db.get_threshold(sc.name) is None:
+            db.set_threshold(sc.name, sc.default_alarm_high)
+            log.info("High threshold for %s set from config: %s", sc.name, sc.default_alarm_high)
+        if sc.default_alarm_low is not None and db.get_threshold_low(sc.name) is None:
+            db.set_threshold_low(sc.name, sc.default_alarm_low)
+            log.info("Low threshold for %s set from config: %s", sc.name, sc.default_alarm_low)
 
     tg = TelegramBot(cfg, reload_fn=lambda: load("sensors.yaml", "credentials.yaml"))
 

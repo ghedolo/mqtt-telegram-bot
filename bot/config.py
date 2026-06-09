@@ -11,7 +11,8 @@ class SensorConfig:
     interval: int
     info: str
     unit: str
-    default_alarm: Optional[float]
+    default_alarm_high: Optional[float]
+    default_alarm_low: Optional[float]
     viewers: list[str] = field(default_factory=list)
     admins: list[str] = field(default_factory=list)
 
@@ -93,7 +94,8 @@ def load(
             interval=sc.get("interval", default_interval),
             info=sc.get("info", "")[:25],
             unit=sc.get("unit", ""),
-            default_alarm=float(sc["defaultAlarm"]) if "defaultAlarm" in sc else None,
+            default_alarm_high=float(sc["defaultAlarmHigh"]) if "defaultAlarmHigh" in sc else None,
+            default_alarm_low=float(sc["defaultAlarmLow"]) if "defaultAlarmLow" in sc else None,
             viewers=list(sc.get("viewers", [])),
             admins=list(sc.get("admins", [])),
         )

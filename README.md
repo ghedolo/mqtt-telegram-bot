@@ -52,7 +52,8 @@ sensors:
     info: "Human-readable label"   # optional, shown in /list
     unit: "°C"                     # optional
     json_field: "temperature"      # optional: if payload is JSON, extract this field (dot notation for nested: "update.installed_version")
-    defaultAlarm: 30.0             # optional, seeds DB threshold on first run (admins can override with /setAlarm)
+    defaultAlarmHigh: 30.0         # optional, seeds high threshold on first run (admins can override with /setAlarm)
+    defaultAlarmLow: 10.0          # optional, seeds low threshold on first run (admins can override with /setAlarmLow)
     interval: 300                  # expected publish interval in seconds
     viewers: [group_name]          # groups that can read this sensor
     admins: [ops]                  # groups that can administer this sensor (implies viewer)

@@ -708,8 +708,10 @@ class TelegramBot:
         for name, sc in new.sensors.items():
             if name not in self._cfg.sensors:
                 self._cfg.sensors[name] = sc
-                if sc.default_alarm is not None and db.get_threshold(name) is None:
-                    db.set_threshold(name, sc.default_alarm)
+                if sc.default_alarm_high is not None and db.get_threshold(name) is None:
+                    db.set_threshold(name, sc.default_alarm_high)
+                if sc.default_alarm_low is not None and db.get_threshold_low(name) is None:
+                    db.set_threshold_low(name, sc.default_alarm_low)
             else:
                 self._cfg.sensors[name] = sc
 
