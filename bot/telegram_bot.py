@@ -296,7 +296,6 @@ class TelegramBot:
         reply_chat = update.effective_chat.id
         text = (
             "Commands:\n"
-            "/list — list all sensors\n"
             "/get [expr] — show sensors (no args = digest sensors; /helpExpr for syntax)\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h)\n"
@@ -305,6 +304,7 @@ class TelegramBot:
             "/lastAlarm [name] — last alarm (all sensors or one)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/digest [expr on|off] — manage daily digest subscriptions\n"
+            "/list — list all sensors\n"
             "/myid — show your Telegram user ID"
         )
         if self._cfg.is_any_admin(update.effective_user.id):
