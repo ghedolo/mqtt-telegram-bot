@@ -35,6 +35,7 @@ class TelegramBot:
         self._bot_username: Optional[str] = None
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("start", self._cmd_start))
+        self._app.add_handler(CommandHandler("digest", self._cmd_digest))
         self._app.add_handler(CommandHandler("list", self._cmd_list))
         self._app.add_handler(CommandHandler("get", self._cmd_get))
         self._app.add_handler(CommandHandler("setalarm", self._cmd_setalarm))
@@ -139,30 +140,37 @@ class TelegramBot:
 
     # ── digest ─────────────────────────────────────────────────────────────────
 
-    def build_digest(self, bot_start: float, user_id: int) -> str:
+    def _uptime_str(self, bot_start: float) -> str:
         uptime = int(time.time() - bot_start)
         days = uptime // 86400
         hours = (uptime % 86400) // 3600
         if days > 0 and hours > 0:
-            uptime_str = f"{days}d {hours}h"
-        elif days > 0:
-            uptime_str = f"{days}d"
-        elif hours > 0:
-            uptime_str = f"{hours}h"
-        else:
-            uptime_str = "<1h"
+            return f"{days}d {hours}h"
+        if days > 0:
+            return f"{days}d"
+        if hours > 0:
+            return f"{hours}h"
+        return "<1h"
 
-        since_ts = int(time.time()) - 86400
+    def build_uptime(self, bot_start: float) -> str:
+        return f"🟢 live since {self._uptime_str(bot_start)}"
+
+    def build_digest(self, bot_start: float, user_id: int) -> str:
+        subscribed = set(db.get_digest_subscriptions(user_id))
         visible = set(self._cfg.visible_sensors(user_id))
-        lines = [f"🟢 live since {uptime_str}"]
-        for name, sc in self._cfg.sensors.items():
-            if not sc.digest or name not in visible:
+        active = subscribed & visible
+        if not active:
+            return ""
+        since_ts = int(time.time()) - 86400
+        lines = [f"🟢 live since {self._uptime_str(bot_start)}"]
+        for name in self._cfg.sensors:
+            if name not in active:
                 continue
             row = db.get_latest(name)
             val = f"{row['value']:.1f}" if row else "--"
             flag = " *" if db.has_threshold_alarm_since(name, since_ts) else ""
             lines.append(f"{name}:{val}{flag}")
-        return "\n".join(lines) if len(lines) > 1 else ""
+        return "\n".join(lines)
 
     # ── formatting helpers ─────────────────────────────────────────────────────
 
@@ -221,17 +229,68 @@ class TelegramBot:
 
     # ── commands ───────────────────────────────────────────────────────────────
 
+    def _seed_digest(self, user_id: int):
+        for name, sc in self._cfg.sensors.items():
+            if sc.digest and self._cfg.is_viewer(user_id, name):
+                db.subscribe_digest(user_id, name)
+
     async def _cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         if ctx.args:
             if self._verify_token(ctx.args[0], user_id):
                 db.register_dm(user_id)
+                self._seed_digest(user_id)
                 await update.effective_chat.send_message(
                     "Registrazione completata. Riceverai risposte e notifiche qui.", **_SILENT
                 )
         else:
             db.register_dm(user_id)
+            self._seed_digest(user_id)
             await update.effective_chat.send_message("Bot attivato.", **_SILENT)
+
+    async def _cmd_digest(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        user_id = update.effective_user.id
+
+        if not ctx.args:
+            subs = db.get_digest_subscriptions(user_id)
+            visible = set(self._cfg.visible_sensors(user_id))
+            active = [s for s in subs if s in visible]
+            if not active:
+                text = "No digest subscriptions."
+            else:
+                text = "Digest subscriptions:\n" + "\n".join(f"  {s}" for s in active)
+            await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
+            return
+
+        if len(ctx.args) < 2 or ctx.args[-1].lower() not in ("on", "off"):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Usage: /digest <expr> on|off", **_SILENT
+            )
+            return
+
+        action = ctx.args[-1].lower()
+        names = self._resolve_sensors(ctx.args[:-1], user_id)
+        if not names:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="No matching sensors.", **_SILENT
+            )
+            return
+
+        for name in names:
+            if action == "on":
+                db.subscribe_digest(user_id, name)
+            else:
+                db.unsubscribe_digest(user_id, name)
+
+        verb = "Subscribed to" if action == "on" else "Unsubscribed from"
+        await self._app.bot.send_message(
+            chat_id=reply_chat,
+            text=f"{verb}: {', '.join(names)}",
+            **_SILENT,
+        )
 
     async def _cmd_myid(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
@@ -255,6 +314,7 @@ class TelegramBot:
             "/xlsx <expr> [Nh] — download readings as Excel (one sheet per sensor)\n"
             "/lastAlarm [name] — last alarm (all sensors or one)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
+            "/digest [expr on|off] — manage daily digest subscriptions\n"
             "/myid — show your Telegram user ID"
         )
         if self._cfg.is_any_admin(update.effective_user.id):

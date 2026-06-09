@@ -76,6 +76,10 @@ async def main():
             if target <= now:
                 target += timedelta(days=1)
             await asyncio.sleep((target - now).total_seconds())
+            try:
+                await tg.send(tg.build_uptime(bot_start), silent=True)
+            except Exception:
+                log.exception("Failed to send uptime to group")
             for chat_id in db.get_all_dm_registered():
                 try:
                     text = tg.build_digest(bot_start, chat_id)

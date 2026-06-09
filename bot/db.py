@@ -56,6 +56,12 @@ def init():
                 chat_id      INTEGER PRIMARY KEY,
                 registered_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS digest_subscriptions (
+                user_id  INTEGER NOT NULL,
+                sensor   TEXT    NOT NULL,
+                PRIMARY KEY (user_id, sensor)
+            );
         """)
 
 
@@ -198,6 +204,31 @@ def get_all_dm_registered() -> list[int]:
     with _conn() as con:
         rows = con.execute("SELECT chat_id FROM dm_registered").fetchall()
         return [r["chat_id"] for r in rows]
+
+
+def subscribe_digest(user_id: int, sensor: str):
+    with _conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO digest_subscriptions (user_id, sensor) VALUES (?, ?)",
+            (user_id, sensor),
+        )
+
+
+def unsubscribe_digest(user_id: int, sensor: str):
+    with _conn() as con:
+        con.execute(
+            "DELETE FROM digest_subscriptions WHERE user_id=? AND sensor=?",
+            (user_id, sensor),
+        )
+
+
+def get_digest_subscriptions(user_id: int) -> list[str]:
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT sensor FROM digest_subscriptions WHERE user_id=? ORDER BY sensor",
+            (user_id,),
+        ).fetchall()
+        return [r["sensor"] for r in rows]
 
 
 def purge_old_readings(retention_days: int):

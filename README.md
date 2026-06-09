@@ -88,6 +88,7 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 | `/xlsx <expr> [Nh]` | Download readings as Excel (one sheet per sensor) |
 | `/lastAlarm [name]` | Last alarm event |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor |
+| `/digest [expr on\|off]` | Manage daily digest subscriptions (no arg = show active) |
 | `/helpExpr` | Sensor filter expression syntax |
 | `/myid` | Your Telegram user ID |
 | `/help` | Command list |
@@ -123,9 +124,10 @@ Access is configured via named **Access Groups** in `credentials.yaml`. Each gro
 
 ## Notifications
 
-- **Alarm messages and daily digest** — sent via DM to each user, filtered to their visible sensors.
+- **Alarm messages** — sent via DM to all viewers/admins of the sensor.
+- **Daily digest** — sent via DM to each user, showing only their subscribed sensors. On first activation, auto-subscribed to sensors with `digest: true` visible to them. Managed with `/digest`.
+- **Group daily message** — uptime only (`🟢 live since Xd Yh`), no sensor data.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
-- **Telegram Group** — used only for DM registration prompts and `/help`. No sensor data is ever sent to the Group.
 - Bot replies never quote or echo user input.
 
 ---
