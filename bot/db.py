@@ -77,6 +77,21 @@ def init():
             con.execute("ALTER TABLE thresholds ADD COLUMN low REAL")
         except Exception:
             pass
+        # migrate: drop NOT NULL on thresholds.value if still present
+        col_info = con.execute("PRAGMA table_info(thresholds)").fetchall()
+        value_col = next((c for c in col_info if c["name"] == "value"), None)
+        if value_col and value_col["notnull"]:
+            con.executescript("""
+                CREATE TABLE thresholds_new (
+                    sensor TEXT PRIMARY KEY,
+                    value  REAL,
+                    low    REAL
+                );
+                INSERT INTO thresholds_new (sensor, value)
+                    SELECT sensor, value FROM thresholds;
+                DROP TABLE thresholds;
+                ALTER TABLE thresholds_new RENAME TO thresholds;
+            """)
 
 
 def insert_reading(sensor: str, value: float, ts: Optional[int] = None):
