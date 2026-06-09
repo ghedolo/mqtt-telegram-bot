@@ -21,6 +21,7 @@ class AppConfig:
     telegram_token: str
     telegram_group_id: int
     groups: dict[str, list[int]]
+    superadmin: list[int]
     poll_interval: int
     mqtt_host: str
     mqtt_port: int
@@ -61,6 +62,9 @@ class AppConfig:
     def is_any_admin(self, user_id: int) -> bool:
         return any(user_id in self.admins_of(s) for s in self.sensors)
 
+    def is_superadmin(self, user_id: int) -> bool:
+        return user_id in self.superadmin
+
     def visible_sensors(self, user_id: int) -> list[str]:
         return [n for n in self.sensors if self.is_viewer(user_id, n)]
 
@@ -98,11 +102,13 @@ def load(
     mq = sec["mqtt"]
     raw_groups = sec.get("groups", {})
     groups = {g: [int(i) for i in members] for g, members in raw_groups.items()}
+    superadmin = [int(i) for i in sec.get("superadmin", [])]
 
     return AppConfig(
         telegram_token=tg["token"],
         telegram_group_id=int(tg["group_id"]),
         groups=groups,
+        superadmin=superadmin,
         poll_interval=max(1, min(10, int(tg.get("poll_interval", 3)))),
         mqtt_host=mq["host"],
         mqtt_port=int(mq.get("port", 1883)),

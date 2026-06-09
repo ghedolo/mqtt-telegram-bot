@@ -73,6 +73,8 @@ See [`credentials.yaml.example`](credentials.yaml.example).
 
 Access Groups are defined at the top level of `credentials.yaml` and referenced by name in `sensors.yaml`.
 
+`superadmin` is a flat list of Telegram `chat_id`s with access to `/forgetSensor` and `/reloadConfig`. Independent of sensor-level groups.
+
 ---
 
 ## Bot commands
@@ -100,6 +102,11 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 |---|---|
 | `/setAlarm <name> <value>` | Set alarm threshold |
 | `/ackOff <name>` | Acknowledge offline alarm (suppresses repeats until sensor reconnects) |
+
+### Superadmin-only commands
+
+| Command | Description |
+|---|---|
 | `/forgetSensor <name>` | Delete all data for a sensor |
 | `/reloadConfig` | Reload `sensors.yaml` and `credentials.yaml` without restart |
 
@@ -119,7 +126,15 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 ## Access control
 
-Access is configured via named **Access Groups** in `credentials.yaml`. Each group is a list of Telegram `chat_id`s. Sensors reference group names under `viewers` and `admins`. Admin implies viewer for the same sensor. Users with no group assignment see no sensors.
+Three roles, all defined in `credentials.yaml`:
+
+| Role | Definition | Permissions |
+|---|---|---|
+| **Viewer** | member of a group listed in a sensor's `viewers` | read-only commands on that sensor |
+| **Admin** | member of a group listed in a sensor's `admins` | `/setAlarm`, `/ackOff` on that sensor; implies viewer |
+| **Superadmin** | `superadmin:` flat list of `chat_id`s | `/forgetSensor`, `/reloadConfig` (global, sensor-independent) |
+
+Users with no group assignment see no sensors.
 
 **DM registration** is required before the bot can send private replies. When a user sends a command from the Telegram Group and has not yet activated DM, the bot sends a registration prompt with a signed button. Users can also send `/start` directly to the bot in DM.
 

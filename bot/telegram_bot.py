@@ -307,11 +307,16 @@ class TelegramBot:
             "/list — list all sensors\n"
             "/myid — show your Telegram user ID"
         )
-        if self._cfg.is_any_admin(update.effective_user.id):
+        user_id = update.effective_user.id
+        if self._cfg.is_any_admin(user_id):
             text += (
                 "\n\nAdmin commands:\n"
                 "/setAlarm <name> <value> — set alarm threshold\n"
-                "/ackOff <name> — acknowledge offline alarm (auto-clears when sensor reconnects)\n"
+                "/ackOff <name> — acknowledge offline alarm (auto-clears when sensor reconnects)"
+            )
+        if self._cfg.is_superadmin(user_id):
+            text += (
+                "\n\nSuperadmin commands:\n"
                 "/forgetSensor <name> — delete all data for a sensor\n"
                 "/reloadConfig — reload sensors.yaml and credentials.yaml"
             )
@@ -557,14 +562,14 @@ class TelegramBot:
             return
 
         name = ctx.args[0]
-        if not self._cfg.is_viewer(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-            )
-            return
-        if not self._cfg.is_admin(user_id, name):
+        if not self._cfg.is_superadmin(user_id):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Not authorized.", **_SILENT
+            )
+            return
+        if name not in self._cfg.sensors:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
             )
             return
 
@@ -577,7 +582,7 @@ class TelegramBot:
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
             return
-        if not self._cfg.is_any_admin(update.effective_user.id):
+        if not self._cfg.is_superadmin(update.effective_user.id):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Not authorized.", **_SILENT
             )
@@ -596,6 +601,7 @@ class TelegramBot:
             return
 
         self._cfg.groups = new.groups
+        self._cfg.superadmin = new.superadmin
         self._cfg.retention_days = new.retention_days
         self._cfg.alarm_threshold_repeat = new.alarm_threshold_repeat
         self._cfg.alarm_offline_repeat = new.alarm_offline_repeat
