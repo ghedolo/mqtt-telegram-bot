@@ -220,11 +220,11 @@ class TelegramBot:
                 unit = f" {sc.unit}" if sc.unit else ""
                 thr_parts = []
                 if name in thresholds:
-                    thr_parts.append(f"Th: {thresholds[name]}{unit}")
+                    thr_parts.append(f"Th:{thresholds[name]}{unit}")
                 if name in thresholds_low:
-                    thr_parts.append(f"Tl: {thresholds_low[name]}{unit}")
-                thr_str = f"  ({', '.join(thr_parts)})" if thr_parts else ""
-                block += f"\n  {r['value']:.1f}{unit}  {_fmt_ts(r['ts'])}{thr_str}"
+                    thr_parts.append(f"Tl:{thresholds_low[name]}{unit}")
+                thr_str = f"  {' '.join(thr_parts)}" if thr_parts else ""
+                block += f"  {r['value']:.1f}{unit}{thr_str}\n  seen: {_fmt_ts(r['ts'])}"
             else:
                 block += "\n  no data"
             blocks.append(block)
