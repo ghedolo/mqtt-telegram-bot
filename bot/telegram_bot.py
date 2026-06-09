@@ -446,8 +446,8 @@ class TelegramBot:
 
         args = list(ctx.args)
         hours = 8
-        if args[-1].endswith("h") and args[-1][:-1].isdigit():
-            hours = max(1, min(24, int(args[-1][:-1])))
+        if args[-1].lower().endswith("h") and args[-1][:-1].isdigit():
+            hours = max(1, min(24, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
             await self._app.bot.send_message(
@@ -631,8 +631,8 @@ class TelegramBot:
 
         args = list(ctx.args)
         hours = 8
-        if args[-1].endswith("h") and args[-1][:-1].isdigit():
-            hours = max(1, min(24, int(args[-1][:-1])))
+        if args[-1].lower().endswith("h") and args[-1][:-1].isdigit():
+            hours = max(1, min(24, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
             await self._app.bot.send_message(
@@ -693,8 +693,8 @@ class TelegramBot:
 
         args = list(ctx.args)
         hours = 8
-        if args[-1].endswith("h") and args[-1][:-1].isdigit():
-            hours = max(1, min(24, int(args[-1][:-1])))
+        if args[-1].lower().endswith("h") and args[-1][:-1].isdigit():
+            hours = max(1, min(24, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
             await self._app.bot.send_message(
