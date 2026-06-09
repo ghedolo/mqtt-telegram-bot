@@ -5,6 +5,7 @@ diary.md
 credentials.yaml
 sensors.yaml
 telegramData.txt
+devstats.py
 __pycache__/
 *.pyc
 *.egg-info/
