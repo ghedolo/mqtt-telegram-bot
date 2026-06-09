@@ -229,23 +229,16 @@ class TelegramBot:
 
     # ── commands ───────────────────────────────────────────────────────────────
 
-    def _seed_digest(self, user_id: int):
-        for name, sc in self._cfg.sensors.items():
-            if sc.digest and self._cfg.is_viewer(user_id, name):
-                db.subscribe_digest(user_id, name)
-
     async def _cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         if ctx.args:
             if self._verify_token(ctx.args[0], user_id):
                 db.register_dm(user_id)
-                self._seed_digest(user_id)
                 await update.effective_chat.send_message(
                     "Registrazione completata. Riceverai risposte e notifiche qui.", **_SILENT
                 )
         else:
             db.register_dm(user_id)
-            self._seed_digest(user_id)
             await update.effective_chat.send_message("Bot attivato.", **_SILENT)
 
     async def _cmd_digest(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -362,10 +355,8 @@ class TelegramBot:
         user_id = update.effective_user.id
         visible = set(self._cfg.visible_sensors(user_id))
         if not ctx.args:
-            names = [
-                n for n, sc in self._cfg.sensors.items()
-                if sc.digest and n in visible
-            ]
+            subscribed = set(db.get_digest_subscriptions(user_id))
+            names = [n for n in self._cfg.sensors if n in subscribed and n in visible]
             await self._show_sensors(reply_chat, names)
             return
         names = self._resolve_sensors(ctx.args, user_id)

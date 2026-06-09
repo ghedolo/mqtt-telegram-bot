@@ -12,7 +12,6 @@ class SensorConfig:
     info: str
     unit: str
     default_alarm: Optional[float]
-    digest: bool = False
     viewers: list[str] = field(default_factory=list)
     admins: list[str] = field(default_factory=list)
 
@@ -91,7 +90,6 @@ def load(
             info=sc.get("info", "")[:25],
             unit=sc.get("unit", ""),
             default_alarm=float(sc["defaultAlarm"]) if "defaultAlarm" in sc else None,
-            digest=bool(sc.get("digest", False)),
             viewers=list(sc.get("viewers", [])),
             admins=list(sc.get("admins", [])),
         )

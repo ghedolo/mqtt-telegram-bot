@@ -50,8 +50,8 @@ sensors:
     topic: "mqtt/topic/path"
     info: "Human-readable label"   # optional, shown in /list
     unit: "°C"                     # optional
-    defaultAlarm: 30.0             # optional, seeds DB threshold on first run
-    digest: true                   # include in daily digest (default: false)
+    json_field: "temperature"      # optional: if payload is JSON, extract this key as the value
+    defaultAlarm: 30.0             # optional, seeds DB threshold on first run (admins can override with /setAlarm)
     interval: 300                  # expected publish interval in seconds
     viewers: [group_name]          # groups that can read this sensor
     admins: [ops]                  # groups that can administer this sensor (implies viewer)
@@ -81,7 +81,7 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 | Command | Description |
 |---|---|
 | `/list` | All sensors — current value, timestamp, threshold |
-| `/get [expr]` | Filtered sensors (no arg = digest sensors; see `/helpExpr`) |
+| `/get [expr]` | Filtered sensors (no arg = personal digest subscriptions; see `/helpExpr`) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h) |
 | `/csv <expr> [Nh]` | Download readings as CSV |
@@ -106,7 +106,7 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 | Pattern | Matches |
 |---|---|
-| *(no arg)* | digest-flagged sensors only |
+| *(no arg)* | user's personal digest subscriptions |
 | `*` | all sensors |
 | `NAME` | exact name |
 | `PREFIX*` | sensors starting with PREFIX |
@@ -125,7 +125,7 @@ Access is configured via named **Access Groups** in `credentials.yaml`. Each gro
 ## Notifications
 
 - **Alarm messages** — sent via DM to all viewers/admins of the sensor.
-- **Daily digest** — sent via DM to each user, showing only their subscribed sensors. On first activation, auto-subscribed to sensors with `digest: true` visible to them. Managed with `/digest`.
+- **Daily digest** — sent via DM to each user, showing only their subscribed sensors. Subscriptions start empty; manage with `/digest`.
 - **Group daily message** — uptime only (`🟢 live since Xd Yh`), no sensor data.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
 - Bot replies never quote or echo user input.

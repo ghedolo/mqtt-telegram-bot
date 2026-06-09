@@ -4,7 +4,6 @@ sensors:
     info: "DEI Piano 2 - Temp"
     unit: "°C"
     defaultAlarm: 30.0
-    digest: true
     viewers: [cold_room_team]
     admins: [ops]
 
@@ -20,7 +19,6 @@ sensors:
     info: "Piano Terra - Temp"
     unit: "°C"
     defaultAlarm: 30.0
-    digest: true
     viewers: [ground_floor_team]
     admins: [ops]
 
@@ -30,6 +28,14 @@ sensors:
     unit: "hPa"
     viewers: [ground_floor_team]
     admins: [ops]
+
+  # Sensor whose payload is a JSON object — extract a specific field.
+  # UG_JSON:
+  #   topic: "esp32LRX/1/lora/dataRx/2/data"
+  #   json_field: "temperature"
+  #   unit: "°C"
+  #   viewers: [ground_floor_team]
+  #   admins: [ops]
 
   # Sensor with no viewers/admins — visible to nobody (fail-closed).
   # Uncomment and assign groups to grant access.
