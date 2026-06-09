@@ -138,6 +138,17 @@ Users with no group assignment see no sensors.
 
 **DM registration** is required before the bot can send private replies. When a user sends a command from the Telegram Group and has not yet activated DM, the bot sends a registration prompt with a signed button. Users can also send `/start` directly to the bot in DM.
 
+## Data management
+
+Readings are stored in SQLite in two tables:
+
+- `readings` — active window (default 30 days, set via `retention_days` in `sensors.yaml`)
+- `readings_archive` — all readings older than the retention window, kept indefinitely
+
+Every 24 hours the bot moves readings older than `retention_days` from `readings` to `readings_archive`. No data is ever deleted automatically.
+
+`/forgetSensor <name>` moves all current readings for that sensor to the archive, deletes its alarm history and silence state, and preserves the alarm threshold.
+
 ## Notifications
 
 - **Alarm messages** — sent via DM to all viewers/admins of the sensor.
