@@ -187,8 +187,12 @@ def has_threshold_alarm_since(sensor: str, since_ts: int) -> bool:
 
 def forget_sensor(sensor: str):
     with _conn() as con:
+        con.execute(
+            "INSERT INTO readings_archive (sensor, value, ts) "
+            "SELECT sensor, value, ts FROM readings WHERE sensor=?",
+            (sensor,),
+        )
         con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))
-        con.execute("DELETE FROM readings_archive WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM thresholds WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM silenced WHERE sensor=?", (sensor,))
