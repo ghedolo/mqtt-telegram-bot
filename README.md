@@ -107,7 +107,7 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 | Command | Description |
 |---|---|
-| `/forgetSensor <name>` | Delete all data for a sensor |
+| `/forgetSensor <name>` | Archive readings, clear alarm history and silence state (threshold preserved) |
 | `/reloadConfig` | Reload `sensors.yaml` and `credentials.yaml` without restart |
 
 ### Sensor filter expressions (`/helpExpr`)
