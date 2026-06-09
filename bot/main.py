@@ -62,10 +62,10 @@ async def main():
     await tg.send("🐶 LorTe is alive & sniffing! You can always say /help")
 
     # periodic tasks
-    async def purge_loop():
+    async def archive_loop():
         while True:
-            await asyncio.sleep(3600)
-            db.purge_old_readings(cfg.retention_days)
+            await asyncio.sleep(86400)
+            db.archive_old_readings(cfg.retention_days)
 
     async def digest_loop():
         from datetime import datetime, timedelta
@@ -90,7 +90,7 @@ async def main():
 
     tasks = [
         asyncio.create_task(alarms.run_offline_checks(cfg.sensors)),
-        asyncio.create_task(purge_loop()),
+        asyncio.create_task(archive_loop()),
         asyncio.create_task(digest_loop()),
     ]
 

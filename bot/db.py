@@ -62,6 +62,15 @@ def init():
                 sensor   TEXT    NOT NULL,
                 PRIMARY KEY (user_id, sensor)
             );
+
+            CREATE TABLE IF NOT EXISTS readings_archive (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                sensor    TEXT    NOT NULL,
+                value     REAL    NOT NULL,
+                ts        INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_archive_sensor_ts
+                ON readings_archive(sensor, ts);
         """)
 
 
@@ -179,6 +188,7 @@ def has_threshold_alarm_since(sensor: str, since_ts: int) -> bool:
 def forget_sensor(sensor: str):
     with _conn() as con:
         con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))
+        con.execute("DELETE FROM readings_archive WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM thresholds WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM silenced WHERE sensor=?", (sensor,))
@@ -231,7 +241,12 @@ def get_digest_subscriptions(user_id: int) -> list[str]:
         return [r["sensor"] for r in rows]
 
 
-def purge_old_readings(retention_days: int):
+def archive_old_readings(retention_days: int):
     cutoff = int(time.time()) - retention_days * 86400
     with _conn() as con:
+        con.execute(
+            "INSERT INTO readings_archive (sensor, value, ts) "
+            "SELECT sensor, value, ts FROM readings WHERE ts < ?",
+            (cutoff,),
+        )
         con.execute("DELETE FROM readings WHERE ts < ?", (cutoff,))
