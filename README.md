@@ -34,7 +34,8 @@ Data flow: MQTT messages → `on_reading()` → SQLite. `AlarmManager` polls for
 git clone https://github.com/ghedolo/mqtt-telegram-bot.git
 cd mqtt-telegram-bot
 cp credentials.yaml.example credentials.yaml
-# edit credentials.yaml and sensors.yaml
+# edit credentials.yaml
+# create sensors.yaml (see Configuration below)
 docker compose up -d
 ```
 
@@ -64,7 +65,7 @@ defaults:
   debug: 0                        # 0=silent 1=info 2=verbose
 ```
 
-Sensors without `viewers` or `admins` are visible to nobody (fail-closed). See [`sensors.yaml.example`](sensors.yaml.example) for a full example.
+Sensors without `viewers` or `admins` are visible to nobody (fail-closed).
 
 ### `credentials.yaml`
 
