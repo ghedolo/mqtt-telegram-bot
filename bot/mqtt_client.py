@@ -49,7 +49,10 @@ class MqttClient:
             payload = msg.payload.decode()
             if sc.json_field:
                 data = json.loads(payload)
-                value = float(data[sc.json_field])
+                node = data
+                for key in sc.json_field.split("."):
+                    node = node[key]
+                value = float(node)
             else:
                 value = float(payload)
         except Exception:

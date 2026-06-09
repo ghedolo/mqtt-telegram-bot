@@ -51,7 +51,7 @@ sensors:
     topic: "mqtt/topic/path"
     info: "Human-readable label"   # optional, shown in /list
     unit: "°C"                     # optional
-    json_field: "temperature"      # optional: if payload is JSON, extract this key as the value
+    json_field: "temperature"      # optional: if payload is JSON, extract this field (dot notation for nested: "update.installed_version")
     defaultAlarm: 30.0             # optional, seeds DB threshold on first run (admins can override with /setAlarm)
     interval: 300                  # expected publish interval in seconds
     viewers: [group_name]          # groups that can read this sensor
