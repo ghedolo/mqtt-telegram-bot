@@ -208,6 +208,7 @@ class TelegramBot:
             return
         rows_map = {r["sensor"]: r for r in db.get_all_latest()}
         thresholds = db.get_all_thresholds()
+        thresholds_low = db.get_all_thresholds_low()
         blocks = []
         for name in names:
             sc = self._cfg.sensors.get(name)
@@ -217,8 +218,12 @@ class TelegramBot:
             block = f"*{name}*"
             if r:
                 unit = f" {sc.unit}" if sc.unit else ""
-                thr = thresholds.get(name)
-                thr_str = f"  (alarm: {thr}{unit})" if thr is not None else ""
+                thr_parts = []
+                if name in thresholds:
+                    thr_parts.append(f"Th: {thresholds[name]}{unit}")
+                if name in thresholds_low:
+                    thr_parts.append(f"Tl: {thresholds_low[name]}{unit}")
+                thr_str = f"  ({', '.join(thr_parts)})" if thr_parts else ""
                 block += f"\n  {r['value']:.1f}{unit}  {_fmt_ts(r['ts'])}{thr_str}"
             else:
                 block += "\n  no data"
