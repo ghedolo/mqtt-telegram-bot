@@ -126,6 +126,16 @@ def set_threshold(sensor: str, value: float):
         )
 
 
+def clear_threshold(sensor: str):
+    with _conn() as con:
+        con.execute("UPDATE thresholds SET value=NULL WHERE sensor=?", (sensor,))
+
+
+def clear_threshold_low(sensor: str):
+    with _conn() as con:
+        con.execute("UPDATE thresholds SET low=NULL WHERE sensor=?", (sensor,))
+
+
 def set_threshold_low(sensor: str, value: float):
     with _conn() as con:
         con.execute(

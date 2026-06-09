@@ -40,6 +40,8 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("get", self._cmd_get))
         self._app.add_handler(CommandHandler("setalarm", self._cmd_setalarm))
         self._app.add_handler(CommandHandler("setAlarmLow", self._cmd_setalarmlow))
+        self._app.add_handler(CommandHandler("clearAlarm", self._cmd_clearalarm))
+        self._app.add_handler(CommandHandler("clearAlarmLow", self._cmd_clearalarmlow))
         self._app.add_handler(CommandHandler("getAlarm", self._cmd_getalarm))
         self._app.add_handler(CommandHandler("graph", self._cmd_graph))
         self._app.add_handler(CommandHandler("ackOff", self._cmd_ackoff))
@@ -314,6 +316,8 @@ class TelegramBot:
                 "\n\nAdmin commands:\n"
                 "/setAlarm <name> <value> — set high alarm threshold (alarm if value >)\n"
                 "/setAlarmLow <name> <value> — set low alarm threshold (alarm if value <)\n"
+                "/clearAlarm <name> — clear high threshold\n"
+                "/clearAlarmLow <name> — clear low threshold\n"
                 "/ackOff <name> — acknowledge offline alarm (auto-clears when sensor reconnects)"
             )
         if self._cfg.is_superadmin(user_id):
@@ -441,6 +445,58 @@ class TelegramBot:
         db.set_threshold_low(name, value)
         await self._app.bot.send_message(
             chat_id=reply_chat, text="Low threshold updated.", **_SILENT
+        )
+
+    async def _cmd_clearalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        user_id = update.effective_user.id
+        if not ctx.args:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Usage: /clearAlarm <sensor>", **_SILENT
+            )
+            return
+        name = ctx.args[0]
+        if not self._cfg.is_viewer(user_id, name):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
+            )
+            return
+        if not self._cfg.is_admin(user_id, name):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Not authorized.", **_SILENT
+            )
+            return
+        db.clear_threshold(name)
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text="High threshold cleared.", **_SILENT
+        )
+
+    async def _cmd_clearalarmlow(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        user_id = update.effective_user.id
+        if not ctx.args:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Usage: /clearAlarmLow <sensor>", **_SILENT
+            )
+            return
+        name = ctx.args[0]
+        if not self._cfg.is_viewer(user_id, name):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
+            )
+            return
+        if not self._cfg.is_admin(user_id, name):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Not authorized.", **_SILENT
+            )
+            return
+        db.clear_threshold_low(name)
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text="Low threshold cleared.", **_SILENT
         )
 
     async def _cmd_getalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
