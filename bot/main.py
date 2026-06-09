@@ -53,6 +53,7 @@ async def main():
         log.info("Reading: %s = %.2f", sensor, value)
         db.insert_reading(sensor, value)
         await alarms.check_threshold(sensor, value)
+        await alarms.check_threshold_low(sensor, value)
 
     loop = asyncio.get_running_loop()
     mqtt = MqttClient(cfg, on_reading)

@@ -34,7 +34,8 @@ def init():
 
             CREATE TABLE IF NOT EXISTS thresholds (
                 sensor    TEXT PRIMARY KEY,
-                value     REAL NOT NULL
+                value     REAL,
+                low       REAL
             );
 
             CREATE TABLE IF NOT EXISTS silenced (
@@ -72,6 +73,10 @@ def init():
             CREATE INDEX IF NOT EXISTS idx_archive_sensor_ts
                 ON readings_archive(sensor, ts);
         """)
+        try:
+            con.execute("ALTER TABLE thresholds ADD COLUMN low REAL")
+        except Exception:
+            pass
 
 
 def insert_reading(sensor: str, value: float, ts: Optional[int] = None):
@@ -115,7 +120,17 @@ def get_all_latest() -> list[sqlite3.Row]:
 def set_threshold(sensor: str, value: float):
     with _conn() as con:
         con.execute(
-            "INSERT OR REPLACE INTO thresholds (sensor, value) VALUES (?, ?)",
+            "INSERT INTO thresholds (sensor, value) VALUES (?, ?) "
+            "ON CONFLICT(sensor) DO UPDATE SET value=excluded.value",
+            (sensor, value),
+        )
+
+
+def set_threshold_low(sensor: str, value: float):
+    with _conn() as con:
+        con.execute(
+            "INSERT INTO thresholds (sensor, low) VALUES (?, ?) "
+            "ON CONFLICT(sensor) DO UPDATE SET low=excluded.low",
             (sensor, value),
         )
 
@@ -128,10 +143,24 @@ def get_threshold(sensor: str) -> Optional[float]:
         return row["value"] if row else None
 
 
+def get_threshold_low(sensor: str) -> Optional[float]:
+    with _conn() as con:
+        row = con.execute(
+            "SELECT low FROM thresholds WHERE sensor=?", (sensor,)
+        ).fetchone()
+        return row["low"] if row else None
+
+
 def get_all_thresholds() -> dict[str, float]:
     with _conn() as con:
-        rows = con.execute("SELECT sensor, value FROM thresholds").fetchall()
+        rows = con.execute("SELECT sensor, value FROM thresholds WHERE value IS NOT NULL").fetchall()
         return {r["sensor"]: r["value"] for r in rows}
+
+
+def get_all_thresholds_low() -> dict[str, float]:
+    with _conn() as con:
+        rows = con.execute("SELECT sensor, low FROM thresholds WHERE low IS NOT NULL").fetchall()
+        return {r["sensor"]: r["low"] for r in rows}
 
 
 def silence_sensor(sensor: str):
@@ -179,7 +208,7 @@ def get_last_alarms(sensor: Optional[str] = None, n: int = 1) -> list[sqlite3.Ro
 def has_threshold_alarm_since(sensor: str, since_ts: int) -> bool:
     with _conn() as con:
         row = con.execute(
-            "SELECT id FROM alarms WHERE sensor=? AND kind='threshold' AND ts>=? LIMIT 1",
+            "SELECT id FROM alarms WHERE sensor=? AND kind IN ('ALARM','ALARM_LOW') AND ts>=? LIMIT 1",
             (sensor, since_ts),
         ).fetchone()
         return row is not None

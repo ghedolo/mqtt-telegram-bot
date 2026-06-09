@@ -48,14 +48,13 @@ class AlarmManager:
         now = int(time.time())
 
         if value > threshold:
-            repeat = self._threshold_repeat
             if not state.active:
                 state.active = True
                 state.last_notified = now
                 msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(sensor, msg)
-            elif (now - state.last_notified) >= repeat:
+            elif (now - state.last_notified) >= self._threshold_repeat:
                 state.last_notified = now
                 msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
@@ -65,6 +64,33 @@ class AlarmManager:
                 state.active = False
                 msg = f"OK {sensor}: {value:.1f} < thr {threshold:.1f}"
                 db.insert_alarm(sensor, "OK", msg)
+                await self._notify(sensor, msg)
+
+    async def check_threshold_low(self, sensor: str, value: float):
+        threshold = db.get_threshold_low(sensor)
+        if threshold is None:
+            return
+
+        state = self._state(sensor, "threshold_low")
+        now = int(time.time())
+
+        if value < threshold:
+            if not state.active:
+                state.active = True
+                state.last_notified = now
+                msg = f"ALARM {sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                db.insert_alarm(sensor, "ALARM_LOW", msg)
+                await self._notify(sensor, msg)
+            elif (now - state.last_notified) >= self._threshold_repeat:
+                state.last_notified = now
+                msg = f"ALARM {sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                db.insert_alarm(sensor, "ALARM_LOW", msg)
+                await self._notify(sensor, msg)
+        else:
+            if state.active:
+                state.active = False
+                msg = f"OK {sensor}: {value:.1f} > thr_low {threshold:.1f}"
+                db.insert_alarm(sensor, "OK_LOW", msg)
                 await self._notify(sensor, msg)
 
     async def check_offline(self, sensor: str, interval: int):

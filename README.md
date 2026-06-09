@@ -100,7 +100,8 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 | Command | Description |
 |---|---|
-| `/setAlarm <name> <value>` | Set alarm threshold |
+| `/setAlarm <name> <value>` | Set high alarm threshold (alarm if value >) |
+| `/setAlarmLow <name> <value>` | Set low alarm threshold (alarm if value <) |
 | `/ackOff <name>` | Acknowledge offline alarm (suppresses repeats until sensor reconnects) |
 
 ### Superadmin-only commands

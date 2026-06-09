@@ -39,6 +39,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("list", self._cmd_list))
         self._app.add_handler(CommandHandler("get", self._cmd_get))
         self._app.add_handler(CommandHandler("setalarm", self._cmd_setalarm))
+        self._app.add_handler(CommandHandler("setAlarmLow", self._cmd_setalarmlow))
         self._app.add_handler(CommandHandler("getAlarm", self._cmd_getalarm))
         self._app.add_handler(CommandHandler("graph", self._cmd_graph))
         self._app.add_handler(CommandHandler("ackOff", self._cmd_ackoff))
@@ -311,7 +312,8 @@ class TelegramBot:
         if self._cfg.is_any_admin(user_id):
             text += (
                 "\n\nAdmin commands:\n"
-                "/setAlarm <name> <value> — set alarm threshold\n"
+                "/setAlarm <name> <value> — set high alarm threshold (alarm if value >)\n"
+                "/setAlarmLow <name> <value> — set low alarm threshold (alarm if value <)\n"
                 "/ackOff <name> — acknowledge offline alarm (auto-clears when sensor reconnects)"
             )
         if self._cfg.is_superadmin(user_id):
@@ -404,18 +406,61 @@ class TelegramBot:
             chat_id=reply_chat, text="Threshold updated.", **_SILENT
         )
 
+    async def _cmd_setalarmlow(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        user_id = update.effective_user.id
+
+        if len(ctx.args) != 2:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Usage: /setAlarmLow <sensor> <value>", **_SILENT
+            )
+            return
+
+        name = ctx.args[0]
+        if not self._cfg.is_viewer(user_id, name):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
+            )
+            return
+        if not self._cfg.is_admin(user_id, name):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Not authorized.", **_SILENT
+            )
+            return
+
+        try:
+            value = float(ctx.args[1])
+        except ValueError:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Value must be a number.", **_SILENT
+            )
+            return
+
+        db.set_threshold_low(name, value)
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text="Low threshold updated.", **_SILENT
+        )
+
     async def _cmd_getalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
             return
         user_id = update.effective_user.id
 
+        def _fmt_thresholds(name: str) -> str:
+            thr = db.get_threshold(name)
+            low = db.get_threshold_low(name)
+            parts = []
+            if thr is not None:
+                parts.append(f"high: {thr}")
+            if low is not None:
+                parts.append(f"low: {low}")
+            return f"{name}: {', '.join(parts)}" if parts else f"{name}: not set"
+
         if not ctx.args:
-            thresholds = db.get_all_thresholds()
-            lines = []
-            for name in self._cfg.visible_sensors(user_id):
-                thr = thresholds.get(name)
-                lines.append(f"{name}: {thr}" if thr is not None else f"{name}: not set")
+            lines = [_fmt_thresholds(n) for n in self._cfg.visible_sensors(user_id)]
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="\n".join(lines) or "No sensors.", **_SILENT
             )
@@ -428,15 +473,9 @@ class TelegramBot:
             )
             return
 
-        thr = db.get_threshold(name)
-        if thr is None:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No alarm threshold set.", **_SILENT
-            )
-        else:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text=f"Alarm threshold: {thr}", **_SILENT
-            )
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text=_fmt_thresholds(name), **_SILENT
+        )
 
     async def _cmd_graph(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
