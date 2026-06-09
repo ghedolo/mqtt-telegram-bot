@@ -194,7 +194,6 @@ def forget_sensor(sensor: str):
         )
         con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
-        con.execute("DELETE FROM thresholds WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM silenced WHERE sensor=?", (sensor,))
 
 
