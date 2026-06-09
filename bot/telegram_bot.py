@@ -293,11 +293,8 @@ class TelegramBot:
         )
 
     async def _cmd_myid(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        reply_chat = await self._get_reply_chat(update)
-        if reply_chat is None:
-            return
         await self._app.bot.send_message(
-            chat_id=reply_chat,
+            chat_id=update.effective_chat.id,
             text=f"Your Telegram ID: {update.effective_user.id}",
             **_SILENT,
         )
