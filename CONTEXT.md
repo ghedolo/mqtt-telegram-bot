@@ -2,25 +2,27 @@
 
 ## Glossary
 
-**Sensor** — a physical device that publishes temperature readings to the MQTT broker at a regular interval. Identified by a short name (e.g. `A`).
+**Device** — a physical unit that publishes MQTT messages to a single Topic at a regular interval. Identified by a short key in Sensor Config (e.g. `SM2_UTA1`). A Device has one or more Fields. Offline detection is per-Device: if no message arrives on the Topic for 3× the Device interval, an offline Alarm is raised for the Device.
 
-**Topic** — the MQTT topic path a Sensor publishes to. Defined per-sensor in config.
+**Field** — a single measurable value published by a Device. A Field is identified by its key within the Device in Sensor Config (e.g. `T`). The canonical Sensor name used throughout the system (DB keys, commands) is derived as `{device_key}_{field_key}`. A Device with a single Field is indistinguishable from a multi-field Device with one entry.
 
-**Reading** — a single temperature value received from a Sensor, stored with a timestamp.
+**Topic** — the MQTT topic path a Device publishes to. Defined per-Device in Sensor Config. Each Topic must be unique across all Devices.
 
-**Threshold** — an alarm temperature value set per-sensor by an Admin. A Reading above the Threshold triggers an Alarm.
+**Reading** — a single value received for a Field, stored with a timestamp. Keyed by Sensor name in the DB.
 
-**Alarm** — an active alert condition on a Sensor. Two types: `threshold` (temperature above Threshold) and `offline` (no Reading received for 3× the Sensor's publish interval). All alarm events are persisted in the `alarms` table.
+**Threshold** — an alarm value set per-Field by an Admin. A Reading above (or below) the Threshold triggers an Alarm. Keyed by Sensor name in the DB.
 
-**AckOff** — an Admin action that acknowledges an offline Alarm, suppressing repeat notifications until the Sensor comes back online (auto-clears on reconnect).
+**Alarm** — an active alert condition. Two types: `threshold` (Field value crossed Threshold) and `offline` (no message on Device Topic for 3× Device interval). Threshold alarms are keyed by Sensor name; offline alarms are keyed by Device key. All alarm events are persisted in the `alarms` table.
 
-**Access Group** — a named set of users (identified by chat_id) defined in credentials config. Referenced by Sensors as `viewers` or `admins`. A user belongs to zero or more Access Groups.
+**AckOff** — an Admin action that acknowledges an offline Alarm for a Device, suppressing repeat notifications until the Device reconnects (auto-clears on reconnect). Takes the Device key.
 
-**Viewer** — a member of an Access Group assigned as `viewers` for a Sensor. Can issue read-only commands for that Sensor.
+**Access Group** — a named set of users (identified by chat_id) defined in credentials config. Referenced by Devices or Fields as `viewers` or `admins`. A user belongs to zero or more Access Groups.
 
-**Admin** — a member of an Access Group assigned as `admins` for a Sensor. Can issue all commands for that Sensor. Implies Viewer access for the same Sensor.
+**Viewer** — a member of an Access Group assigned as `viewers` for a Field. Can issue read-only commands for that Field.
 
-**User** — any Telegram user whose chat_id appears in at least one Access Group. Users with no Access Group membership have no access to any Sensor.
+**Admin** — a member of an Access Group assigned as `admins` for a Field. Can issue all commands for that Field. Implies Viewer access for the same Field.
+
+**User** — any Telegram user whose chat_id appears in at least one Access Group. Users with no Access Group membership have no access to any Field.
 
 **Telegram Group** — the single Telegram group where users send commands. The bot never replies with sensor data in the Group; all data replies are sent via DM.
 
@@ -28,36 +30,39 @@
 
 **HMAC Token** — a time-limited (24h TTL) signed token embedded in a Telegram start deep link (`t.me/botname?start=<token>`). Encodes the target chat_id and a timestamp. Verified on `/start` to ensure only the intended User completes DM Registration.
 
-**Sensor Config** — YAML file mapping each Sensor name to its Topic, optional `json_field`, optional `interval`, and optional `viewers`/`admins` Access Group references. Global default interval: 300s. Sensors without `viewers` or `admins` are visible to nobody (fail-closed).
+**Sensor Config** — YAML file (`sensors.yaml`) defining Devices under a `devices:` key. Each Device declares its Topic, interval, info label, optional note, and default `viewers`/`admins` Access Group lists. Fields are nested under `fields:` within each Device. Field-level `viewers`/`admins` fully replace (not merge with) Device-level defaults when present. Devices without any `viewers` or `admins` on any Field are visible to nobody (fail-closed).
 
 ## Bot Commands
 
 ### User commands
 | Command | Description |
 |---|---|
-| `/list` | List all sensors with current value and timestamp |
-| `/get [name]` | Get value for one sensor (no arg = same as /list) |
-| `/getAlarm [name]` | Show alarm threshold(s) |
-| `/graph <name>` | Chart last 8h for a sensor |
-| `/lastAlarm [name]` | Last alarm event (all sensors or specific one) |
-| `/last5Alarm <name>` | Last 5 alarm events for a sensor |
+| `/list` | List all visible Devices, one line per Device with all Fields |
+| `/get [expr]` | Get Fields matching expr (Sensor name, glob, comma-separated); no arg = digest subscriptions |
+| `/getAlarm [name]` | Show alarm threshold(s) for a Field |
+| `/graph <name>` | Chart last 8h for a Field (Sensor name) |
+| `/lastAlarm [name]` | Last alarm event (all or specific Sensor/Device) |
+| `/last5Alarm <name>` | Last 5 alarm events for a Sensor or Device |
+| `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions |
 | `/myid` | Show own Telegram user ID |
 | `/help` | Show command list (admin-aware) |
 
 ### Admin-only commands
 | Command | Description |
 |---|---|
-| `/setAlarm <name> <value>` | Set alarm threshold for a sensor |
-| `/ackOff <name>` | Acknowledge offline alarm (suppresses repeats until sensor reconnects) |
-| `/forgetSensor <name>` | Delete all data for a sensor (readings, alarms, threshold, silence state) |
+| `/setAlarm <name> <value>` | Set alarm threshold for a Field (Sensor name) |
+| `/ackOff <device>` | Acknowledge offline alarm for a Device (suppresses repeats until Device reconnects) |
+| `/forgetSensor <device>` | Archive all readings for a Device to history; clear alarms, threshold, silence state |
 
-**Daily Digest** — a scheduled silent message sent once per day at a configurable time (`digest_time` in credentials config, default `15:00`). Shows bot uptime and current readings for selected sensors. A sensor is included by setting `digest: true` in Sensor Config. Format: `🟢 live since 3d 4h` on first line, then one line per sensor as `name:value` with trailing ` *` if a threshold Alarm occurred in the last 24h. Offline sensors show `--` as value.
+**Daily Digest** — a scheduled silent message sent once per day at a configurable time (`digest_time` in credentials config, default `15:00`). Per-user: only Fields the User has subscribed to via `/digest` and can see. Format: `🟢 live since 3d 4h` on first line, then one line per Device as `info: F1=v1 F2=v2 ...` with trailing ` *` if a threshold Alarm occurred on any subscribed Field in the last 24h. Offline Fields show `--` as value.
 
 ## Notification behaviour
 
-- Alarm messages and Daily Digest sent via DM to each User, filtered to only the Sensors that User can see (Viewer or Admin).
+- Threshold alarm messages sent via DM to Admins of the affected Field.
+- Offline alarm messages sent via DM to Admins of Fields for which the User has an active digest subscription in that Device.
+- Daily Digest sent via DM to each User, filtered to Fields they have subscribed to via `/digest` and can see.
 - Command replies sent via DM, silently (`disable_notification=True`).
 - Bot never sends sensor data in the Telegram Group. Group messages are limited to DM Registration prompts.
 - If DM Registration is not yet completed for a User, the bot replies in the Telegram Group with a registration prompt and HMAC Token deep link, and no sensor data.
 - Bot replies never quote or echo user input (`send_message` not `reply_text`).
-- If a Sensor is not visible to the requesting User, the bot responds as if the Sensor does not exist.
+- If a Field is not visible to the requesting User, the bot responds as if it does not exist.

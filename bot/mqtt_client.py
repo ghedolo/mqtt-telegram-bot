@@ -2,7 +2,7 @@ import json
 import logging
 import asyncio
 import ssl
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Optional
 
 import paho.mqtt.client as mqtt
 
@@ -16,12 +16,14 @@ class MqttClient:
         self,
         cfg: AppConfig,
         on_reading: Callable[[str, float], Awaitable[None]],
+        on_topic_message: Optional[Callable[[str], Awaitable[None]]] = None,
     ):
         self._cfg = cfg
         self._on_reading = on_reading
-        self._topic_map: dict[str, SensorConfig] = {
-            sc.topic: sc for sc in cfg.sensors.values()
-        }
+        self._on_topic_message = on_topic_message
+        self._topic_map: dict[str, list[SensorConfig]] = {}
+        for sc in cfg.sensors.values():
+            self._topic_map.setdefault(sc.topic, []).append(sc)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         if cfg.mqtt_username:
@@ -42,27 +44,41 @@ class MqttClient:
             log.error("MQTT connect failed: %s", reason_code)
 
     def _on_message(self, client, userdata, msg):
-        sc = self._topic_map.get(msg.topic)
-        if sc is None:
-            return
-        try:
-            payload = msg.payload.decode()
-            if sc.json_field:
-                data = json.loads(payload)
-                node = data
-                for key in sc.json_field.split("."):
-                    node = node[key]
-                value = float(node)
-            else:
-                value = float(payload)
-        except Exception:
-            log.warning("Cannot parse payload for %s: %r", sc.name, msg.payload)
+        sensors = self._topic_map.get(msg.topic)
+        if not sensors:
             return
 
-        if self._loop:
+        if self._loop and self._on_topic_message:
             asyncio.run_coroutine_threadsafe(
-                self._on_reading(sc.name, value), self._loop
+                self._on_topic_message(msg.topic), self._loop
             )
+
+        try:
+            payload = msg.payload.decode()
+        except Exception:
+            log.warning("Cannot decode payload for topic %s", msg.topic)
+            return
+
+        for sc in sensors:
+            try:
+                if sc.json_path:
+                    data = json.loads(payload)
+                    node = data
+                    for key in sc.json_path.split("."):
+                        node = node[key]
+                    value = float(node)
+                else:
+                    value = float(payload)
+            except (KeyError, TypeError):
+                continue  # field absent from this message — normal for intermittent fields
+            except Exception:
+                log.warning("Cannot parse payload for %s: %r", sc.name, msg.payload)
+                continue
+
+            if self._loop:
+                asyncio.run_coroutine_threadsafe(
+                    self._on_reading(sc.name, value), self._loop
+                )
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop

@@ -144,11 +144,19 @@ def set_threshold(sensor: str, value: float):
 def clear_threshold(sensor: str):
     with _conn() as con:
         con.execute("UPDATE thresholds SET value=NULL WHERE sensor=?", (sensor,))
+        con.execute(
+            "DELETE FROM thresholds WHERE sensor=? AND value IS NULL AND low IS NULL",
+            (sensor,),
+        )
 
 
 def clear_threshold_low(sensor: str):
     with _conn() as con:
         con.execute("UPDATE thresholds SET low=NULL WHERE sensor=?", (sensor,))
+        con.execute(
+            "DELETE FROM thresholds WHERE sensor=? AND value IS NULL AND low IS NULL",
+            (sensor,),
+        )
 
 
 def set_threshold_low(sensor: str, value: float):
@@ -249,6 +257,21 @@ def forget_sensor(sensor: str):
         con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
         con.execute("DELETE FROM silenced WHERE sensor=?", (sensor,))
+
+
+def forget_device(sensor_names: list, device_key: str):
+    with _conn() as con:
+        for sensor in sensor_names:
+            con.execute(
+                "INSERT INTO readings_archive (sensor, value, ts) "
+                "SELECT sensor, value, ts FROM readings WHERE sensor=?",
+                (sensor,),
+            )
+            con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))
+            con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
+            con.execute("DELETE FROM thresholds WHERE sensor=?", (sensor,))
+        con.execute("DELETE FROM silenced WHERE sensor=?", (device_key,))
+        con.execute("DELETE FROM alarms WHERE sensor=?", (device_key,))
 
 
 def register_dm(chat_id: int):

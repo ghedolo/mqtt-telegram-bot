@@ -46,10 +46,17 @@ async def main():
         except Exception:
             log.exception("Failed to send alarm notification for %s", sensor)
 
+    async def notify_device(device_key: str, text: str):
+        try:
+            await tg.notify_device(device_key, text)
+        except Exception:
+            log.exception("Failed to send device alarm for %s", device_key)
+
     alarms = AlarmManager(
         threshold_repeat=cfg.alarm_threshold_repeat,
         offline_repeat=cfg.alarm_offline_repeat,
         notify_fn=notify,
+        notify_device_fn=notify_device,
     )
 
     async def on_reading(sensor: str, value: float):
@@ -58,12 +65,16 @@ async def main():
         await alarms.check_threshold(sensor, value)
         await alarms.check_threshold_low(sensor, value)
 
+    async def on_topic_message(topic: str):
+        alarms.record_topic_message(topic)
+
     loop = asyncio.get_running_loop()
-    mqtt = MqttClient(cfg, on_reading)
+    mqtt = MqttClient(cfg, on_reading, on_topic_message=on_topic_message)
     mqtt.start(loop)
 
     await tg.run()
-    await tg.send("🐶 LorTe is alive & sniffing! You can always say /help")
+    if not cfg.silent_start:
+        await tg.send("🐶 LorTe is alive & sniffing! You can always say /help")
 
     # periodic tasks
     async def archive_loop():
@@ -93,7 +104,7 @@ async def main():
                     log.exception("Failed to send daily digest to %s", chat_id)
 
     tasks = [
-        asyncio.create_task(alarms.run_offline_checks(cfg.sensors)),
+        asyncio.create_task(alarms.run_offline_checks(cfg.devices)),
         asyncio.create_task(archive_loop()),
         asyncio.create_task(digest_loop()),
     ]

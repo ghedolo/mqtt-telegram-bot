@@ -141,6 +141,22 @@ class TelegramBot:
                 except Exception:
                     log.exception("DM notify failed for chat_id %s", chat_id)
 
+    async def notify_device(self, device_key: str, text: str):
+        device = self._cfg.devices.get(device_key)
+        if device is None:
+            return
+        notified: set[int] = set()
+        for sc in device.fields.values():
+            for chat_id in self._cfg.admins_of(sc.name):
+                if chat_id in notified or not db.is_dm_registered(chat_id):
+                    continue
+                if sc.name in db.get_digest_subscriptions(chat_id):
+                    notified.add(chat_id)
+                    try:
+                        await self._app.bot.send_message(chat_id=chat_id, text=text)
+                    except Exception:
+                        log.exception("DM notify failed for chat_id %s", chat_id)
+
     # ── digest ─────────────────────────────────────────────────────────────────
 
     def _uptime_str(self, bot_start: float) -> str:
@@ -166,13 +182,20 @@ class TelegramBot:
             return ""
         since_ts = int(time.time()) - 86400
         lines = [f"🟢 live since {self._uptime_str(bot_start)}"]
-        for name in self._cfg.sensors:
-            if name not in active:
-                continue
-            row = db.get_latest(name)
-            val = f"{row['value']:.1f}" if row else "--"
-            flag = " *" if db.has_threshold_alarm_since(name, since_ts) else ""
-            lines.append(f"{name}:{val}{flag}")
+        for dev_key, device in self._cfg.devices.items():
+            parts = []
+            has_alarm = False
+            for fk, sc in device.fields.items():
+                if sc.name not in active:
+                    continue
+                row = db.get_latest(sc.name)
+                val = f"{row['value']:.1f}{sc.unit}" if row else "--"
+                if db.has_threshold_alarm_since(sc.name, since_ts):
+                    has_alarm = True
+                parts.append(f"{fk}={val}")
+            if parts:
+                flag = " *" if has_alarm else ""
+                lines.append(f"{device.info}: {' '.join(parts)}{flag}")
         return "\n".join(lines)
 
     # ── formatting helpers ─────────────────────────────────────────────────────
@@ -243,11 +266,11 @@ class TelegramBot:
             if self._verify_token(ctx.args[0], user_id):
                 db.register_dm(user_id)
                 await update.effective_chat.send_message(
-                    "Registrazione completata. Riceverai risposte e notifiche qui.", **_SILENT
+                    "Registration complete. Replies and notifications will be sent here.", **_SILENT
                 )
         else:
             db.register_dm(user_id)
-            await update.effective_chat.send_message("Bot attivato.", **_SILENT)
+            await update.effective_chat.send_message("Bot activated.", **_SILENT)
 
     async def _cmd_digest(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
@@ -361,8 +384,39 @@ class TelegramBot:
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
             return
-        names = self._cfg.visible_sensors(update.effective_user.id)
-        await self._show_sensors(reply_chat, names)
+        user_id = update.effective_user.id
+        visible = set(self._cfg.visible_sensors(user_id))
+        rows_map = {r["sensor"]: r for r in db.get_all_latest()}
+        thresholds = db.get_all_thresholds()
+        thresholds_low = db.get_all_thresholds_low()
+        lines = []
+        for dev_key, device in self._cfg.devices.items():
+            parts = []
+            for fk, sc in device.fields.items():
+                if sc.name not in visible:
+                    continue
+                r = rows_map.get(sc.name)
+                if r:
+                    unit = sc.unit or ""
+                    val_str = f"{r['value']:.1f}{unit}"
+                    thr_parts = []
+                    if sc.name in thresholds:
+                        thr_parts.append(f"Th:{thresholds[sc.name]}{unit}")
+                    if sc.name in thresholds_low:
+                        thr_parts.append(f"Tl:{thresholds_low[sc.name]}{unit}")
+                    thr_str = f"[{' '.join(thr_parts)}]" if thr_parts else ""
+                    parts.append(f"{fk}={val_str}{thr_str}")
+                else:
+                    parts.append(f"{fk}=--")
+            if parts:
+                lines.append(f"{dev_key} {' '.join(parts)}")
+        if not lines:
+            await self._app.bot.send_message(chat_id=reply_chat, text="No sensors.", **_SILENT)
+            return
+        lines.append("")
+        lines.append("Sensor name = device_field (e.g. SM2_UTA1_T)")
+        lines.append("Use sensor name with /get /setAlarm /digest /graph")
+        await self._app.bot.send_message(chat_id=reply_chat, text="\n".join(lines), **_SILENT)
 
     async def _cmd_get(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
@@ -626,26 +680,26 @@ class TelegramBot:
 
         if not ctx.args:
             await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /ackOff <sensor>", **_SILENT
+                chat_id=reply_chat, text="Usage: /ackOff <device>", **_SILENT
             )
             return
 
-        name = ctx.args[0]
-        if not self._cfg.is_viewer(user_id, name):
+        device_key = ctx.args[0]
+        if device_key not in self._cfg.devices:
             await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
+                chat_id=reply_chat, text="Unknown device.", **_SILENT
             )
             return
-        if not self._cfg.is_admin(user_id, name):
+        if not self._cfg.is_any_admin_of_device(user_id, device_key):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Not authorized.", **_SILENT
             )
             return
 
-        db.silence_sensor(name)
+        db.silence_sensor(device_key)
         await self._app.bot.send_message(
             chat_id=reply_chat,
-            text="Offline alarm acknowledged. Will auto-clear when sensor comes back online.",
+            text="Offline alarm acknowledged. Will auto-clear when device comes back online.",
             **_SILENT,
         )
 
@@ -657,25 +711,26 @@ class TelegramBot:
 
         if not ctx.args:
             await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /forgetSensor <sensor>", **_SILENT
+                chat_id=reply_chat, text="Usage: /forgetSensor <device>", **_SILENT
             )
             return
 
-        name = ctx.args[0]
+        device_key = ctx.args[0]
         if not self._cfg.is_superadmin(user_id):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Not authorized.", **_SILENT
             )
             return
-        if name not in self._cfg.sensors:
+        if device_key not in self._cfg.devices:
             await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
+                chat_id=reply_chat, text="Unknown device.", **_SILENT
             )
             return
 
-        db.forget_sensor(name)
+        sensor_names = [sc.name for sc in self._cfg.devices[device_key].fields.values()]
+        db.forget_device(sensor_names, device_key)
         await self._app.bot.send_message(
-            chat_id=reply_chat, text="Sensor data deleted.", **_SILENT
+            chat_id=reply_chat, text="Device data archived.", **_SILENT
         )
 
     async def _cmd_reloadconfig(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -707,18 +762,16 @@ class TelegramBot:
         self._cfg.alarm_offline_repeat = new.alarm_offline_repeat
         self._cfg.debug = new.debug
 
-        for name in list(self._cfg.sensors):
-            if name not in new.sensors:
-                del self._cfg.sensors[name]
-        for name, sc in new.sensors.items():
-            if name not in self._cfg.sensors:
-                self._cfg.sensors[name] = sc
-                if sc.default_alarm_high is not None and db.get_threshold(name) is None:
-                    db.set_threshold(name, sc.default_alarm_high)
-                if sc.default_alarm_low is not None and db.get_threshold_low(name) is None:
-                    db.set_threshold_low(name, sc.default_alarm_low)
-            else:
-                self._cfg.sensors[name] = sc
+        self._cfg.sensors.clear()
+        self._cfg.sensors.update(new.sensors)
+        self._cfg.devices.clear()
+        self._cfg.devices.update(new.devices)
+
+        for sc in new.sensors.values():
+            if sc.default_alarm_high is not None and db.get_threshold(sc.name) is None:
+                db.set_threshold(sc.name, sc.default_alarm_high)
+            if sc.default_alarm_low is not None and db.get_threshold_low(sc.name) is None:
+                db.set_threshold_low(sc.name, sc.default_alarm_low)
 
         await self._app.bot.send_message(
             chat_id=reply_chat,

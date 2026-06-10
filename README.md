@@ -45,28 +45,37 @@ docker compose up -d
 
 ### `sensors.yaml`
 
+Sensors are grouped under **devices**. Each device maps to one MQTT topic (or per-field topics for devices that publish each value separately). The sensor name used in all commands is derived as `{device_key}_{field_key}`.
+
 ```yaml
-sensors:
-  SENSOR_NAME:
-    topic: "mqtt/topic/path"
-    info: "Human-readable label"   # optional, shown in /list
-    unit: "°C"                     # optional
-    json_field: "temperature"      # optional: if payload is JSON, extract this field (dot notation for nested: "update.installed_version")
-    defaultAlarmHigh: 30.0         # optional, seeds high threshold on first run (admins can override with /setAlarm)
-    defaultAlarmLow: 10.0          # optional, seeds low threshold on first run (admins can override with /setAlarmLow)
-    interval: 300                  # expected publish interval in seconds
-    viewers: [group_name]          # groups that can read this sensor
-    admins: [ops]                  # groups that can administer this sensor (implies viewer)
+devices:
+  DEVICE_KEY:
+    topic: "mqtt/topic/path"       # shared topic for all fields (omit for per-field topics)
+    info: "Human-readable label"   # shown in /list
+    note: "Optional free text"     # not shown in bot, annotation only
+    interval: 300                  # expected publish interval in seconds (default 300)
+    viewers: [group_name]          # default viewer groups for all fields
+    admins: [ops]                  # default admin groups for all fields (implies viewer)
+    fields:
+      FIELD_KEY:                   # sensor name = DEVICE_KEY_FIELD_KEY
+        topic: "per/field/topic"   # required only if device has no shared topic
+        json_path: "temperature"   # optional: JSON field to extract (dot notation for nested)
+        unit: "°C"                 # optional
+        defaultAlarmHigh: 30.0     # optional, seeds high threshold on first run
+        defaultAlarmLow: 10.0      # optional, seeds low threshold on first run
+        viewers: [other_group]     # optional: overrides device-level viewers (replaces, not merges)
+        admins: [other_group]      # optional: overrides device-level admins (replaces, not merges)
 
 defaults:
   interval: 300
   retention_days: 30
   alarm_threshold_repeat: 720     # seconds between repeated threshold alarms
   alarm_offline_repeat: 3600      # seconds between repeated offline alarms
-  debug: 0                        # 0=silent 1=info 2=verbose
 ```
 
-Sensors without `viewers` or `admins` are visible to nobody (fail-closed).
+Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed).
+
+Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently.
 
 ### `credentials.yaml`
 
@@ -84,7 +93,7 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 | Command | Description |
 |---|---|
-| `/list` | All sensors — current value, timestamp, threshold |
+| `/list` | All devices — one line per device with all visible fields and thresholds |
 | `/get [expr]` | Filtered sensors (no arg = personal digest subscriptions; see `/helpExpr`) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h) |
@@ -105,13 +114,13 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 | `/setAlarmLow <name> <value>` | Set low alarm threshold (alarm if value <) |
 | `/clearAlarm <name>` | Clear high alarm threshold |
 | `/clearAlarmLow <name>` | Clear low alarm threshold |
-| `/ackOff <name>` | Acknowledge offline alarm (suppresses repeats until sensor reconnects) |
+| `/ackOff <device>` | Acknowledge offline alarm for a device (suppresses repeats until it reconnects) |
 
 ### Superadmin-only commands
 
 | Command | Description |
 |---|---|
-| `/forgetSensor <name>` | Archive readings, clear alarm history and silence state (threshold preserved) |
+| `/forgetSensor <device>` | Archive all field readings for a device, clear alarm history and silence state |
 | `/reloadConfig` | Reload `sensors.yaml` and `credentials.yaml` without restart |
 
 ### Sensor filter expressions (`/helpExpr`)
@@ -134,9 +143,9 @@ Three roles, all defined in `credentials.yaml`:
 
 | Role | Definition | Permissions |
 |---|---|---|
-| **Viewer** | member of a group listed in a sensor's `viewers` | read-only commands on that sensor |
-| **Admin** | member of a group listed in a sensor's `admins` | `/setAlarm`, `/ackOff` on that sensor; implies viewer |
-| **Superadmin** | `superadmin:` flat list of `chat_id`s | `/forgetSensor`, `/reloadConfig` (global, sensor-independent) |
+| **Viewer** | member of a group listed in a field's `viewers` | read-only commands on that sensor |
+| **Admin** | member of a group listed in a field's `admins` | `/setAlarm`, `/ackOff` on that field/device; implies viewer |
+| **Superadmin** | `superadmin:` flat list of `chat_id`s | `/forgetSensor`, `/reloadConfig` (global) |
 
 Users with no group assignment see no sensors.
 
@@ -155,8 +164,9 @@ Every 24 hours the bot moves readings older than `retention_days` from `readings
 
 ## Notifications
 
-- **Alarm messages** — sent via DM to all viewers/admins of the sensor.
-- **Daily digest** — sent via DM to each user, showing only their subscribed sensors. Subscriptions start empty; manage with `/digest`.
+- **Threshold alarms** — sent via DM to admins of the affected field (sensor).
+- **Offline alarms** — one alarm per device, sent via DM to admins of fields for which the user has an active `/digest` subscription.
+- **Daily digest** — sent via DM to each user, showing only their subscribed sensors grouped by device. Subscriptions start empty; manage with `/digest`.
 - **Group daily message** — uptime only (`🟢 live since Xd Yh`), no sensor data.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
 - Bot replies never quote or echo user input.
