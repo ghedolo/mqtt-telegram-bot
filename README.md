@@ -195,7 +195,7 @@ Numbers extracted from local session transcripts.
 
 - **First message:** 2026-06-03
 - **Last message:** 2026-06-11
-- **Sessions:** 8 — 2780 messages (1142 user + 1638 assistant)
+- **Sessions:** 8 — 2781 messages (1143 user + 1638 assistant)
 - **Active conversation time:** ~789 min (~13h 9m)
 
 *Active time: sum of consecutive gaps ≤ 5 min across all sessions. Longer gaps discarded.*
