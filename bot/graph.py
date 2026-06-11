@@ -9,7 +9,7 @@ from datetime import datetime
 
 from . import db
 
-_COLORS = ["#2196F3", "#FF9800", "#9C27B0", "#009688", "#E91E63", "#795548"]
+_COLORS = ["#004c6d", "#4c91ad", "#8cc5a6", "#e87c47", "#c83c0c"]
 _STYLES = ["-", "--", "-.", ":"]
 _INDICATORS = {"-": "─────", "--": "╌╌╌╌╌", "-.": "─·─·─", ":": "·····"}
 
@@ -30,7 +30,7 @@ def build(sensors: list[tuple[str, Optional[float], str]], hours: int = 8) -> io
         times = [datetime.fromtimestamp(r["ts"]) for r in rows]
         values = [r["value"] for r in rows]
         color = _COLORS[i % len(_COLORS)]
-        style = _STYLES[i % len(_STYLES)]
+        style = _STYLES[i // len(_COLORS)]
         indicator = _INDICATORS.get(style, "─────")
         padded = name.ljust(max_name_len)
 
