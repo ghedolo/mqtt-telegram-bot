@@ -103,6 +103,12 @@ docker run --rm --user root -v "$PWD/data:/data" lortebot-bot chown -R bot:bot /
 
 (adjust the image name if different — check `docker images`)
 
+After the fix, the host shows a high uid (e.g. `100998`) on the files:
+that is the rootless subuid mapped to the container's `bot` user —
+correct, leave it. The `bot` uid is pinned to 999 in the Dockerfile, so
+image rebuilds can never shift the mapping and break the volume
+permissions again. This is a one-time fix per host.
+
 ---
 
 ## Useful commands

@@ -22,13 +22,20 @@ Data flow: MQTT messages → `on_reading()` → SQLite. `AlarmManager` polls for
 
 ## Prerequisites
 
-- Docker v20.10+ (includes Compose as a built-in plugin)
+- **Docker rootless** — the only supported deployment mode (setup in [INSTALL.md](INSTALL.md)). A rootful daemon can coexist on the same host for other workloads.
 - An MQTT broker (TLS or plain)
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather)) and a group chat
 
 ---
 
 ## Installation
+
+> The bot runs **only on rootless Docker**: even if the container is fully
+> compromised, the attacker gets no root on the host. The container itself
+> is hardened — unprivileged user (uid 999), read-only filesystem, all
+> capabilities dropped, memory/CPU/pid limits, oversized MQTT payloads
+> rejected. See [INSTALL.md](INSTALL.md) for the rootless setup and the
+> data directory permission notes.
 
 ```bash
 git clone https://github.com/ghedolo/mqtt-telegram-bot.git
