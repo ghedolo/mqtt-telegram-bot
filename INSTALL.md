@@ -2,28 +2,25 @@
 
 ## Prerequisites
 
-Docker installed on the target machine.
+Docker installed on the target machine, running **rootless** (see setup below).
+Rootless runs the Docker daemon as a normal user: if a container is
+compromised, the attacker has no root access to the host. It is the only
+supported deployment mode.
 
 ---
 
-## Option A — Standard Docker (runs as root)
+## Rootless Docker setup (once)
 
 ```bash
-unzip lortebot-deploy.zip -d lortebot
-cd lortebot
-docker compose up --build -d
-```
+# if rootful Docker is running, disable it first
+# (this stops any containers managed by the rootful daemon)
+sudo systemctl disable --now docker.service docker.socket
+sudo systemctl stop docker.socket docker.service
 
----
+# remove the stale socket file if left behind (the setup tool
+# aborts if /var/run/docker.sock exists, even with no daemon)
+sudo rm -f /var/run/docker.sock
 
-## Option B — Rootless Docker (recommended)
-
-Rootless runs the Docker daemon as a normal user.
-If a container is compromised, it has no root access to the host.
-
-### Setup (once)
-
-```bash
 # dependencies
 sudo apt install -y uidmap dbus-user-session
 
@@ -36,14 +33,33 @@ export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock
 # reload shell, then enable and start
 systemctl --user enable docker
 systemctl --user start docker
+
+# keep the user services running after logout
+sudo loginctl enable-linger $USER
 ```
 
-### Run
+---
+
+## Run
 
 ```bash
 unzip lortebot-deploy.zip -d lortebot
 cd lortebot
 docker compose up --build -d
+```
+
+The container runs as a non-root user with a read-only filesystem,
+all capabilities dropped, and memory/CPU/pid limits
+(see `docker-compose.yml`).
+
+### Data directory permissions
+
+The container writes SQLite data to `./data` as an unprivileged user.
+If the bot fails at startup with a permission error on `data/sensors.db`,
+fix the ownership of the host directory:
+
+```bash
+docker compose run --rm --user root bot chown -R bot:bot /app/data
 ```
 
 ---

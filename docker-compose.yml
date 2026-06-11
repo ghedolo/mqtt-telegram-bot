@@ -2,9 +2,21 @@ services:
   bot:
     build: .
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+      - /app/tmp
     volumes:
       - ./data:/app/data
       - ./sensors.yaml:/app/sensors.yaml:ro
       - ./credentials.yaml:/app/credentials.yaml:ro
     environment:
       - TZ=Europe/Rome
+      - MPLCONFIGDIR=/tmp/matplotlib
+    mem_limit: 512m
+    pids_limit: 128
+    cpus: 1.0

@@ -10,6 +10,8 @@ from .config import AppConfig, SensorConfig
 
 log = logging.getLogger(__name__)
 
+_MAX_PAYLOAD_BYTES = 64 * 1024
+
 
 class MqttClient:
     def __init__(
@@ -46,6 +48,13 @@ class MqttClient:
     def _on_message(self, client, userdata, msg):
         sensors = self._topic_map.get(msg.topic)
         if not sensors:
+            return
+
+        if len(msg.payload) > _MAX_PAYLOAD_BYTES:
+            log.warning(
+                "Payload too large on %s (%d bytes), dropped",
+                msg.topic, len(msg.payload),
+            )
             return
 
         if self._loop and self._on_topic_message:
