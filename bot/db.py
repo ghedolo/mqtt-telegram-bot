@@ -93,6 +93,15 @@ def init():
                 ALTER TABLE thresholds_new RENAME TO thresholds;
             """)
 
+    # write probe: fail fast at startup if the DB file is not writable
+    # (e.g. wrong volume ownership) instead of failing silently later
+    with _conn() as con:
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS _write_probe (ts INTEGER)"
+        )
+        con.execute("INSERT INTO _write_probe (ts) VALUES (?)", (int(time.time()),))
+        con.execute("DELETE FROM _write_probe")
+
 
 def insert_reading(sensor: str, value: float, ts: Optional[int] = None):
     if ts is None:

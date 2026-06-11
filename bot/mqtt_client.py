@@ -13,6 +13,12 @@ log = logging.getLogger(__name__)
 _MAX_PAYLOAD_BYTES = 64 * 1024
 
 
+def _log_future_exc(fut):
+    exc = fut.exception()
+    if exc is not None:
+        log.error("Async handler failed: %s", exc)
+
+
 class MqttClient:
     def __init__(
         self,
@@ -60,7 +66,7 @@ class MqttClient:
         if self._loop and self._on_topic_message:
             asyncio.run_coroutine_threadsafe(
                 self._on_topic_message(msg.topic), self._loop
-            )
+            ).add_done_callback(_log_future_exc)
 
         try:
             payload = msg.payload.decode()
@@ -87,7 +93,7 @@ class MqttClient:
             if self._loop:
                 asyncio.run_coroutine_threadsafe(
                     self._on_reading(sc.name, value), self._loop
-                )
+                ).add_done_callback(_log_future_exc)
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop

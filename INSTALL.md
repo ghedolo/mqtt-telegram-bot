@@ -38,6 +38,39 @@ systemctl --user start docker
 sudo loginctl enable-linger $USER
 ```
 
+### Re-enable rootful Docker (optional)
+
+If other containers on the host run under the rootful daemon, turn it
+back on after the rootless setup is complete — the two daemons coexist:
+
+```bash
+sudo systemctl enable --now docker.service docker.socket
+```
+
+### Selecting the daemon: DOCKER_HOST vs context
+
+Two independent mechanisms select which daemon `docker` talks to, and
+`DOCKER_HOST` **always wins** over the CLI context:
+
+- `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/docker.sock` → rootless daemon
+- `docker context use rootless` / `default` → ignored if `DOCKER_HOST` is set
+
+Recommended setup — use only `DOCKER_HOST` (in `~/.bashrc`):
+
+- every new shell talks to the **rootless** daemon → bot management
+- to manage rootful containers: `unset DOCKER_HOST` in that shell first,
+  and check with `docker info | grep -i rootless` (must print nothing)
+
+**Pitfall:** if you run `docker compose up` for the rootful containers
+while `DOCKER_HOST` still points to rootless, the containers are
+*created in the rootless daemon* and fail with errors like
+`RootlessKit PortManager ... cannot expose privileged port 80` or
+`chown: Operation not permitted` on volumes. Fix: with `DOCKER_HOST`
+still set (or `docker context use rootless`), run `docker compose down`
+in that project to remove the misplaced containers; then `unset
+DOCKER_HOST`, verify with `docker info`, and `docker compose up -d`
+again on the rootful daemon.
+
 ---
 
 ## Run
@@ -55,12 +88,20 @@ all capabilities dropped, and memory/CPU/pid limits
 ### Data directory permissions
 
 The container writes SQLite data to `./data` as an unprivileged user.
-If the bot fails at startup with a permission error on `data/sensors.db`,
-fix the ownership of the host directory:
+If the bot fails at startup with a permission error on `data/sensors.db`
+(typical when the directory was created by a previous rootful
+deployment and is owned by root), fix the ownership in two steps:
 
 ```bash
-docker compose run --rm --user root bot chown -R bot:bot /app/data
+# 1. on the host: chown to your user (maps to container root in rootless)
+sudo chown -R $USER:$USER ./data
+
+# 2. from a container: chown to the bot user (plain docker run —
+#    `docker compose run` won't work here because cap_drop blocks chown)
+docker run --rm --user root -v "$PWD/data:/data" lortebot-bot chown -R bot:bot /data
 ```
+
+(adjust the image name if different — check `docker images`)
 
 ---
 
