@@ -59,6 +59,8 @@ async def main():
         notify_device_fn=notify_device,
     )
 
+    tg.last_mqtt_fn = alarms.last_mqtt_ts
+
     async def on_reading(sensor: str, value: float):
         log.info("Reading: %s = %.2f", sensor, value)
         db.insert_reading(sensor, value)

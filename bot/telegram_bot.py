@@ -33,6 +33,7 @@ class TelegramBot:
         self._cfg = cfg
         self._reload_fn = reload_fn
         self._bot_username: Optional[str] = None
+        self.last_mqtt_fn: Optional[Callable[[], Optional[int]]] = None
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("start", self._cmd_start))
         self._app.add_handler(CommandHandler("digest", self._cmd_digest))
@@ -47,6 +48,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("ackOff", self._cmd_ackoff))
         self._app.add_handler(CommandHandler("help", self._cmd_help))
         self._app.add_handler(CommandHandler("myid", self._cmd_myid))
+        self._app.add_handler(CommandHandler("last", self._cmd_last))
         self._app.add_handler(CommandHandler("lastAlarm", self._cmd_lastalarm))
         self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
         self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
@@ -332,6 +334,7 @@ class TelegramBot:
             "/graph <expr> [Nh] — chart (default 8h)\n"
             "/csv <expr> [Nh] — download readings as CSV\n"
             "/xlsx <expr> [Nh] — download readings as Excel (one sheet per sensor)\n"
+            "/last — last time anything arrived from MQTT\n"
             "/lastAlarm [name] — last alarm (all sensors or one)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/digest [expr on|off] — manage daily digest subscriptions\n"
@@ -633,6 +636,17 @@ class TelegramBot:
         await self._app.bot.send_photo(
             chat_id=reply_chat, photo=buf, caption=f"Last {hours}h", **_SILENT
         )
+
+    async def _cmd_last(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        ts = self.last_mqtt_fn() if self.last_mqtt_fn else None
+        if ts is None:
+            text = "No sign of life from MQTT since startup."
+        else:
+            text = f"Last sign of life from MQTT: {_fmt_ts(ts)}"
+        await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
 
     async def _cmd_lastalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)

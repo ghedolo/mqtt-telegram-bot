@@ -106,6 +106,7 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h) |
 | `/csv <expr> [Nh]` | Download readings as CSV |
 | `/xlsx <expr> [Nh]` | Download readings as Excel (one sheet per sensor) |
+| `/last` | Last time any message arrived from MQTT (no content shown) |
 | `/lastAlarm [name]` | Last alarm event |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions (no arg = show active) |

@@ -41,6 +41,7 @@
 | `/get [expr]` | Get Fields matching expr (Sensor name, glob, comma-separated); no arg = digest subscriptions |
 | `/getAlarm [name]` | Show alarm threshold(s) for a Field |
 | `/graph <name>` | Chart last 8h for a Field (Sensor name) |
+| `/last` | Timestamp of the last message received from MQTT, any Topic (no content) |
 | `/lastAlarm [name]` | Last alarm event (all or specific Sensor/Device) |
 | `/last5Alarm <name>` | Last 5 alarm events for a Sensor or Device |
 | `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions |

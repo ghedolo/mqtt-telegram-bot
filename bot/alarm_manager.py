@@ -37,6 +37,9 @@ class AlarmManager:
     def record_topic_message(self, topic: str):
         self._last_topic_ts[topic] = int(time.time())
 
+    def last_mqtt_ts(self) -> int | None:
+        return max(self._last_topic_ts.values(), default=None)
+
     def _key(self, sensor: str, kind: str) -> str:
         return f"{sensor}:{kind}"
 
