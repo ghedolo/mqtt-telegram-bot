@@ -116,6 +116,7 @@ class TelegramBot:
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
         if chat_id == user_id:
+            db.register_dm(user_id)
             return user_id
         if db.is_dm_registered(user_id):
             return user_id
