@@ -60,6 +60,7 @@ async def main():
     )
 
     tg.last_mqtt_fn = alarms.last_mqtt_ts
+    tg.reset_alarm_fn = alarms.reset_sensor_alarm
 
     async def on_reading(sensor: str, value: float):
         log.info("Reading: %s = %.2f", sensor, value)

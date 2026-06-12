@@ -34,6 +34,7 @@ class TelegramBot:
         self._reload_fn = reload_fn
         self._bot_username: Optional[str] = None
         self.last_mqtt_fn: Optional[Callable[[], Optional[int]]] = None
+        self.reset_alarm_fn: Optional[Callable[[str], None]] = None
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("start", self._cmd_start))
         self._app.add_handler(CommandHandler("digest", self._cmd_digest))
@@ -468,6 +469,8 @@ class TelegramBot:
             return
 
         db.set_threshold(name, value)
+        if self.reset_alarm_fn:
+            self.reset_alarm_fn(name)
         await self._app.bot.send_message(
             chat_id=reply_chat, text="Threshold updated.", **_SILENT
         )
@@ -505,6 +508,8 @@ class TelegramBot:
             return
 
         db.set_threshold_low(name, value)
+        if self.reset_alarm_fn:
+            self.reset_alarm_fn(name)
         await self._app.bot.send_message(
             chat_id=reply_chat, text="Low threshold updated.", **_SILENT
         )
@@ -531,6 +536,8 @@ class TelegramBot:
             )
             return
         db.clear_threshold(name)
+        if self.reset_alarm_fn:
+            self.reset_alarm_fn(name)
         await self._app.bot.send_message(
             chat_id=reply_chat, text="High threshold cleared.", **_SILENT
         )
@@ -557,6 +564,8 @@ class TelegramBot:
             )
             return
         db.clear_threshold_low(name)
+        if self.reset_alarm_fn:
+            self.reset_alarm_fn(name)
         await self._app.bot.send_message(
             chat_id=reply_chat, text="Low threshold cleared.", **_SILENT
         )

@@ -40,6 +40,12 @@ class AlarmManager:
     def last_mqtt_ts(self) -> int | None:
         return max(self._last_topic_ts.values(), default=None)
 
+    def reset_sensor_alarm(self, sensor: str):
+        for kind in ("threshold", "threshold_low"):
+            k = self._key(sensor, kind)
+            if k in self._states:
+                self._states[k].active = False
+
     def _key(self, sensor: str, kind: str) -> str:
         return f"{sensor}:{kind}"
 
