@@ -58,6 +58,13 @@ def init():
                 registered_at INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS user_activity (
+                user_id    INTEGER PRIMARY KEY,
+                username   TEXT,
+                full_name  TEXT,
+                last_seen  INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS digest_subscriptions (
                 user_id  INTEGER NOT NULL,
                 sensor   TEXT    NOT NULL,
@@ -303,6 +310,26 @@ def get_all_dm_registered() -> list[int]:
     with _conn() as con:
         rows = con.execute("SELECT chat_id FROM dm_registered").fetchall()
         return [r["chat_id"] for r in rows]
+
+
+def record_activity(user_id: int, username: Optional[str], full_name: Optional[str]):
+    with _conn() as con:
+        con.execute(
+            "INSERT INTO user_activity (user_id, username, full_name, last_seen) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET "
+            "username=excluded.username, full_name=excluded.full_name, "
+            "last_seen=excluded.last_seen",
+            (user_id, username, full_name, int(time.time())),
+        )
+
+
+def get_all_activity() -> list[sqlite3.Row]:
+    with _conn() as con:
+        return con.execute(
+            "SELECT user_id, username, full_name, last_seen "
+            "FROM user_activity ORDER BY last_seen DESC"
+        ).fetchall()
 
 
 def subscribe_digest(user_id: int, sensor: str):

@@ -82,6 +82,16 @@ class AppConfig:
     def visible_sensors(self, user_id: int) -> list[str]:
         return [n for n in self.sensors if self.is_viewer(user_id, n)]
 
+    def resolve_sensor(self, name: str) -> str:
+        """Map a user-supplied sensor name to its canonical name (case-insensitive)."""
+        if name in self.sensors:
+            return name
+        low = name.lower()
+        for n in self.sensors:
+            if n.lower() == low:
+                return n
+        return name
+
     def is_any_admin_of_device(self, user_id: int, device_key: str) -> bool:
         dev = self.devices.get(device_key)
         if dev is None:
@@ -116,6 +126,7 @@ def load(
     devices: dict[str, DeviceConfig] = {}
     seen_topics: set[str] = set()
     seen_names: set[str] = set()
+    seen_names_lower: dict[str, str] = {}
 
     for dev_key, dv in raw.get("devices", {}).items():
         if dev_key in devices:
@@ -142,7 +153,14 @@ def load(
             sensor_name = f"{dev_key}_{fk}"
             if sensor_name in seen_names:
                 raise ValueError(f"Duplicate sensor name derived: {sensor_name!r}")
+            low = sensor_name.lower()
+            if low in seen_names_lower:
+                raise ValueError(
+                    f"Sensor names differ only by case: {seen_names_lower[low]!r} "
+                    f"and {sensor_name!r}"
+                )
             seen_names.add(sensor_name)
+            seen_names_lower[low] = sensor_name
 
             f_topic: Optional[str] = fv.get("topic", dev_topic)
             if f_topic is None:

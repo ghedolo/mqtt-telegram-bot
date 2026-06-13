@@ -52,7 +52,7 @@ docker compose up -d
 
 ### `sensors.yaml`
 
-Sensors are grouped under **devices**. Each device maps to one MQTT topic (or per-field topics for devices that publish each value separately). The sensor name used in all commands is derived as `{device_key}_{field_key}`.
+Sensors are grouped under **devices**. Each device maps to one MQTT topic (or per-field topics for devices that publish each value separately). The sensor name used in all commands is derived as `{device_key}_{field_key}`. Sensor names are **case-insensitive** in commands (e.g. `Office_Temp` matches `office_temp`); config parsing rejects two names that differ only by case.
 
 ```yaml
 devices:
@@ -130,6 +130,7 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 |---|---|
 | `/forgetSensor <device>` | Archive all field readings for a device, clear alarm history and silence state |
 | `/reloadConfig` | Reload `sensors.yaml` and `credentials.yaml` without restart |
+| `/usersActivity` | Last interaction time per user (name, username, id, timestamp). Bot records this itself — Telegram does not expose user last-seen |
 
 ### Sensor filter expressions (`/helpExpr`)
 

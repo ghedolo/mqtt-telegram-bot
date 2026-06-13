@@ -14,6 +14,7 @@ from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    TypeHandler,
 )
 
 from .config import AppConfig
@@ -26,6 +27,16 @@ _SILENT = {"disable_notification": True}
 
 def _fmt_ts(ts: int) -> str:
     return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _fmt_ago(secs: int) -> str:
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m"
+    if secs < 86400:
+        return f"{secs // 3600}h"
+    return f"{secs // 86400}d"
 
 
 class TelegramBot:
@@ -57,6 +68,9 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("helpExpr", self._cmd_helpexpr))
         self._app.add_handler(CommandHandler("csv", self._cmd_csv))
         self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
+        self._app.add_handler(CommandHandler("usersActivity", self._cmd_usersactivity))
+        # runs first on every update: record last interaction per user
+        self._app.add_handler(TypeHandler(Update, self._record_activity), group=-1)
 
     # ── token helpers ──────────────────────────────────────────────────────────
 
@@ -122,6 +136,15 @@ class TelegramBot:
             return user_id
         await self._send_registration_prompt(user_id, chat_id)
         return None
+
+    async def _record_activity(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        u = update.effective_user
+        if u is None:
+            return
+        try:
+            db.record_activity(u.id, u.username, u.full_name)
+        except Exception:
+            log.exception("record_activity failed for user %s", u.id)
 
     async def send(self, text: str, silent: bool = False):
         await self._app.bot.send_message(
@@ -222,7 +245,7 @@ class TelegramBot:
         result, seen = [], set()
         for pat in patterns:
             for n in ordered:
-                if n not in seen and fnmatch.fnmatch(n, pat):
+                if n not in seen and fnmatch.fnmatch(n.lower(), pat.lower()):
                     result.append(n)
                     seen.add(n)
         return result
@@ -357,7 +380,8 @@ class TelegramBot:
             text += (
                 "\n\nSuperadmin commands:\n"
                 "/forgetSensor <name> — delete all data for a sensor\n"
-                "/reloadConfig — reload sensors.yaml and credentials.yaml"
+                "/reloadConfig — reload sensors.yaml and credentials.yaml\n"
+                "/usersActivity — last interaction time per user"
             )
         await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
 
@@ -449,7 +473,7 @@ class TelegramBot:
             )
             return
 
-        name = ctx.args[0]
+        name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown sensor.", **_SILENT
@@ -488,7 +512,7 @@ class TelegramBot:
             )
             return
 
-        name = ctx.args[0]
+        name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown sensor.", **_SILENT
@@ -525,7 +549,7 @@ class TelegramBot:
                 chat_id=reply_chat, text="Usage: /clearAlarm <sensor>", **_SILENT
             )
             return
-        name = ctx.args[0]
+        name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown sensor.", **_SILENT
@@ -553,7 +577,7 @@ class TelegramBot:
                 chat_id=reply_chat, text="Usage: /clearAlarmLow <sensor>", **_SILENT
             )
             return
-        name = ctx.args[0]
+        name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown sensor.", **_SILENT
@@ -594,7 +618,7 @@ class TelegramBot:
             )
             return
 
-        name = ctx.args[0]
+        name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown sensor.", **_SILENT
@@ -663,7 +687,7 @@ class TelegramBot:
         if reply_chat is None:
             return
         user_id = update.effective_user.id
-        sensor = ctx.args[0] if ctx.args else None
+        sensor = self._cfg.resolve_sensor(ctx.args[0]) if ctx.args else None
         if sensor and not self._cfg.is_viewer(user_id, sensor):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown sensor.", **_SILENT
@@ -685,7 +709,7 @@ class TelegramBot:
                 chat_id=reply_chat, text="Usage: /last5Alarm <sensor>", **_SILENT
             )
             return
-        name = ctx.args[0]
+        name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown sensor.", **_SILENT
@@ -801,6 +825,33 @@ class TelegramBot:
             chat_id=reply_chat,
             text="Config reloaded.\nNote: new sensor MQTT subscriptions require a restart.",
             **_SILENT,
+        )
+
+    async def _cmd_usersactivity(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        if not self._cfg.is_superadmin(update.effective_user.id):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Not authorized.", **_SILENT
+            )
+            return
+        rows = db.get_all_activity()
+        if not rows:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="No recorded activity.", **_SILENT
+            )
+            return
+        now = int(time.time())
+        lines = []
+        for r in rows:
+            who = r["full_name"] or "?"
+            if r["username"]:
+                who += f" (@{r['username']})"
+            ago = _fmt_ago(now - r["last_seen"])
+            lines.append(f"{who} [{r['user_id']}]\n  {_fmt_ts(r['last_seen'])} ({ago} ago)")
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text="\n".join(lines), **_SILENT
         )
 
     async def _cmd_csv(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
