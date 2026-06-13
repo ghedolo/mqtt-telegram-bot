@@ -4,7 +4,7 @@
 
 **Device** — a physical unit that publishes MQTT messages to a single Topic at a regular interval. Identified by a short key in Sensor Config (e.g. `SM2_UTA1`). A Device has one or more Fields. Offline detection is per-Device: if no message arrives on the Topic for 3× the Device interval, an offline Alarm is raised for the Device.
 
-**Field** — a single measurable value published by a Device. A Field is identified by its key within the Device in Sensor Config (e.g. `T`). The canonical Sensor name used throughout the system (DB keys, commands) is derived as `{device_key}_{field_key}`. A Device with a single Field is indistinguishable from a multi-field Device with one entry.
+**Field** — a single measurable value published by a Device. A Field is identified by its key within the Device in Sensor Config (e.g. `T`). The canonical Sensor name used throughout the system (DB keys, commands) is derived as `{device_key}_{field_key}`. A Device with a single Field is indistinguishable from a multi-field Device with one entry. Sensor names supplied in commands are resolved case-insensitively to the canonical name (`config.resolve_sensor`); Sensor Config parsing rejects two Sensor names that differ only by case.
 
 **Topic** — the MQTT topic path a Device publishes to. Defined per-Device in Sensor Config. Each Topic must be unique across all Devices.
 
@@ -23,6 +23,8 @@
 **Admin** — a member of an Access Group assigned as `admins` for a Field. Can issue all commands for that Field. Implies Viewer access for the same Field.
 
 **User** — any Telegram user whose chat_id appears in at least one Access Group. Users with no Access Group membership have no access to any Field.
+
+**User Activity** — the last time each User interacted with the bot, recorded in the `user_activity` table (user_id, username, full_name, last_seen). Captured by a global handler that runs on every update before command handlers. Telegram does not expose user last-seen; the bot can only observe interactions directed at it. Queryable by Superadmins via `/usersActivity`.
 
 **Telegram Group** — the single Telegram group where users send commands. The bot never replies with sensor data in the Group; all data replies are sent via DM.
 
@@ -54,6 +56,12 @@
 | `/setAlarm <name> <value>` | Set alarm threshold for a Field (Sensor name) |
 | `/ackOff <device>` | Acknowledge offline alarm for a Device (suppresses repeats until Device reconnects) |
 | `/forgetSensor <device>` | Archive all readings for a Device to history; clear alarms, threshold, silence state |
+
+### Superadmin-only commands
+| Command | Description |
+|---|---|
+| `/reloadConfig` | Reload Sensor Config and credentials config without restart |
+| `/usersActivity` | List last interaction time per User (User Activity) |
 
 **Daily Digest** — a scheduled silent message sent once per day at a configurable time (`digest_time` in credentials config, default `15:00`). Per-user: only Fields the User has subscribed to via `/digest` and can see. Format: `🟢 live since 3d 4h` on first line, then one line per Device as `info: F1=v1 F2=v2 ...` with trailing ` *` if a threshold Alarm occurred on any subscribed Field in the last 24h. Offline Fields show `--` as value.
 
