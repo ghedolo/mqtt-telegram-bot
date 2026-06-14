@@ -605,29 +605,41 @@ class TelegramBot:
             return
         user_id = update.effective_user.id
 
-        def _fmt_thresholds(name: str) -> str:
+        def _thr_str(name: str) -> str:
             thr = db.get_threshold(name)
             low = db.get_threshold_low(name)
             ll = f"{low:g}" if low is not None else "--"
             hh = f"{thr:g}" if thr is not None else "--"
-            return f"{name} {ll}/{hh}"
+            return f"{ll}/{hh}"
 
         if not ctx.args:
-            lines = [_fmt_thresholds(n) for n in self._cfg.visible_sensors(user_id)]
+            names = self._cfg.visible_sensors(user_id)
+        else:
+            name = self._cfg.resolve_sensor(ctx.args[0])
+            if not self._cfg.is_viewer(user_id, name):
+                await self._app.bot.send_message(
+                    chat_id=reply_chat, text="Unknown sensor.", **_SILENT
+                )
+                return
+            names = [name]
+
+        if not names:
             await self._app.bot.send_message(
-                chat_id=reply_chat, text="\n".join(lines) or "No sensors.", **_SILENT
+                chat_id=reply_chat, text="No sensors.", **_SILENT
             )
             return
 
-        name = self._cfg.resolve_sensor(ctx.args[0])
-        if not self._cfg.is_viewer(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-            )
-            return
-
+        entries = [(n, _thr_str(n)) for n in names]
+        wname = max(len("sensor"), *(len(e[0]) for e in entries))
+        wthr = max(len("lo/hi"), *(len(e[1]) for e in entries))
+        lines = [f"{'sensor':<{wname}}  {'lo/hi':>{wthr}}"]
+        for n, t in entries:
+            lines.append(f"{n:<{wname}}  {t:>{wthr}}")
         await self._app.bot.send_message(
-            chat_id=reply_chat, text=_fmt_thresholds(name), **_SILENT
+            chat_id=reply_chat,
+            text="```\n" + "\n".join(lines) + "\n```",
+            parse_mode="Markdown",
+            **_SILENT,
         )
 
     async def _cmd_graph(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
