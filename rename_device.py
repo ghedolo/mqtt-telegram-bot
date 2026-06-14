@@ -103,6 +103,8 @@ def main():
     ap.add_argument("--db", default="data/sensors.db")
     ap.add_argument("--yaml", default="sensors.yaml")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--skip-db", action="store_true", help="do not touch the DB")
+    ap.add_argument("--skip-yaml", action="store_true", help="do not touch sensors.yaml")
     args = ap.parse_args()
 
     if args.old == args.new:
@@ -121,8 +123,10 @@ def main():
     for o, n in mapping.items():
         print(f"  {o} -> {n}")
 
-    update_db(args.db, mapping, args.dry_run)
-    update_yaml(args.yaml, args.old, args.new, args.dry_run)
+    if not args.skip_db:
+        update_db(args.db, mapping, args.dry_run)
+    if not args.skip_yaml:
+        update_yaml(args.yaml, args.old, args.new, args.dry_run)
     if not args.dry_run:
         print("Done. Restart the bot to pick up the new MQTT subscriptions / config.")
 
