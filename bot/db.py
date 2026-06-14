@@ -254,6 +254,19 @@ def get_last_alarms(sensor: Optional[str] = None, n: int = 1) -> list[sqlite3.Ro
         ).fetchall()
 
 
+def get_alarms_since(sensors: list[str], since_ts: int) -> list[sqlite3.Row]:
+    """All alarm events for the given sensors with ts >= since_ts, newest first."""
+    if not sensors:
+        return []
+    with _conn() as con:
+        ph = ",".join("?" * len(sensors))
+        return con.execute(
+            f"SELECT sensor, kind, message, ts FROM alarms "
+            f"WHERE sensor IN ({ph}) AND ts>=? ORDER BY ts DESC",
+            (*sensors, since_ts),
+        ).fetchall()
+
+
 def has_threshold_alarm_since(sensor: str, since_ts: int) -> bool:
     with _conn() as con:
         row = con.execute(

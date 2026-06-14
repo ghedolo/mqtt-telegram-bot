@@ -5,6 +5,7 @@ import hashlib
 import hmac as _hmac
 import io
 import logging
+import re
 import time
 from datetime import datetime
 from typing import Callable, Optional
@@ -61,7 +62,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("help", self._cmd_help))
         self._app.add_handler(CommandHandler("myid", self._cmd_myid))
         self._app.add_handler(CommandHandler("last", self._cmd_last))
-        self._app.add_handler(CommandHandler("lastAlarm", self._cmd_lastalarm))
+        self._app.add_handler(CommandHandler("lastAlarms", self._cmd_lastalarms))
         self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
         self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
         self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
@@ -365,7 +366,7 @@ class TelegramBot:
             "/csv <expr> [Nh] — download readings as CSV\n"
             "/xlsx <expr> [Nh] — download readings as Excel (one sheet per sensor)\n"
             "/last — last time anything arrived from MQTT\n"
-            "/lastAlarm [name] — last alarm (all sensors or one)\n"
+            "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/digest [expr on|off] — manage daily digest subscriptions\n"
             "/list — list all sensors\n"
@@ -696,18 +697,46 @@ class TelegramBot:
             text = f"Last sign of life from MQTT: {_fmt_ts(ts)}"
         await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
 
-    async def _cmd_lastalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    async def _cmd_lastalarms(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
             return
         user_id = update.effective_user.id
-        sensor = self._cfg.resolve_sensor(ctx.args[0]) if ctx.args else None
-        if sensor and not self._cfg.is_viewer(user_id, sensor):
+
+        args = list(ctx.args)
+        hours = 8
+        if args and re.fullmatch(r"\d+[hH]", args[-1]):
+            n = int(args[-1][:-1])
+            if not 1 <= n <= 24:
+                await self._app.bot.send_message(
+                    chat_id=reply_chat,
+                    text="Hours must be between 1 and 24 (e.g. 6h).",
+                    **_SILENT,
+                )
+                return
+            hours = n
+            args = args[:-1]
+
+        if not args:
+            subscribed = set(db.get_digest_subscriptions(user_id))
+            visible = set(self._cfg.visible_sensors(user_id))
+            names = [n for n in self._cfg.sensors if n in subscribed and n in visible]
+        else:
+            names = self._resolve_sensors(args, user_id)
+
+        if not names:
             await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
+                chat_id=reply_chat, text="No matching sensors.", **_SILENT
             )
             return
-        rows = db.get_last_alarms(sensor=sensor, n=1)
+
+        since = int(time.time()) - hours * 3600
+        rows = db.get_alarms_since(names, since)
+        if not rows:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text=f"No alarms in last {hours}h.", **_SILENT
+            )
+            return
         await self._app.bot.send_message(
             chat_id=reply_chat, text=self._fmt_alarms(rows), **_SILENT
         )
