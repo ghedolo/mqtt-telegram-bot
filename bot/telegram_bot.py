@@ -277,9 +277,9 @@ class TelegramBot:
                 chat_id=reply_chat, text="No matching sensors.", **_SILENT
             )
             return
-        wname = max(len("sensor"), *(len(e[0]) for e in entries))
+        wname = max(len("Sensor"), *(len(e[0]) for e in entries))
         wval = max(len("value"), *(len(e[1]) for e in entries))
-        lines = [f"{'sensor':<{wname}}  {'value':>{wval}}  min"]
+        lines = [f"{'Sensor':<{wname}}  {'value':>{wval}}  min ago", ""]
         for n, v, a in entries:
             lines.append(f"{n:<{wname}}  {v:>{wval}}  {a}")
         await self._app.bot.send_message(
@@ -630,9 +630,9 @@ class TelegramBot:
             return
 
         entries = [(n, _thr_str(n)) for n in names]
-        wname = max(len("sensor"), *(len(e[0]) for e in entries))
-        wthr = max(len("lo/hi"), *(len(e[1]) for e in entries))
-        lines = [f"{'sensor':<{wname}}  {'lo/hi':>{wthr}}"]
+        wname = max(len("Sensor"), *(len(e[0]) for e in entries))
+        wthr = max(len("Tl/Th"), *(len(e[1]) for e in entries))
+        lines = [f"{'Sensor':<{wname}}  {'Tl/Th':>{wthr}}", ""]
         for n, t in entries:
             lines.append(f"{n:<{wname}}  {t:>{wthr}}")
         await self._app.bot.send_message(
