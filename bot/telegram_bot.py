@@ -257,30 +257,34 @@ class TelegramBot:
             )
             return
         rows_map = {r["sensor"]: r for r in db.get_all_latest()}
-        thresholds = db.get_all_thresholds()
-        thresholds_low = db.get_all_thresholds_low()
-        blocks = []
+        now = int(time.time())
+        entries = []  # (name, value, ago)
         for name in names:
             sc = self._cfg.sensors.get(name)
             if sc is None:
                 continue
             r = rows_map.get(name)
-            block = f"*{name}*"
             if r:
-                unit = f" {sc.unit}" if sc.unit else ""
-                thr_parts = []
-                if name in thresholds:
-                    thr_parts.append(f"Th:{thresholds[name]}{unit}")
-                if name in thresholds_low:
-                    thr_parts.append(f"Tl:{thresholds_low[name]}{unit}")
-                thr_str = f"  {' '.join(thr_parts)}" if thr_parts else ""
-                block += f"  {r['value']:.1f}{unit}{thr_str}\n  seen: {_fmt_ts(r['ts'])}"
+                val = f"{r['value']:.1f}"
+                mins = (now - r["ts"]) // 60
+                ago = "∞" if mins > 360 else str(mins)
             else:
-                block += "\n  no data"
-            blocks.append(block)
+                val = "-"
+                ago = "∞"
+            entries.append((name, val, ago))
+        if not entries:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="No matching sensors.", **_SILENT
+            )
+            return
+        wname = max(len("sensor"), *(len(e[0]) for e in entries))
+        wval = max(len("value"), *(len(e[1]) for e in entries))
+        lines = [f"{'sensor':<{wname}}  {'value':>{wval}}  min"]
+        for n, v, a in entries:
+            lines.append(f"{n:<{wname}}  {v:>{wval}}  {a}")
         await self._app.bot.send_message(
             chat_id=reply_chat,
-            text="\n\n".join(blocks),
+            text="```\n" + "\n".join(lines) + "\n```",
             parse_mode="Markdown",
             **_SILENT,
         )
@@ -486,7 +490,7 @@ class TelegramBot:
             return
 
         try:
-            value = float(ctx.args[1])
+            value = round(float(ctx.args[1]), 1)
         except ValueError:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Value must be a number.", **_SILENT
@@ -525,7 +529,7 @@ class TelegramBot:
             return
 
         try:
-            value = float(ctx.args[1])
+            value = round(float(ctx.args[1]), 1)
         except ValueError:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Value must be a number.", **_SILENT
@@ -604,12 +608,9 @@ class TelegramBot:
         def _fmt_thresholds(name: str) -> str:
             thr = db.get_threshold(name)
             low = db.get_threshold_low(name)
-            parts = []
-            if thr is not None:
-                parts.append(f"high: {thr}")
-            if low is not None:
-                parts.append(f"low: {low}")
-            return f"{name}: {', '.join(parts)}" if parts else f"{name}: not set"
+            ll = f"{low:g}" if low is not None else "--"
+            hh = f"{thr:g}" if thr is not None else "--"
+            return f"{name} {ll}/{hh}"
 
         if not ctx.args:
             lines = [_fmt_thresholds(n) for n in self._cfg.visible_sensors(user_id)]
