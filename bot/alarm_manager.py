@@ -67,20 +67,20 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"🔴 {sensor}: {value:.1f} > thr {threshold:.1f}"
+                msg = f"{sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
-                await self._notify(sensor, msg)
+                await self._notify(sensor, f"🔴 {msg}")
             elif (now - state.last_notified) >= self._threshold_repeat:
                 state.last_notified = now
-                msg = f"🔴 {sensor}: {value:.1f} > thr {threshold:.1f}"
+                msg = f"{sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
-                await self._notify(sensor, msg)
+                await self._notify(sensor, f"🔴 {msg}")
         else:
             if state.active:
                 state.active = False
-                msg = f"🟢 {sensor}: {value:.1f} < thr {threshold:.1f}"
+                msg = f"{sensor}: {value:.1f} < thr {threshold:.1f}"
                 db.insert_alarm(sensor, "OK", msg)
-                await self._notify(sensor, msg)
+                await self._notify(sensor, f"🟢 {msg}")
 
     async def check_threshold_low(self, sensor: str, value: float):
         threshold = db.get_threshold_low(sensor)
@@ -94,20 +94,20 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"🔴 {sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                msg = f"{sensor}: {value:.1f} < thr_low {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM_LOW", msg)
-                await self._notify(sensor, msg)
+                await self._notify(sensor, f"🔴 {msg}")
             elif (now - state.last_notified) >= self._threshold_repeat:
                 state.last_notified = now
-                msg = f"🔴 {sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                msg = f"{sensor}: {value:.1f} < thr_low {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM_LOW", msg)
-                await self._notify(sensor, msg)
+                await self._notify(sensor, f"🔴 {msg}")
         else:
             if state.active:
                 state.active = False
-                msg = f"🟢 {sensor}: {value:.1f} > thr_low {threshold:.1f}"
+                msg = f"{sensor}: {value:.1f} > thr_low {threshold:.1f}"
                 db.insert_alarm(sensor, "OK_LOW", msg)
-                await self._notify(sensor, msg)
+                await self._notify(sensor, f"🟢 {msg}")
 
     def _device_last_ts(self, device: DeviceConfig) -> int:
         """Most recent message timestamp across all topics of a device."""

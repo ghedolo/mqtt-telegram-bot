@@ -235,11 +235,12 @@ class TelegramBot:
         out = []
         for r in rows:
             msg = r["message"]
-            # old DB rows start with the word ALARM/OK — replace with emoji.
+            # emoji is derived from kind at display time; strip any leading
+            # marker left in historical rows (ALARM/OK word or 🔴/🟢).
             first, _, rest = msg.partition(" ")
-            if first in ("ALARM", "OK"):
-                msg = f"{dot.get(r['kind'], '')} {rest}"
-            out.append(f"[{_fmt_ts(r['ts'])}] {msg}")
+            if first in ("ALARM", "OK", "🔴", "🟢"):
+                msg = rest
+            out.append(f"[{_fmt_ts(r['ts'])}] {dot.get(r['kind'], '')} {msg}")
         return "\n".join(out)
 
     # ── sensor resolution ──────────────────────────────────────────────────────
