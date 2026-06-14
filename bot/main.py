@@ -63,7 +63,8 @@ async def main():
     tg.reset_alarm_fn = alarms.reset_sensor_alarm
 
     async def on_reading(sensor: str, value: float):
-        log.info("Reading: %s = %.2f", sensor, value)
+        value = round(value, 1)
+        log.info("Reading: %s = %.1f", sensor, value)
         db.insert_reading(sensor, value)
         await alarms.check_threshold(sensor, value)
         await alarms.check_threshold_low(sensor, value)
