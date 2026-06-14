@@ -107,8 +107,8 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 | `/csv <expr> [Nh]` | Download readings as CSV |
 | `/xlsx <expr> [Nh]` | Download readings as Excel (one sheet per sensor) |
 | `/last` | Last time any message arrived from MQTT (no content shown) |
-| `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions |
-| `/last5Alarm <name>` | Last 5 alarm events for a sensor |
+| `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
+| `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions (no arg = show active) |
 | `/helpExpr` | Sensor filter expression syntax |
 | `/myid` | Your Telegram user ID |

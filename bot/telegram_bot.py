@@ -231,9 +231,16 @@ class TelegramBot:
     def _fmt_alarms(self, rows) -> str:
         if not rows:
             return "No alarms recorded."
-        return "\n".join(
-            f"[{_fmt_ts(r['ts'])}] {r['message']}" for r in rows
-        )
+        dot = {"ALARM": "🔴", "ALARM_LOW": "🔴", "OK": "🟢", "OK_LOW": "🟢"}
+        out = []
+        for r in rows:
+            msg = r["message"]
+            # old DB rows start with the word ALARM/OK — replace with emoji.
+            first, _, rest = msg.partition(" ")
+            if first in ("ALARM", "OK"):
+                msg = f"{dot.get(r['kind'], '')} {rest}"
+            out.append(f"[{_fmt_ts(r['ts'])}] {msg}")
+        return "\n".join(out)
 
     # ── sensor resolution ──────────────────────────────────────────────────────
 

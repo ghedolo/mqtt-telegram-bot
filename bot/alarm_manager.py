@@ -67,18 +67,18 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
+                msg = f"🔴 {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(sensor, msg)
             elif (now - state.last_notified) >= self._threshold_repeat:
                 state.last_notified = now
-                msg = f"ALARM {sensor}: {value:.1f} > thr {threshold:.1f}"
+                msg = f"🔴 {sensor}: {value:.1f} > thr {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(sensor, msg)
         else:
             if state.active:
                 state.active = False
-                msg = f"OK {sensor}: {value:.1f} < thr {threshold:.1f}"
+                msg = f"🟢 {sensor}: {value:.1f} < thr {threshold:.1f}"
                 db.insert_alarm(sensor, "OK", msg)
                 await self._notify(sensor, msg)
 
@@ -94,18 +94,18 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"ALARM {sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                msg = f"🔴 {sensor}: {value:.1f} < thr_low {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM_LOW", msg)
                 await self._notify(sensor, msg)
             elif (now - state.last_notified) >= self._threshold_repeat:
                 state.last_notified = now
-                msg = f"ALARM {sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                msg = f"🔴 {sensor}: {value:.1f} < thr_low {threshold:.1f}"
                 db.insert_alarm(sensor, "ALARM_LOW", msg)
                 await self._notify(sensor, msg)
         else:
             if state.active:
                 state.active = False
-                msg = f"OK {sensor}: {value:.1f} > thr_low {threshold:.1f}"
+                msg = f"🟢 {sensor}: {value:.1f} > thr_low {threshold:.1f}"
                 db.insert_alarm(sensor, "OK_LOW", msg)
                 await self._notify(sensor, msg)
 
