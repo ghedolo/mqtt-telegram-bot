@@ -16,6 +16,9 @@
 
 **AckOff** — an Admin action that acknowledges an offline Alarm for a Device, suppressing repeat notifications until the Device reconnects (auto-clears on reconnect). Takes the Device key.
 
+**Mute** — a per-User, time-bounded suppression of **threshold** Alarm DMs for a Field, set via `/silent`. Lasts a whole number of hours, 1–12. While a User has a Field Muted, that User receives no threshold Alarm DM for it; the Alarm itself is unaffected (still fires, still recorded, still delivered to other Admins). Does not affect offline Alarms (see AckOff). Keyed by `(User, Sensor)`; stored with an expiry timestamp.
+_Avoid_: silence (reserved for the offline-ack state).
+
 **Access Group** — a named set of users (identified by chat_id) defined in credentials config. Referenced by Devices or Fields as `viewers` or `admins`. A user belongs to zero or more Access Groups.
 
 **Viewer** — a member of an Access Group assigned as `viewers` for a Field. Can issue read-only commands for that Field.
@@ -47,6 +50,7 @@
 | `/lastAlarm [name]` | Last alarm event (all or specific Sensor/Device) |
 | `/last5Alarm <name>` | Last 5 alarm events for a Sensor or Device |
 | `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions |
+| `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute; expr + `Nh` (1–12, clamped) = Mute for N hours |
 | `/myid` | Show own Telegram user ID |
 | `/help` | Show command list (admin-aware) |
 
@@ -55,7 +59,7 @@
 |---|---|
 | `/setAlarm <name> <value>` | Set alarm threshold for a Field (Sensor name) |
 | `/ackOff <device>` | Acknowledge offline alarm for a Device (suppresses repeats until Device reconnects) |
-| `/forgetSensor <device>` | Archive all readings for a Device to history; clear alarms, threshold, silence state |
+| `/forgetSensor <device>` | Archive all readings for a Device to history; clear alarms, threshold, offline-ack state |
 
 ### Superadmin-only commands
 | Command | Description |

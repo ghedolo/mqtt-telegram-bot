@@ -71,6 +71,13 @@ def init():
                 PRIMARY KEY (user_id, sensor)
             );
 
+            CREATE TABLE IF NOT EXISTS mutes (
+                chat_id  INTEGER NOT NULL,
+                sensor   TEXT    NOT NULL,
+                until_ts INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, sensor)
+            );
+
             CREATE TABLE IF NOT EXISTS readings_archive (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
                 sensor    TEXT    NOT NULL,
@@ -231,6 +238,43 @@ def is_silenced(sensor: str) -> bool:
             "SELECT sensor FROM silenced WHERE sensor=?", (sensor,)
         ).fetchone()
         return row is not None
+
+
+def mute_sensor(chat_id: int, sensor: str, until_ts: int):
+    with _conn() as con:
+        con.execute(
+            "INSERT OR REPLACE INTO mutes (chat_id, sensor, until_ts) VALUES (?, ?, ?)",
+            (chat_id, sensor, until_ts),
+        )
+
+
+def unmute_sensor(chat_id: int, sensor: str):
+    with _conn() as con:
+        con.execute(
+            "DELETE FROM mutes WHERE chat_id=? AND sensor=?", (chat_id, sensor)
+        )
+
+
+def is_muted(chat_id: int, sensor: str) -> bool:
+    now = int(time.time())
+    with _conn() as con:
+        con.execute("DELETE FROM mutes WHERE until_ts<=?", (now,))
+        row = con.execute(
+            "SELECT 1 FROM mutes WHERE chat_id=? AND sensor=? AND until_ts>?",
+            (chat_id, sensor, now),
+        ).fetchone()
+        return row is not None
+
+
+def get_active_mutes(chat_id: int) -> list[sqlite3.Row]:
+    now = int(time.time())
+    with _conn() as con:
+        con.execute("DELETE FROM mutes WHERE until_ts<=?", (now,))
+        return con.execute(
+            "SELECT sensor, until_ts FROM mutes WHERE chat_id=? AND until_ts>? "
+            "ORDER BY sensor",
+            (chat_id, now),
+        ).fetchall()
 
 
 def insert_alarm(sensor: str, kind: str, message: str):

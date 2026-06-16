@@ -50,6 +50,7 @@ class TelegramBot:
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("start", self._cmd_start))
         self._app.add_handler(CommandHandler("digest", self._cmd_digest))
+        self._app.add_handler(CommandHandler("silent", self._cmd_silent))
         self._app.add_handler(CommandHandler("list", self._cmd_list))
         self._app.add_handler(CommandHandler("get", self._cmd_get))
         self._app.add_handler(CommandHandler("setalarm", self._cmd_setalarm))
@@ -163,7 +164,7 @@ class TelegramBot:
 
     async def notify_sensor(self, sensor: str, text: str):
         for chat_id in self._cfg.viewers_of(sensor):
-            if db.is_dm_registered(chat_id):
+            if db.is_dm_registered(chat_id) and not db.is_muted(chat_id, sensor):
                 try:
                     await self._app.bot.send_message(chat_id=chat_id, text=text)
                 except Exception:
@@ -357,6 +358,70 @@ class TelegramBot:
             **_SILENT,
         )
 
+    async def _cmd_silent(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        user_id = update.effective_user.id
+
+        # no args: list this user's active mutes
+        if not ctx.args:
+            rows = db.get_active_mutes(user_id)
+            if not rows:
+                text = "No active mutes."
+            else:
+                now = int(time.time())
+                lines = [
+                    f"  {r['sensor']} — {self._fmt_remaining(r['until_ts'] - now)} left"
+                    for r in rows
+                ]
+                text = "Active mutes:\n" + "\n".join(lines)
+            await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
+            return
+
+        # last arg ending in h/H is the duration -> mute; otherwise -> unmute
+        last = ctx.args[-1]
+        m = re.fullmatch(r"(\d+)[hH]", last)
+        if m:
+            hours = min(12, max(1, int(m.group(1))))
+            names = self._resolve_sensors(ctx.args[:-1], user_id)
+            if not names:
+                await self._app.bot.send_message(
+                    chat_id=reply_chat, text="No matching sensors.", **_SILENT
+                )
+                return
+            until = int(time.time()) + hours * 3600
+            for name in names:
+                db.mute_sensor(user_id, name, until)
+            await self._app.bot.send_message(
+                chat_id=reply_chat,
+                text=f"🔇 Muted {len(names)} field(s) for {hours}h",
+                **_SILENT,
+            )
+            return
+
+        # unmute
+        names = self._resolve_sensors(ctx.args, user_id)
+        if not names:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="No matching sensors.", **_SILENT
+            )
+            return
+        for name in names:
+            db.unmute_sensor(user_id, name)
+        await self._app.bot.send_message(
+            chat_id=reply_chat,
+            text=f"🔔 Unmuted {len(names)} field(s)",
+            **_SILENT,
+        )
+
+    @staticmethod
+    def _fmt_remaining(secs: int) -> str:
+        secs = max(0, secs)
+        h = secs // 3600
+        m = (secs % 3600) // 60
+        return f"{h}h{m:02d}m"
+
     async def _cmd_myid(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await self._app.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -377,6 +442,7 @@ class TelegramBot:
             "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/digest [expr on|off] — manage daily digest subscriptions\n"
+            "/silent [expr [Nh]] — mute alarm DMs (no args=list, expr only=unmute, 1-12h)\n"
             "/list — list all sensors\n"
             "/myid — show your Telegram user ID"
         )
