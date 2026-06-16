@@ -11,7 +11,7 @@ mqtt_client.py   →  subscribes to MQTT topics, calls on_reading() for each mes
 alarm_manager.py →  checks threshold and offline conditions, sends alarm notifications
 telegram_bot.py  →  handles all Telegram commands and scheduled digest
 db.py            →  SQLite storage: readings, thresholds, alarms, silence state
-graph.py         →  matplotlib chart generation (multi-sensor, min/max markers)
+graph.py         →  matplotlib chart generation (multi-sensor, min/max markers, glitch filtering, gap breaks)
 config.py        →  loads sensors.yaml + credentials.yaml
 main.py          →  entry point: wires components, runs periodic tasks
 ```
@@ -70,6 +70,8 @@ devices:
         unit: "°C"                 # optional
         defaultAlarmHigh: 30.0     # optional, seeds high threshold on first run
         defaultAlarmLow: 10.0      # optional, seeds low threshold on first run
+        validMin: -20              # optional, plausible range floor (glitch filter)
+        validMax: 80               # optional, plausible range ceiling (glitch filter)
         viewers: [other_group]     # optional: overrides device-level viewers (replaces, not merges)
         admins: [other_group]      # optional: overrides device-level admins (replaces, not merges)
 
@@ -83,6 +85,15 @@ defaults:
 Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed).
 
 Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently.
+
+### Glitch filtering and graph gaps
+
+All raw readings are always stored in the DB. The optional per-field `validMin`/`validMax` bounds filter only downstream:
+
+- **Alarms** — a reading outside the range is stored but skipped for threshold checks, so a one-sample spike doesn't fire a false alarm.
+- **Graphs** — out-of-range points are dropped from the line (no vertical spike). Each discarded reading is flagged with a tiny ▼ (above `validMax`, top edge) or ▲ (below `validMin`, bottom edge) at its timestamp, and the title shows `N fuori scala`. min/max stats use in-range values only.
+- **Data gaps** — when the time between consecutive readings exceeds `interval × 2.5`, the graph line breaks instead of drawing a segment across the silence.
+- `/csv` and `/xlsx` exports stay raw (unfiltered) for auditing a noisy sensor.
 
 ### `credentials.yaml`
 
@@ -204,18 +215,18 @@ Numbers extracted from local session transcripts.
 
 - **First message:** 2026-06-03
 - **Last message:** 2026-06-16
-- **Sessions:** 12 — 3716 messages (1485 user + 2231 assistant)
-- **Active conversation time:** ~1001 min (~16h 41m)
+- **Sessions:** 12 — 3738 messages (1494 user + 2244 assistant)
+- **Active conversation time:** ~1006 min (~16h 46m)
 
 *Active time: sum of consecutive gaps ≤ 5 min across all sessions. Longer gaps discarded.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 145,529 |
-| Output | 1,036,295 |
-| Cache write | 4,420,147 |
-| Cache read | 161,608,325 |
-| **Total** | **~167 M** |
+| Input (non-cache) | 145,978 |
+| Output | 1,040,774 |
+| Cache write | 4,429,359 |
+| Cache read | 162,424,229 |
+| **Total** | **~168 M** |
 
 ### Caveman mode
 
