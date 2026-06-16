@@ -16,8 +16,11 @@ _STYLES = ["-", "--", "-.", ":"]
 _INDICATORS = {"-": "─────", "--": "╌╌╌╌╌", "-.": "─·─·─", ":": "·····"}
 
 
+_GAP_FACTOR = 2.5  # break the line when the time between readings exceeds interval * this
+
+
 def build(
-    sensors: list[tuple[str, Optional[float], str, Optional[float], Optional[float]]],
+    sensors: list[tuple[str, Optional[float], str, Optional[float], Optional[float], int]],
     hours: int = 8,
 ) -> io.BytesIO:
     n = len(sensors)
@@ -33,18 +36,26 @@ def build(
     # blended transform: x in data coords, y in axes fraction (edge markers)
     edge_tf = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
 
-    for i, (name, threshold, unit, vmin_b, vmax_b) in enumerate(sensors):
+    for i, (name, threshold, unit, vmin_b, vmax_b, interval) in enumerate(sensors):
         rows = db.get_history(name, seconds=hours * 3600)
         color = _COLORS[i % len(_COLORS)]
         style = _STYLES[i // len(_COLORS)]
         indicator = _INDICATORS.get(style, "─────")
         padded = name.ljust(max_name_len)
 
+        gap_thr = interval * _GAP_FACTOR
         times, line_vals, in_vals = [], [], []
         hi_times, lo_times = [], []  # discarded above / below range
+        prev_ts = None
         for r in rows:
-            t = datetime.fromtimestamp(r["ts"])
+            ts = r["ts"]
+            t = datetime.fromtimestamp(ts)
             v = r["value"]
+            # missing data: break the line so no segment bridges the silence
+            if prev_ts is not None and (ts - prev_ts) > gap_thr:
+                times.append(datetime.fromtimestamp(prev_ts + 1))
+                line_vals.append(math.nan)
+            prev_ts = ts
             times.append(t)
             if vmax_b is not None and v > vmax_b:
                 hi_times.append(t)

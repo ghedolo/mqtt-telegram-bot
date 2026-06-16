@@ -683,7 +683,8 @@ class TelegramBot:
 
         sensor_list = [
             (n, db.get_threshold(n), self._cfg.sensors[n].unit,
-             self._cfg.sensors[n].valid_min, self._cfg.sensors[n].valid_max)
+             self._cfg.sensors[n].valid_min, self._cfg.sensors[n].valid_max,
+             self._cfg.sensors[n].interval)
             for n in names
         ]
         try:
