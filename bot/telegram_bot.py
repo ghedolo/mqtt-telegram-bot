@@ -681,7 +681,11 @@ class TelegramBot:
             )
             return
 
-        sensor_list = [(n, db.get_threshold(n), self._cfg.sensors[n].unit) for n in names]
+        sensor_list = [
+            (n, db.get_threshold(n), self._cfg.sensors[n].unit,
+             self._cfg.sensors[n].valid_min, self._cfg.sensors[n].valid_max)
+            for n in names
+        ]
         try:
             buf = graph.build(sensor_list, hours=hours)
         except Exception as e:

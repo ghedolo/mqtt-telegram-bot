@@ -66,6 +66,9 @@ async def main():
         value = round(value, 1)
         log.info("Reading: %s = %.1f", sensor, value)
         db.insert_reading(sensor, value)
+        if not cfg.is_valid(sensor, value):
+            log.info("Out-of-range reading ignored for alarms: %s = %.1f", sensor, value)
+            return
         await alarms.check_threshold(sensor, value)
         await alarms.check_threshold_low(sensor, value)
 

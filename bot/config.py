@@ -13,6 +13,8 @@ class SensorConfig:
     unit: str
     default_alarm_high: Optional[float]
     default_alarm_low: Optional[float]
+    valid_min: Optional[float] = None
+    valid_max: Optional[float] = None
     viewers: list[str] = field(default_factory=list)
     admins: list[str] = field(default_factory=list)
     device_key: str = ""
@@ -78,6 +80,18 @@ class AppConfig:
 
     def is_superadmin(self, user_id: int) -> bool:
         return user_id in self.superadmin
+
+    def is_valid(self, sensor: str, value: float) -> bool:
+        """True if value is within the sensor's plausible range (raw glitch filter).
+        Range bounds are optional; an absent bound is not enforced."""
+        sc = self.sensors.get(sensor)
+        if sc is None:
+            return True
+        if sc.valid_min is not None and value < sc.valid_min:
+            return False
+        if sc.valid_max is not None and value > sc.valid_max:
+            return False
+        return True
 
     def visible_sensors(self, user_id: int) -> list[str]:
         return [n for n in self.sensors if self.is_viewer(user_id, n)]
@@ -191,6 +205,8 @@ def load(
                 unit=fv.get("unit", ""),
                 default_alarm_high=float(fv["defaultAlarmHigh"]) if "defaultAlarmHigh" in fv else None,
                 default_alarm_low=float(fv["defaultAlarmLow"]) if "defaultAlarmLow" in fv else None,
+                valid_min=float(fv["validMin"]) if "validMin" in fv else None,
+                valid_max=float(fv["validMax"]) if "validMax" in fv else None,
                 viewers=f_viewers,
                 admins=f_admins,
                 device_key=dev_key,
