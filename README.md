@@ -109,6 +109,8 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 Only the **user commands** below are registered with Telegram via `set_my_commands`, so they appear in the client's `/` autocomplete menu. Admin and superadmin commands are intentionally left out of the menu but their handlers still work when typed.
 
+> Tapping a command in Telegram's `/` menu sends it immediately, before you can type an argument (fixed client behaviour). For commands that need an argument (`/graph`, `/csv`, `/xlsx`, `/last5Alarm`), sending them bare replies with a `ForceReply` prompt — just reply with the argument and the command runs.
+
 ### User commands
 
 | Command | Description |

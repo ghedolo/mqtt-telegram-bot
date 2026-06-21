@@ -10,12 +10,20 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    BotCommand,
+    ForceReply,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
     TypeHandler,
+    filters,
 )
 
 from .config import AppConfig
@@ -71,8 +79,18 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("csv", self._cmd_csv))
         self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
         self._app.add_handler(CommandHandler("usersActivity", self._cmd_usersactivity))
+        # captures replies to ForceReply argument prompts (menu commands that
+        # Telegram sends immediately, before the user can type an argument)
+        self._app.add_handler(
+            MessageHandler(
+                filters.REPLY & filters.TEXT & ~filters.COMMAND, self._on_arg_reply
+            )
+        )
         # runs first on every update: record last interaction per user
         self._app.add_handler(TypeHandler(Update, self._record_activity), group=-1)
+
+        # message_id of a pending ForceReply prompt -> command key to dispatch
+        self._arg_prompts: dict[int, str] = {}
 
     # ── token helpers ──────────────────────────────────────────────────────────
 
@@ -138,6 +156,43 @@ class TelegramBot:
             return user_id
         await self._send_registration_prompt(user_id, chat_id)
         return None
+
+    # ── ForceReply argument prompts ─────────────────────────────────────────────
+
+    # command key -> (handler, prompt text, input field placeholder)
+    _ARG_DISPATCH: dict[str, tuple[str, str]] = {
+        "graph": ("📊 /graph — send: <expr> [Nh]", "expr [Nh]"),
+        "csv": ("📄 /csv — send: <expr> [Nh]", "expr [Nh]"),
+        "xlsx": ("📑 /xlsx — send: <expr> [Nh]", "expr [Nh]"),
+        "last5alarm": ("🔔 /last5Alarm — send: <sensor>", "sensor"),
+    }
+
+    async def _prompt_args(self, reply_chat: int, cmd_key: str):
+        """Ask the user for arguments via ForceReply; routed back in _on_arg_reply."""
+        text, placeholder = self._ARG_DISPATCH[cmd_key]
+        msg = await self._app.bot.send_message(
+            chat_id=reply_chat,
+            text=text,
+            reply_markup=ForceReply(input_field_placeholder=placeholder),
+            **_SILENT,
+        )
+        self._arg_prompts[msg.message_id] = cmd_key
+
+    async def _on_arg_reply(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        msg = update.message
+        if msg is None or msg.reply_to_message is None:
+            return
+        cmd_key = self._arg_prompts.pop(msg.reply_to_message.message_id, None)
+        if cmd_key is None:
+            return
+        handlers = {
+            "graph": self._cmd_graph,
+            "csv": self._cmd_csv,
+            "xlsx": self._cmd_xlsx,
+            "last5alarm": self._cmd_last5alarm,
+        }
+        ctx.args = (msg.text or "").split()
+        await handlers[cmd_key](update, ctx)
 
     async def _record_activity(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         u = update.effective_user
@@ -724,9 +779,7 @@ class TelegramBot:
             return
 
         if not ctx.args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /graph <expr> [Nh]", **_SILENT
-            )
+            await self._prompt_args(reply_chat, "graph")
             return
 
         args = list(ctx.args)
@@ -827,9 +880,7 @@ class TelegramBot:
         user_id = update.effective_user.id
 
         if not ctx.args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /last5Alarm <sensor>", **_SILENT
-            )
+            await self._prompt_args(reply_chat, "last5alarm")
             return
         name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
@@ -982,9 +1033,7 @@ class TelegramBot:
             return
 
         if not ctx.args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /csv <expr> [Nh]", **_SILENT
-            )
+            await self._prompt_args(reply_chat, "csv")
             return
 
         args = list(ctx.args)
@@ -1044,9 +1093,7 @@ class TelegramBot:
             return
 
         if not ctx.args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /xlsx <expr> [Nh]", **_SILENT
-            )
+            await self._prompt_args(reply_chat, "xlsx")
             return
 
         args = list(ctx.args)
