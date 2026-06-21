@@ -182,7 +182,7 @@ class TelegramBot:
         )
         self._arg_prompts[msg.message_id] = cmd_key
         # reply_chat is the user's DM id; fallback for clients that ignore ForceReply
-        self._pending[reply_chat] = (cmd_key, time.time())
+        self._pending[reply_chat] = (cmd_key, time.time(), msg.message_id)
 
     async def _on_arg_reply(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg = update.message
@@ -191,21 +191,32 @@ class TelegramBot:
         user_id = update.effective_user.id
 
         cmd_key = None
+        prompt_id = None
         # phone: argument arrives as a reply to the ForceReply prompt
         if msg.reply_to_message is not None:
             cmd_key = self._arg_prompts.pop(msg.reply_to_message.message_id, None)
+            if cmd_key is not None:
+                prompt_id = msg.reply_to_message.message_id
         # browser: ForceReply focus ignored -> plain follow-up message
         if cmd_key is None:
             pending = self._pending.get(user_id)
             if pending is not None:
-                key, ts = pending
+                key, ts, pid = pending
                 self._pending.pop(user_id, None)
                 if time.time() - ts <= self._ARG_PENDING_WINDOW:
                     cmd_key = key
+                    prompt_id = pid
         if cmd_key is None:
             return
 
         self._pending.pop(user_id, None)
+        # remove the ForceReply prompt so its reply box clears on every client
+        if prompt_id is not None:
+            self._arg_prompts.pop(prompt_id, None)
+            try:
+                await self._app.bot.delete_message(chat_id=user_id, message_id=prompt_id)
+            except Exception:
+                log.debug("could not delete arg prompt %s", prompt_id)
         handlers = {
             "graph": self._cmd_graph,
             "csv": self._cmd_csv,
