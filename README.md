@@ -188,8 +188,7 @@ Every 24 hours the bot moves readings older than `retention_days` from `readings
 
 - **Threshold alarms** — sent via DM to admins of the affected field (sensor).
 - **Offline alarms** — one alarm per device, sent via DM to admins of fields for which the user has an active `/digest` subscription.
-- **Daily digest** — sent via DM to each user, showing only their subscribed sensors grouped by device. Subscriptions start empty; manage with `/digest`.
-- **Group daily message** — uptime only (`🟢 live since Xd Yh`), no sensor data.
+- **Daily digest** — sent via DM to each user, showing only their subscribed sensors grouped by device. Subscriptions start empty; manage with `/digest`. No daily message is posted to the group — the digest is per-user DM only.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
 - Bot replies never quote or echo user input.
 
