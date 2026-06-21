@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -1103,11 +1103,34 @@ class TelegramBot:
                 chat_id=reply_chat, text=f"XLSX error: {e}", **_SILENT
             )
 
+    async def _set_user_commands(self):
+        # User-level commands only; admin/superadmin commands stay out of the
+        # autocomplete menu but their handlers still work when typed.
+        cmds = [
+            BotCommand("get", "show sensors (no args = digest)"),
+            BotCommand("getalarm", "show alarm threshold(s)"),
+            BotCommand("graph", "chart <expr> [Nh] (default 8h)"),
+            BotCommand("csv", "download readings as CSV"),
+            BotCommand("xlsx", "download readings as Excel"),
+            BotCommand("last", "last time anything arrived from MQTT"),
+            BotCommand("lastalarms", "alarms in last N hours"),
+            BotCommand("last5alarm", "last 5 alarms for a sensor"),
+            BotCommand("digest", "manage daily digest subscriptions"),
+            BotCommand("silent", "mute alarm DMs"),
+            BotCommand("list", "list all sensors"),
+            BotCommand("myid", "show your Telegram user ID"),
+            BotCommand("helpexpr", "expression syntax help"),
+            BotCommand("help", "show command help"),
+            BotCommand("start", "start the bot"),
+        ]
+        await self._app.bot.set_my_commands(cmds)
+
     async def run(self):
         await self._app.initialize()
         await self._app.start()
         me = await self._app.bot.get_me()
         self._bot_username = me.username
+        await self._set_user_commands()
         await self._app.updater.start_polling(
             drop_pending_updates=True,
             poll_interval=self._cfg.poll_interval,

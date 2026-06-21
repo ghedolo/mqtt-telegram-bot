@@ -107,6 +107,8 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 ## Bot commands
 
+Only the **user commands** below are registered with Telegram via `set_my_commands`, so they appear in the client's `/` autocomplete menu. Admin and superadmin commands are intentionally left out of the menu but their handlers still work when typed.
+
 ### User commands
 
 | Command | Description |
