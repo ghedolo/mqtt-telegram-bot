@@ -79,18 +79,20 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("csv", self._cmd_csv))
         self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
         self._app.add_handler(CommandHandler("usersActivity", self._cmd_usersactivity))
-        # captures replies to ForceReply argument prompts (menu commands that
-        # Telegram sends immediately, before the user can type an argument)
+        # captures the argument for menu commands that Telegram sends
+        # immediately. Catches both replies to the ForceReply prompt (phone)
+        # and a plain follow-up message (browser ignores ForceReply focus).
         self._app.add_handler(
-            MessageHandler(
-                filters.REPLY & filters.TEXT & ~filters.COMMAND, self._on_arg_reply
-            )
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_arg_reply)
         )
         # runs first on every update: record last interaction per user
         self._app.add_handler(TypeHandler(Update, self._record_activity), group=-1)
 
         # message_id of a pending ForceReply prompt -> command key to dispatch
         self._arg_prompts: dict[int, str] = {}
+        # user_id -> (command key, prompt timestamp); fallback when the client
+        # does not reply to the prompt (e.g. Telegram Web). 30s window.
+        self._pending: dict[int, tuple[str, float]] = {}
 
     # ── token helpers ──────────────────────────────────────────────────────────
 
@@ -167,6 +169,8 @@ class TelegramBot:
         "last5alarm": ("🔔 /last5Alarm — send: <sensor>", "sensor"),
     }
 
+    _ARG_PENDING_WINDOW = 30  # seconds a bare command waits for its argument
+
     async def _prompt_args(self, reply_chat: int, cmd_key: str):
         """Ask the user for arguments via ForceReply; routed back in _on_arg_reply."""
         text, placeholder = self._ARG_DISPATCH[cmd_key]
@@ -177,21 +181,38 @@ class TelegramBot:
             **_SILENT,
         )
         self._arg_prompts[msg.message_id] = cmd_key
+        # reply_chat is the user's DM id; fallback for clients that ignore ForceReply
+        self._pending[reply_chat] = (cmd_key, time.time())
 
     async def _on_arg_reply(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg = update.message
-        if msg is None or msg.reply_to_message is None:
+        if msg is None or not msg.text:
             return
-        cmd_key = self._arg_prompts.pop(msg.reply_to_message.message_id, None)
+        user_id = update.effective_user.id
+
+        cmd_key = None
+        # phone: argument arrives as a reply to the ForceReply prompt
+        if msg.reply_to_message is not None:
+            cmd_key = self._arg_prompts.pop(msg.reply_to_message.message_id, None)
+        # browser: ForceReply focus ignored -> plain follow-up message
+        if cmd_key is None:
+            pending = self._pending.get(user_id)
+            if pending is not None:
+                key, ts = pending
+                self._pending.pop(user_id, None)
+                if time.time() - ts <= self._ARG_PENDING_WINDOW:
+                    cmd_key = key
         if cmd_key is None:
             return
+
+        self._pending.pop(user_id, None)
         handlers = {
             "graph": self._cmd_graph,
             "csv": self._cmd_csv,
             "xlsx": self._cmd_xlsx,
             "last5alarm": self._cmd_last5alarm,
         }
-        ctx.args = (msg.text or "").split()
+        ctx.args = msg.text.split()
         await handlers[cmd_key](update, ctx)
 
     async def _record_activity(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
