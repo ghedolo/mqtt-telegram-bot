@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY bot/ bot/
-COPY sensors.yaml .
+COPY sensors.d/ sensors.d/
 
 RUN groupadd -r -g 999 bot && useradd -r -u 999 -g bot -d /app -s /usr/sbin/nologin bot \
     && mkdir -p data tmp \

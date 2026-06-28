@@ -4,8 +4,7 @@ data/
 diary.md
 credentials.yaml
 credentials.yaml.example
-sensors.yaml
-sensors.yaml.example
+sensors.d/
 telegramData.txt
 devstats.py
 __pycache__/

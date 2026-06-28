@@ -25,7 +25,7 @@ _DEBUG_LEVELS = {
 
 async def main():
     bot_start = _time.time()
-    cfg = load("sensors.yaml", "credentials.yaml")
+    cfg = load("sensors.d", "credentials.yaml")
     level = _DEBUG_LEVELS.get(cfg.debug, logging.INFO)
     logging.getLogger().setLevel(level)
     db.init()
@@ -38,7 +38,7 @@ async def main():
             db.set_threshold_low(sc.name, sc.default_alarm_low)
             log.info("Low threshold for %s set from config: %s", sc.name, sc.default_alarm_low)
 
-    tg = TelegramBot(cfg, reload_fn=lambda: load("sensors.yaml", "credentials.yaml"))
+    tg = TelegramBot(cfg, reload_fn=lambda: load("sensors.d", "credentials.yaml"))
 
     async def notify(sensor: str, text: str):
         try:

@@ -12,7 +12,7 @@ alarm_manager.py →  checks threshold and offline conditions, sends alarm notif
 telegram_bot.py  →  handles all Telegram commands and scheduled digest
 db.py            →  SQLite storage: readings, thresholds, alarms, silence state
 graph.py         →  matplotlib chart generation (multi-sensor, min/max markers, glitch filtering, gap breaks)
-config.py        →  loads sensors.yaml + credentials.yaml
+config.py        →  loads sensors.d/ (recursive) + credentials.yaml
 main.py          →  entry point: wires components, runs periodic tasks
 ```
 
@@ -42,7 +42,7 @@ git clone https://github.com/ghedolo/mqtt-telegram-bot.git
 cd mqtt-telegram-bot
 cp credentials.yaml.example credentials.yaml
 # edit credentials.yaml
-# create sensors.yaml (see Configuration below)
+# create the sensors.d/ config dir (see Configuration below)
 docker compose up -d
 ```
 
@@ -50,9 +50,13 @@ docker compose up -d
 
 ## Configuration
 
-### `sensors.yaml`
+### `sensors.d/`
+
+Sensor config lives in the **`sensors.d/` directory**, not a single file. Every `*.yaml` / `*.yml` file under it is read **recursively** (subfolders allowed) and merged at startup — split devices however you like (e.g. one file per device or per building). Files are merged in sorted path order; a file named `00-defaults.yaml` therefore sorts first. A duplicate device key across files is a hard error. Convert an old monolithic `sensors.yaml` with `python3 migrate_sensors.py`.
 
 Sensors are grouped under **devices**. Each device maps to one MQTT topic (or per-field topics for devices that publish each value separately). The sensor name used in all commands is derived as `{device_key}_{field_key}`. Sensor names are **case-insensitive** in commands (e.g. `Office_Temp` matches `office_temp`); config parsing rejects two names that differ only by case.
+
+Each file holds a `devices:` block (and optionally a shared `defaults:` block):
 
 ```yaml
 devices:
@@ -99,7 +103,7 @@ All raw readings are always stored in the DB. The optional per-field `validMin`/
 
 See [`credentials.yaml.example`](credentials.yaml.example).
 
-Access Groups are defined at the top level of `credentials.yaml` and referenced by name in `sensors.yaml`.
+Access Groups are defined at the top level of `credentials.yaml` and referenced by name in `sensors.d/`.
 
 `superadmin` is a flat list of Telegram `chat_id`s with access to `/forgetSensor` and `/reloadConfig`. Independent of sensor-level groups.
 
@@ -144,7 +148,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | Command | Description |
 |---|---|
 | `/forgetSensor <device>` | Archive all field readings for a device, clear alarm history and silence state |
-| `/reloadConfig` | Reload `sensors.yaml` and `credentials.yaml` without restart |
+| `/reloadConfig` | Reload `sensors.d/` and `credentials.yaml` without restart |
 | `/usersActivity` | Last interaction time per user (name, username, id, timestamp). Bot records this itself — Telegram does not expose user last-seen |
 
 ### Sensor filter expressions (`/helpExpr`)
@@ -179,7 +183,7 @@ Users with no group assignment see no sensors.
 
 Readings are stored in SQLite in two tables:
 
-- `readings` — active window (default 30 days, set via `retention_days` in `sensors.yaml`)
+- `readings` — active window (default 30 days, set via `retention_days` in `sensors.d/`)
 - `readings_archive` — all readings older than the retention window, kept indefinitely
 
 Every 24 hours the bot moves readings older than `retention_days` from `readings` to `readings_archive`. No data is ever deleted automatically.

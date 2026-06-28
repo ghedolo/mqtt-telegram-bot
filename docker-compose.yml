@@ -12,7 +12,7 @@ services:
       - /app/tmp
     volumes:
       - ./data:/app/data
-      - ./sensors.yaml:/app/sensors.yaml:ro
+      - ./sensors.d:/app/sensors.d:ro
       - ./credentials.yaml:/app/credentials.yaml:ro
     environment:
       - TZ=Europe/Rome

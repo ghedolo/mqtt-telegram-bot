@@ -1,3 +1,4 @@
+import os
 import yaml
 from dataclasses import dataclass, field
 from typing import Optional
@@ -126,11 +127,50 @@ def _load_yaml(path: str) -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _collect_yaml_files(d: str) -> list[str]:
+    """All *.yaml / *.yml under d, recursing into subdirectories, sorted."""
+    files: list[str] = []
+    for root, _dirs, names in os.walk(d):
+        for n in names:
+            if n.endswith((".yaml", ".yml")):
+                files.append(os.path.join(root, n))
+    return sorted(files)
+
+
+def _load_sensors_dir(d: str) -> dict:
+    """Merge every YAML file under d into one {defaults, devices} dict.
+
+    Recurses into subfolders. Later files (sorted order) win on `defaults`
+    keys; duplicate device keys across files are a hard error."""
+    if not os.path.isdir(d):
+        raise FileNotFoundError(f"Sensors directory not found: {d!r}")
+    files = _collect_yaml_files(d)
+    if not files:
+        raise ValueError(f"No .yaml files found under {d!r}")
+
+    defaults: dict = {}
+    devices: dict = {}
+    origin: dict[str, str] = {}
+    for fp in files:
+        data = _load_yaml(fp)
+        for k, v in (data.get("defaults") or {}).items():
+            defaults[k] = v
+        for dev_key, dv in (data.get("devices") or {}).items():
+            if dev_key in devices:
+                raise ValueError(
+                    f"Duplicate device key {dev_key!r} in {fp!r} "
+                    f"(already defined in {origin[dev_key]!r})"
+                )
+            devices[dev_key] = dv
+            origin[dev_key] = fp
+    return {"defaults": defaults, "devices": devices}
+
+
 def load(
-    public: str = "sensors.yaml",
+    public: str = "sensors.d",
     secret: str = "credentials.yaml",
 ) -> AppConfig:
-    raw = _load_yaml(public)
+    raw = _load_sensors_dir(public)
     sec = _load_yaml(secret)
 
     defaults = raw.get("defaults", {})
