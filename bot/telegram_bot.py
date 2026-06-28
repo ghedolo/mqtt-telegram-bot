@@ -75,7 +75,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
         self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
         self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
-        self._app.add_handler(CommandHandler("helpExpr", self._cmd_helpexpr))
+        self._app.add_handler(CommandHandler("exprSyntax", self._cmd_exprsyntax))
         self._app.add_handler(CommandHandler("csv", self._cmd_csv))
         self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
         self._app.add_handler(CommandHandler("usersActivity", self._cmd_usersactivity))
@@ -520,7 +520,7 @@ class TelegramBot:
         reply_chat = update.effective_chat.id
         text = (
             "Commands:\n"
-            "/get [expr] — show sensors (no args = digest sensors; /helpExpr for syntax)\n"
+            "/get [expr] — show sensors (no args = digest sensors; /exprSyntax for syntax)\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h)\n"
             "/csv <expr> [Nh] — download readings as CSV\n"
@@ -552,7 +552,7 @@ class TelegramBot:
             )
         await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
 
-    async def _cmd_helpexpr(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    async def _cmd_exprsyntax(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
             return
@@ -1198,7 +1198,7 @@ class TelegramBot:
             BotCommand("silent", "mute alarm DMs"),
             BotCommand("list", "list all sensors"),
             BotCommand("myid", "show your Telegram user ID"),
-            BotCommand("helpexpr", "expression syntax help"),
+            BotCommand("exprsyntax", "expression syntax help"),
             BotCommand("help", "show command help"),
             BotCommand("start", "start the bot"),
         ]

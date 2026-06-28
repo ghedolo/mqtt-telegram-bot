@@ -122,7 +122,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | Command | Description |
 |---|---|
 | `/list` | All devices — one line per device with all visible fields and thresholds |
-| `/get [expr]` | Filtered sensors (no arg = personal digest subscriptions; see `/helpExpr`) |
+| `/get [expr]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h) |
 | `/csv <expr> [Nh]` | Download readings as CSV |
@@ -131,7 +131,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions (no arg = show active) |
-| `/helpExpr` | Sensor filter expression syntax |
+| `/exprSyntax` | Sensor filter expression syntax |
 | `/myid` | Your Telegram user ID |
 | `/help` | Command list |
 
@@ -153,7 +153,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/reloadConfig` | Reload `sensors.d/` and `credentials.yaml` without restart |
 | `/usersActivity` | Last interaction time per user (name, username, id, timestamp). Bot records this itself — Telegram does not expose user last-seen |
 
-### Sensor filter expressions (`/helpExpr`)
+### Sensor filter expressions (`/exprSyntax`)
 
 | Pattern | Matches |
 |---|---|
