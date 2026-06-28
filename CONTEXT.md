@@ -35,7 +35,7 @@ _Avoid_: silence (reserved for the offline-ack state).
 
 **HMAC Token** — a time-limited (24h TTL) signed token embedded in a Telegram start deep link (`t.me/botname?start=<token>`). Encodes the target chat_id and a timestamp. Verified on `/start` to ensure only the intended User completes DM Registration.
 
-**Sensor Config** — YAML files in the `sensors.d/` directory (read recursively and merged at startup in sorted path order; duplicate Device keys across files are rejected) defining Devices under a `devices:` key. Each Device declares its Topic, interval, info label, optional note, and default `viewers`/`admins` Access Group lists. Fields are nested under `fields:` within each Device. Field-level `viewers`/`admins` fully replace (not merge with) Device-level defaults when present. Devices without any `viewers` or `admins` on any Field are visible to nobody (fail-closed).
+**Sensor Config** — YAML files in the `sensors.d/` directory (read recursively and merged at startup; duplicate Device keys across files are rejected) defining Devices under a `devices:` key. The shared `defaults:` block is allowed only in `00-defaults.yaml`; every other file must contain nothing but `devices:` (any stray top-level key is a hard error). Each Device declares its Topic, interval, info label, optional note, and default `viewers`/`admins` Access Group lists. Fields are nested under `fields:` within each Device. Field-level `viewers`/`admins` fully replace (not merge with) Device-level defaults when present. Devices without any `viewers` or `admins` on any Field are visible to nobody (fail-closed).
 
 ## Bot Commands
 

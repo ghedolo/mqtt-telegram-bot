@@ -52,11 +52,13 @@ docker compose up -d
 
 ### `sensors.d/`
 
-Sensor config lives in the **`sensors.d/` directory**, not a single file. Every `*.yaml` / `*.yml` file under it is read **recursively** (subfolders allowed) and merged at startup — split devices however you like (e.g. one file per device or per building). Files are merged in sorted path order; a file named `00-defaults.yaml` therefore sorts first. A duplicate device key across files is a hard error. Convert an old monolithic `sensors.yaml` with `python3 migrate_sensors.py`.
+Sensor config lives in the **`sensors.d/` directory**, not a single file. Every `*.yaml` / `*.yml` file under it is read **recursively** (subfolders allowed) and merged at startup — split devices however you like (e.g. one file per device or per building). A duplicate device key across files is a hard error. Convert an old monolithic `sensors.yaml` with `python3 migrate_sensors.py`.
+
+The shared **`defaults:` block lives only in `00-defaults.yaml`** (which may also carry `devices:`). Every other file must contain **nothing but `devices:`** — any stray top-level key is a hard error, so there is no ambiguity about where defaults come from.
 
 Sensors are grouped under **devices**. Each device maps to one MQTT topic (or per-field topics for devices that publish each value separately). The sensor name used in all commands is derived as `{device_key}_{field_key}`. Sensor names are **case-insensitive** in commands (e.g. `Office_Temp` matches `office_temp`); config parsing rejects two names that differ only by case.
 
-Each file holds a `devices:` block (and optionally a shared `defaults:` block):
+A device file (`devices:` only); the `defaults:` block at the bottom is valid only inside `00-defaults.yaml`:
 
 ```yaml
 devices:

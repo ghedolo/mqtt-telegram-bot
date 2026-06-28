@@ -137,11 +137,17 @@ def _collect_yaml_files(d: str) -> list[str]:
     return sorted(files)
 
 
+# Only this file may carry a `defaults:` block; every other file under
+# sensors.d/ must contain nothing but `devices:`.
+DEFAULTS_FILE = "00-defaults.yaml"
+
+
 def _load_sensors_dir(d: str) -> dict:
     """Merge every YAML file under d into one {defaults, devices} dict.
 
-    Recurses into subfolders. Later files (sorted order) win on `defaults`
-    keys; duplicate device keys across files are a hard error."""
+    Recurses into subfolders. `defaults:` is allowed only in DEFAULTS_FILE
+    (which may also hold `devices:`); any other file may contain only a
+    `devices:` block. Duplicate device keys across files are a hard error."""
     if not os.path.isdir(d):
         raise FileNotFoundError(f"Sensors directory not found: {d!r}")
     files = _collect_yaml_files(d)
@@ -153,8 +159,17 @@ def _load_sensors_dir(d: str) -> dict:
     origin: dict[str, str] = {}
     for fp in files:
         data = _load_yaml(fp)
-        for k, v in (data.get("defaults") or {}).items():
-            defaults[k] = v
+        is_defaults_file = os.path.basename(fp) == DEFAULTS_FILE
+        allowed = {"devices", "defaults"} if is_defaults_file else {"devices"}
+        extra = set(data) - allowed
+        if extra:
+            raise ValueError(
+                f"Unexpected top-level key(s) {sorted(extra)} in {fp!r}; "
+                f"only {sorted(allowed)} allowed "
+                f"('defaults:' belongs in {DEFAULTS_FILE!r})"
+            )
+        if is_defaults_file and data.get("defaults"):
+            defaults = dict(data["defaults"])
         for dev_key, dv in (data.get("devices") or {}).items():
             if dev_key in devices:
                 raise ValueError(
