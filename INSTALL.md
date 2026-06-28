@@ -120,6 +120,13 @@ docker compose up -d          # start in background
 docker compose restart        # restart
 ```
 
+Two helper scripts (both target the rootless daemon via `docker context use rootless`):
+
+```bash
+./deploy.sh     # git pull + rebuild (--no-cache) + restart — pull remote changes
+./rebuild.sh    # rebuild (--no-cache) + restart, NO git pull — apply local host edits
+```
+
 ## Data
 
 Sensor readings are stored in `./data/sensors.db` (SQLite).
