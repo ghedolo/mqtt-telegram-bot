@@ -57,17 +57,18 @@ async def main():
         offline_repeat=cfg.alarm_offline_repeat,
         notify_fn=notify,
         notify_device_fn=notify_device,
+        fmt_fn=cfg.fmt,
     )
 
     tg.last_mqtt_fn = alarms.last_mqtt_ts
     tg.reset_alarm_fn = alarms.reset_sensor_alarm
 
     async def on_reading(sensor: str, value: float):
-        value = round(value, 1)
-        log.info("Reading: %s = %.1f", sensor, value)
+        value = round(value, cfg.decimals_of(sensor))
+        log.info("Reading: %s = %s", sensor, cfg.fmt(sensor, value))
         db.insert_reading(sensor, value)
         if not cfg.is_valid(sensor, value):
-            log.info("Out-of-range reading ignored for alarms: %s = %.1f", sensor, value)
+            log.info("Out-of-range reading ignored for alarms: %s = %s", sensor, cfg.fmt(sensor, value))
             return
         await alarms.check_threshold(sensor, value)
         await alarms.check_threshold_low(sensor, value)

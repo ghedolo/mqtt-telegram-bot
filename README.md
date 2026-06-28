@@ -74,6 +74,7 @@ devices:
         topic: "per/field/topic"   # required only if device has no shared topic
         json_path: "temperature"   # optional: JSON field to extract (dot notation for nested)
         unit: "°C"                 # optional
+        decimals: 1                # optional, decimal places kept (0-5, default 1)
         defaultAlarmHigh: 30.0     # optional, seeds high threshold on first run
         defaultAlarmLow: 10.0      # optional, seeds low threshold on first run
         validMin: -20              # optional, plausible range floor (glitch filter)
@@ -89,6 +90,8 @@ defaults:
 ```
 
 Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed).
+
+`decimals` (0-5, default 1) sets how many decimal places each reading is rounded to for storage and shown with everywhere — `/get`, `/list`, alarm messages, `/setAlarm` input, and graph stats. Out-of-range values are rejected at startup.
 
 Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently.
 

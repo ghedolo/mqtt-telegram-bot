@@ -305,7 +305,7 @@ class TelegramBot:
                 if sc.name not in active:
                     continue
                 row = db.get_latest(sc.name)
-                val = f"{row['value']:.1f}{sc.unit}" if row else "--"
+                val = f"{self._cfg.fmt(sc.name, row['value'])}{sc.unit}" if row else "--"
                 if db.has_threshold_alarm_since(sc.name, since_ts):
                     has_alarm = True
                 parts.append(f"{fk}={val}")
@@ -362,7 +362,7 @@ class TelegramBot:
                 continue
             r = rows_map.get(name)
             if r:
-                val = f"{r['value']:.1f}"
+                val = self._cfg.fmt(name, r['value'])
                 mins = (now - r["ts"]) // 60
                 ago = "∞" if mins > 360 else str(mins)
             else:
@@ -595,7 +595,7 @@ class TelegramBot:
                 r = rows_map.get(sc.name)
                 if r:
                     unit = sc.unit or ""
-                    val_str = f"{r['value']:.1f}{unit}"
+                    val_str = f"{self._cfg.fmt(sc.name, r['value'])}{unit}"
                     thr_parts = []
                     if sc.name in thresholds:
                         thr_parts.append(f"Th:{thresholds[sc.name]}{unit}")
@@ -654,7 +654,7 @@ class TelegramBot:
             return
 
         try:
-            value = round(float(ctx.args[1]), 1)
+            value = round(float(ctx.args[1]), self._cfg.decimals_of(name))
         except ValueError:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Value must be a number.", **_SILENT
@@ -693,7 +693,7 @@ class TelegramBot:
             return
 
         try:
-            value = round(float(ctx.args[1]), 1)
+            value = round(float(ctx.args[1]), self._cfg.decimals_of(name))
         except ValueError:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Value must be a number.", **_SILENT
@@ -836,7 +836,7 @@ class TelegramBot:
         sensor_list = [
             (n, db.get_threshold(n), self._cfg.sensors[n].unit,
              self._cfg.sensors[n].valid_min, self._cfg.sensors[n].valid_max,
-             self._cfg.sensors[n].interval)
+             self._cfg.sensors[n].interval, self._cfg.sensors[n].decimals)
             for n in names
         ]
         try:

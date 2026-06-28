@@ -25,11 +25,13 @@ class AlarmManager:
         offline_repeat: int,
         notify_fn: Callable[[str, str], Awaitable[None]],
         notify_device_fn: Callable[[str, str], Awaitable[None]],
+        fmt_fn: Callable[[str, float], str],
     ):
         self._threshold_repeat = threshold_repeat
         self._offline_repeat = offline_repeat
         self._notify = notify_fn
         self._notify_device = notify_device_fn
+        self._fmt = fmt_fn
         self._states: dict[str, AlarmState] = {}
         self._started_at = int(time.time())
         self._last_topic_ts: dict[str, int] = {}
@@ -67,18 +69,18 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"{sensor}: {value:.1f} > thr {threshold:.1f}"
+                msg = f"{sensor}: {self._fmt(sensor, value)} > thr {self._fmt(sensor, threshold)}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(sensor, f"🔴 {msg}")
             elif (now - state.last_notified) >= self._threshold_repeat:
                 state.last_notified = now
-                msg = f"{sensor}: {value:.1f} > thr {threshold:.1f}"
+                msg = f"{sensor}: {self._fmt(sensor, value)} > thr {self._fmt(sensor, threshold)}"
                 db.insert_alarm(sensor, "ALARM", msg)
                 await self._notify(sensor, f"🔴 {msg}")
         else:
             if state.active:
                 state.active = False
-                msg = f"{sensor}: {value:.1f} < thr {threshold:.1f}"
+                msg = f"{sensor}: {self._fmt(sensor, value)} < thr {self._fmt(sensor, threshold)}"
                 db.insert_alarm(sensor, "OK", msg)
                 await self._notify(sensor, f"🟢 {msg}")
 
@@ -94,18 +96,18 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"{sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                msg = f"{sensor}: {self._fmt(sensor, value)} < thr_low {self._fmt(sensor, threshold)}"
                 db.insert_alarm(sensor, "ALARM_LOW", msg)
                 await self._notify(sensor, f"🔴 {msg}")
             elif (now - state.last_notified) >= self._threshold_repeat:
                 state.last_notified = now
-                msg = f"{sensor}: {value:.1f} < thr_low {threshold:.1f}"
+                msg = f"{sensor}: {self._fmt(sensor, value)} < thr_low {self._fmt(sensor, threshold)}"
                 db.insert_alarm(sensor, "ALARM_LOW", msg)
                 await self._notify(sensor, f"🔴 {msg}")
         else:
             if state.active:
                 state.active = False
-                msg = f"{sensor}: {value:.1f} > thr_low {threshold:.1f}"
+                msg = f"{sensor}: {self._fmt(sensor, value)} > thr_low {self._fmt(sensor, threshold)}"
                 db.insert_alarm(sensor, "OK_LOW", msg)
                 await self._notify(sensor, f"🟢 {msg}")
 

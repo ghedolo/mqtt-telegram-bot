@@ -20,7 +20,7 @@ _GAP_FACTOR = 2.5  # break the line when the time between readings exceeds inter
 
 
 def build(
-    sensors: list[tuple[str, Optional[float], str, Optional[float], Optional[float], int]],
+    sensors: list[tuple[str, Optional[float], str, Optional[float], Optional[float], int, int]],
     hours: int = 8,
 ) -> io.BytesIO:
     n = len(sensors)
@@ -36,7 +36,7 @@ def build(
     # blended transform: x in data coords, y in axes fraction (edge markers)
     edge_tf = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
 
-    for i, (name, threshold, unit, vmin_b, vmax_b, interval) in enumerate(sensors):
+    for i, (name, threshold, unit, vmin_b, vmax_b, interval, decimals) in enumerate(sensors):
         rows = db.get_history(name, seconds=hours * 3600)
         color = _COLORS[i % len(_COLORS)]
         style = _STYLES[i // len(_COLORS)]
@@ -75,7 +75,7 @@ def build(
             t_to   = datetime.fromtimestamp(rows[-1]["ts"]).strftime("%d/%m %H:%M")
             dropped = len(hi_times) + len(lo_times)
             extra = f", {dropped} fuori scala" if dropped else ""
-            stats = f"{vmin:5.1f}/{vmax:<5.1f}  {t_from} – {t_to}  ({len(rows)}{extra})"
+            stats = f"{vmin:.{decimals}f}/{vmax:.{decimals}f}  {t_from} – {t_to}  ({len(rows)}{extra})"
             ax.plot(times, line_vals, color=color, linestyle=style, linewidth=1.5)
             t_min, v_min = min(in_vals, key=lambda p: p[1])
             t_max, v_max = max(in_vals, key=lambda p: p[1])

@@ -16,6 +16,7 @@ class SensorConfig:
     default_alarm_low: Optional[float]
     valid_min: Optional[float] = None
     valid_max: Optional[float] = None
+    decimals: int = 1   # decimal places kept for storage/display (0-5)
     viewers: list[str] = field(default_factory=list)
     admins: list[str] = field(default_factory=list)
     device_key: str = ""
@@ -93,6 +94,14 @@ class AppConfig:
         if sc.valid_max is not None and value > sc.valid_max:
             return False
         return True
+
+    def decimals_of(self, sensor: str) -> int:
+        sc = self.sensors.get(sensor)
+        return sc.decimals if sc is not None else 1
+
+    def fmt(self, sensor: str, value: float) -> str:
+        """Format a value with the sensor's configured decimal places."""
+        return f"{value:.{self.decimals_of(sensor)}f}"
 
     def visible_sensors(self, user_id: int) -> list[str]:
         return [n for n in self.sensors if self.is_viewer(user_id, n)]
@@ -251,6 +260,12 @@ def load(
                 f_viewers = dev_viewers[:]
                 f_admins = dev_admins[:]
 
+            decimals = int(fv.get("decimals", 1))
+            if not 0 <= decimals <= 5:
+                raise ValueError(
+                    f"Field {fk!r} of device {dev_key!r}: decimals must be 0-5, got {decimals}"
+                )
+
             sc = SensorConfig(
                 name=sensor_name,
                 topic=f_topic,
@@ -262,6 +277,7 @@ def load(
                 default_alarm_low=float(fv["defaultAlarmLow"]) if "defaultAlarmLow" in fv else None,
                 valid_min=float(fv["validMin"]) if "validMin" in fv else None,
                 valid_max=float(fv["validMax"]) if "validMax" in fv else None,
+                decimals=decimals,
                 viewers=f_viewers,
                 admins=f_admins,
                 device_key=dev_key,
