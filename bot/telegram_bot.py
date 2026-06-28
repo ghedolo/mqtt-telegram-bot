@@ -520,7 +520,8 @@ class TelegramBot:
         reply_chat = update.effective_chat.id
         text = (
             "Commands:\n"
-            "/get [expr] — show sensors (no args = digest sensors; /exprSyntax for syntax)\n"
+            "/get [expr] — show sensors (no args = digest sensors)\n"
+            "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h)\n"
             "/csv <expr> [Nh] — download readings as CSV\n"
@@ -547,7 +548,7 @@ class TelegramBot:
             text += (
                 "\n\nSuperadmin commands:\n"
                 "/forgetSensor <name> — delete all data for a sensor\n"
-                "/reloadConfig — reload sensors.yaml and credentials.yaml\n"
+                "/reloadConfig — reload sensors.d/ and credentials.yaml\n"
                 "/usersActivity — last interaction time per user"
             )
         await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
