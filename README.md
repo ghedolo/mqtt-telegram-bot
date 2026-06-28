@@ -224,18 +224,18 @@ Numbers extracted from local session transcripts.
 
 - **First message:** 2026-06-03
 - **Last message:** 2026-06-28
-- **Sessions:** 15 — 4445 messages (1757 user + 2688 assistant)
-- **Active conversation time:** ~1147 min (~19h 7m)
+- **Sessions:** 15 — 4508 messages (1782 user + 2726 assistant)
+- **Active conversation time:** ~1158 min (~19h 18m)
 
 *Active time: sum of consecutive gaps ≤ 5 min across all sessions. Longer gaps discarded.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 261,897 |
-| Output | 1,254,486 |
-| Cache write | 5,073,699 |
-| Cache read | 185,136,894 |
-| **Total** | **~191 M** |
+| Input (non-cache) | 266,980 |
+| Output | 1,271,969 |
+| Cache write | 5,097,161 |
+| Cache read | 188,748,552 |
+| **Total** | **~195 M** |
 
 ### Caveman mode
 
