@@ -16,7 +16,7 @@ config.py        →  loads sensors.d/ (recursive) + credentials.yaml
 main.py          →  entry point: wires components, runs periodic tasks
 ```
 
-Data flow: MQTT messages → `on_reading()` → SQLite. Readings are rounded to at most 1 decimal place in `on_reading()` before storage and threshold checks, matching the precision of alarm thresholds. `AlarmManager` polls for offline sensors and evaluates thresholds. Telegram commands query SQLite directly. A daily digest fires at the configured time.
+Data flow: MQTT messages → `on_reading()` → SQLite. Readings are rounded in `on_reading()` to the field's configured `decimals` (default 1) before storage and threshold checks, matching the precision of alarm thresholds. `AlarmManager` polls for offline sensors and evaluates thresholds. Telegram commands query SQLite directly. A daily digest fires at the configured time.
 
 ---
 
