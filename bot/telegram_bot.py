@@ -540,7 +540,7 @@ class TelegramBot:
         reply_chat = update.effective_chat.id
         text = (
             "Commands:\n"
-            "/get [expr] — show sensors (no args = digest sensors)\n"
+            "/get [expr] [-s|-f] — show sensors (no args = digest; sort -s name / -f field, default field)\n"
             "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h)\n"
