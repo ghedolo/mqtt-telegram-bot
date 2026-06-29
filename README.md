@@ -229,20 +229,20 @@ Numbers extracted from local session transcripts.
 
 - **First message:** 2026-06-03
 - **Last message:** 2026-06-29
-- **Sessions:** 15 — 4773 messages (1881 user + 2892 assistant)
-- **Active conversation time:** ~1215 min (~20h 15m)
+- **Sessions:** 15 — 4783 messages (1885 user + 2898 assistant)
+- **Active conversation time:** ~1220 min (~20h 20m)
 
 *Active time: sum of consecutive gaps ≤ 5 min across all sessions. Longer gaps discarded.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 296,668 |
-| Output | 1,367,694 |
-| Cache write | 6,679,665 |
-| Cache read | 210,741,613 |
-| **Total** | **~219 M** |
+| Input (non-cache) | 300,430 |
+| Output | 1,369,070 |
+| Cache write | 6,680,484 |
+| Cache read | 211,833,542 |
+| **Total** | **~220 M** |
 
 ### Caveman mode
 
-All 15 sessions ran with caveman mode active — a Claude Code skill that drops filler words, articles, and pleasantries from assistant responses while keeping full technical content. The assistant produced an average of **473 output tokens per message**. The saving is modest compared to prose-heavy projects because the dominant output here is code, which caveman leaves untouched.
+All 15 sessions ran with caveman mode active — a Claude Code skill that drops filler words, articles, and pleasantries from assistant responses while keeping full technical content. The assistant produced an average of **472 output tokens per message**. The saving is modest compared to prose-heavy projects because the dominant output here is code, which caveman leaves untouched.
 <!-- devstats:end -->
