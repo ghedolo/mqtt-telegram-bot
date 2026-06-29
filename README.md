@@ -168,6 +168,8 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `*SUB*` | sensors containing SUB |
 | `A,B` or `A B` | comma- or space-separated patterns |
 
+Sort (only `/get`): default groups by field (all `_T`, then `_H`, …). `-s` sorts by sensor name instead; `-f` is the explicit field default. Example: `/get * -s`.
+
 ---
 
 ## Access control

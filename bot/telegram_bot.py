@@ -347,6 +347,26 @@ class TelegramBot:
                     seen.add(n)
         return result
 
+    def _extract_sort(self, args: list[str]) -> tuple[list[str], Optional[str]]:
+        """Split out a -f/-s sort flag from /get args. Last flag wins."""
+        sort_key, rest = None, []
+        for a in args:
+            if a in ("-f", "-s"):
+                sort_key = a
+            else:
+                rest.append(a)
+        return rest, sort_key
+
+    def _apply_sort(self, names: list[str], sort_key: Optional[str]) -> list[str]:
+        if sort_key == "-s":
+            return sorted(names, key=lambda n: n.lower())
+        # default (and -f): group by field (suffix after device_key)
+        def key(n: str):
+            sc = self._cfg.sensors.get(n)
+            fk = n[len(sc.device_key) + 1:] if sc and sc.device_key else n
+            return (fk.lower(), n.lower())
+        return sorted(names, key=key)
+
     async def _show_sensors(self, reply_chat: int, names: list[str]):
         if not names:
             await self._app.bot.send_message(
@@ -567,12 +587,16 @@ class TelegramBot:
                 "PREFIX* : sensors starting with PREFIX\n"
                 "*SUFFIX : sensors ending with SUFFIX\n"
                 "*SUB* : sensors containing SUB\n\n"
-                "Multiple patterns: space- or comma-separated\n"
+                "Multiple patterns: space- or comma-separated\n\n"
+                "Sort: default by field (group _T, _H, ...)\n"
+                "-s : by sensor name\n"
+                "-f : by field (default)\n\n"
                 "Examples:\n"
                 "  /get DEI*\n"
                 "  /get *_T\n"
                 "  /get DEI-P2_T UG_T\n"
-                "  /get *_T,*_P"
+                "  /get *_T,*_P\n"
+                "  /get * -f"
             ),
             **_SILENT,
         )
@@ -621,12 +645,13 @@ class TelegramBot:
             return
         user_id = update.effective_user.id
         visible = set(self._cfg.visible_sensors(user_id))
-        if not ctx.args:
+        args, sort_key = self._extract_sort(ctx.args)
+        if not args:
             subscribed = set(db.get_digest_subscriptions(user_id))
             names = [n for n in self._cfg.sensors if n in subscribed and n in visible]
-            await self._show_sensors(reply_chat, names)
-            return
-        names = self._resolve_sensors(ctx.args, user_id)
+        else:
+            names = self._resolve_sensors(args, user_id)
+        names = self._apply_sort(names, sort_key)
         await self._show_sensors(reply_chat, names)
 
     async def _cmd_setalarm(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
