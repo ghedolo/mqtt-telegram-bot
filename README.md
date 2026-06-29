@@ -125,7 +125,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | Command | Description |
 |---|---|
 | `/list` | All devices — one line per device with all visible fields and thresholds |
-| `/get [expr]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`) |
+| `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-s` by name, `-f` by field (default) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h) |
 | `/csv <expr> [Nh]` | Download readings as CSV |
