@@ -102,7 +102,9 @@ def build(
     units = list({s[2] for s in sensors if s[2]})
     ax.set_ylabel(units[0] if len(units) == 1 else "")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    # denser horizontal ticks on wide spans: aim for ~12 hourly divisions
+    tick_step = max(1, round(hours / 12))
+    ax.xaxis.set_major_locator(mdates.HourLocator(interval=tick_step))
     fig.autofmt_xdate()
     ax.grid(True, alpha=0.3)
 

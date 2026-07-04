@@ -48,6 +48,14 @@ def _fmt_ago(secs: int) -> str:
     return f"{secs // 86400}d"
 
 
+def _fmt_bytes(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} {unit}"
+        size /= 1024
+
+
 class TelegramBot:
     def __init__(self, cfg: AppConfig, reload_fn: Optional[Callable[[], AppConfig]] = None):
         self._cfg = cfg
@@ -79,6 +87,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("csv", self._cmd_csv))
         self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
         self._app.add_handler(CommandHandler("usersActivity", self._cmd_usersactivity))
+        self._app.add_handler(CommandHandler("dbStats", self._cmd_dbstats))
         # captures the argument for menu commands that Telegram sends
         # immediately. Catches both replies to the ForceReply prompt (phone)
         # and a plain follow-up message (browser ignores ForceReply focus).
@@ -534,7 +543,7 @@ class TelegramBot:
             "/get [expr] [-s|-f] — show sensors (no args = digest; sort -s name / -f field, default field)\n"
             "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
-            "/graph <expr> [Nh] — chart (default 8h, max 24h)\n"
+            "/graph <expr> [Nh] — chart (default 8h, max 24h; 72h for admins)\n"
             "/csv <expr> [Nh] — download readings as CSV\n"
             "/xlsx <expr> [Nh] — download readings as Excel (one sheet per sensor)\n"
             "/last — last time anything arrived from MQTT\n"
@@ -560,7 +569,8 @@ class TelegramBot:
                 "\n\nSuperadmin commands:\n"
                 "/forgetSensor <name> — delete all data for a sensor\n"
                 "/reloadConfig — reload sensors.d/ and credentials.yaml\n"
-                "/usersActivity — last interaction time per user"
+                "/usersActivity — last interaction time per user\n"
+                "/dbStats — DB size, row counts, time span"
             )
         await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
 
@@ -831,10 +841,14 @@ class TelegramBot:
             await self._prompt_args(reply_chat, "graph")
             return
 
+        user_id = update.effective_user.id
+        max_hours = 72 if (
+            self._cfg.is_any_admin(user_id) or self._cfg.is_superadmin(user_id)
+        ) else 24
         args = list(ctx.args)
         hours = 8
         if args[-1].lower().endswith("h") and args[-1][:-1].isdigit():
-            hours = max(1, min(24, int(args[-1].lower()[:-1])))
+            hours = max(1, min(max_hours, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
             await self._app.bot.send_message(
@@ -1076,6 +1090,35 @@ class TelegramBot:
             chat_id=reply_chat, text="\n".join(lines), **_SILENT
         )
 
+    async def _cmd_dbstats(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        if not self._cfg.is_superadmin(update.effective_user.id):
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="Not authorized.", **_SILENT
+            )
+            return
+        s = db.get_db_stats()
+
+        def span_line(label: str, d: dict) -> str:
+            line = f"{label}: {d['count']} rows"
+            if d["min_ts"] and d["max_ts"]:
+                line += f"\n  {_fmt_ts(d['min_ts'])} → {_fmt_ts(d['max_ts'])}"
+            return line
+
+        size = _fmt_bytes(s["file_bytes"]) if s["file_bytes"] is not None else s["file_error"]
+        lines = [
+            "📊 DB stats",
+            f"file: {size}",
+            f"reclaimable (VACUUM): {_fmt_bytes(s['free_bytes'])}",
+            span_line("readings", s["readings"]),
+            span_line("archive", s["archive"]),
+        ]
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text="\n".join(lines), **_SILENT
+        )
+
     async def _cmd_csv(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
@@ -1205,7 +1248,7 @@ class TelegramBot:
         cmds = [
             BotCommand("get", "show sensors (no args = digest)"),
             BotCommand("getalarm", "show alarm threshold(s)"),
-            BotCommand("graph", "chart <expr> [Nh] (default 8h, max 24h)"),
+            BotCommand("graph", "chart <expr> [Nh] (default 8h, max 24h; 72h admins)"),
             BotCommand("csv", "download readings as CSV"),
             BotCommand("xlsx", "download readings as Excel"),
             BotCommand("last", "last time anything arrived from MQTT"),

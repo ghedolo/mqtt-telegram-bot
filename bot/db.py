@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -423,3 +424,25 @@ def archive_old_readings(retention_days: int):
             (cutoff,),
         )
         con.execute("DELETE FROM readings WHERE ts < ?", (cutoff,))
+
+
+def get_db_stats() -> dict:
+    """DB size + row counts + time span, for the /dbStats superadmin command."""
+    stats: dict = {"file_bytes": None, "file_error": None}
+    try:
+        stats["file_bytes"] = os.path.getsize(DB_PATH)
+    except OSError as e:
+        stats["file_error"] = str(e)
+    with _conn() as con:
+        def span(table: str) -> dict:
+            row = con.execute(
+                f"SELECT count(*) AS n, min(ts) AS mn, max(ts) AS mx FROM {table}"
+            ).fetchone()
+            return {"count": row["n"], "min_ts": row["mn"], "max_ts": row["mx"]}
+        stats["readings"] = span("readings")
+        stats["archive"] = span("readings_archive")
+        # SQLite free-page space that a VACUUM would reclaim
+        page_size = con.execute("PRAGMA page_size").fetchone()[0]
+        freelist = con.execute("PRAGMA freelist_count").fetchone()[0]
+        stats["free_bytes"] = page_size * freelist
+    return stats

@@ -127,7 +127,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/list` | All devices — one line per device with all visible fields and thresholds |
 | `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-s` by name, `-f` by field (default) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
-| `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h) |
+| `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h; 72h for admins) |
 | `/csv <expr> [Nh]` | Download readings as CSV |
 | `/xlsx <expr> [Nh]` | Download readings as Excel (one sheet per sensor) |
 | `/last` | Last time any message arrived from MQTT (no content shown) |
@@ -155,6 +155,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/forgetSensor <device>` | Archive all field readings for a device, clear alarm history and silence state |
 | `/reloadConfig` | Reload `sensors.d/` and `credentials.yaml` without restart |
 | `/usersActivity` | Last interaction time per user (name, username, id, timestamp). Bot records this itself — Telegram does not expose user last-seen |
+| `/dbStats` | DB file size on disk, space reclaimable by VACUUM, and row counts + time span for `readings` and `readings_archive` |
 
 ### Sensor filter expressions (`/exprSyntax`)
 
