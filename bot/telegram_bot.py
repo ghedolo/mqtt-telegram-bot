@@ -287,22 +287,7 @@ class TelegramBot:
 
     # ── digest ─────────────────────────────────────────────────────────────────
 
-    def _uptime_str(self, bot_start: float) -> str:
-        uptime = int(time.time() - bot_start)
-        days = uptime // 86400
-        hours = (uptime % 86400) // 3600
-        if days > 0 and hours > 0:
-            return f"{days}d {hours}h"
-        if days > 0:
-            return f"{days}d"
-        if hours > 0:
-            return f"{hours}h"
-        return "<1h"
-
-    def build_uptime(self, bot_start: float) -> str:
-        return f"🟢 live since {self._uptime_str(bot_start)}"
-
-    def build_digest(self, bot_start: float, user_id: int) -> str:
+    def build_digest(self, user_id: int) -> str:
         # Same output as /get with no args: subscribed & visible sensors,
         # rendered as the shared monospace table.
         subscribed = set(db.get_digest_subscriptions(user_id))

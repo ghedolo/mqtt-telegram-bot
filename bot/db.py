@@ -312,27 +312,6 @@ def get_alarms_since(sensors: list[str], since_ts: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
-def has_threshold_alarm_since(sensor: str, since_ts: int) -> bool:
-    with _conn() as con:
-        row = con.execute(
-            "SELECT id FROM alarms WHERE sensor=? AND kind IN ('ALARM','ALARM_LOW') AND ts>=? LIMIT 1",
-            (sensor, since_ts),
-        ).fetchone()
-        return row is not None
-
-
-def forget_sensor(sensor: str):
-    with _conn() as con:
-        con.execute(
-            "INSERT INTO readings_archive (sensor, value, ts) "
-            "SELECT sensor, value, ts FROM readings WHERE sensor=?",
-            (sensor,),
-        )
-        con.execute("DELETE FROM readings WHERE sensor=?", (sensor,))
-        con.execute("DELETE FROM alarms WHERE sensor=?", (sensor,))
-        con.execute("DELETE FROM silenced WHERE sensor=?", (sensor,))
-
-
 def forget_device(sensor_names: list, device_key: str):
     with _conn() as con:
         for sensor in sensor_names:

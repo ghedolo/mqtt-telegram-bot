@@ -122,14 +122,6 @@ class AppConfig:
             return False
         return any(user_id in self.admins_of(sc.name) for sc in dev.fields.values())
 
-    def device_topics(self, device_key: str) -> list[str]:
-        dev = self.devices.get(device_key)
-        if dev is None:
-            return []
-        if dev.topic:
-            return [dev.topic]
-        return [sc.topic for sc in dev.fields.values()]
-
 
 def _load_yaml(path: str) -> dict:
     with open(path) as f:

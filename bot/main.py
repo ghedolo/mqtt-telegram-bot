@@ -1,8 +1,6 @@
 import asyncio
 import logging
 import signal
-import sys
-import time as _time
 
 from .config import load
 from . import db
@@ -24,7 +22,6 @@ _DEBUG_LEVELS = {
 
 
 async def main():
-    bot_start = _time.time()
     cfg = load("sensors.d", "credentials.yaml")
     level = _DEBUG_LEVELS.get(cfg.debug, logging.INFO)
     logging.getLogger().setLevel(level)
@@ -101,7 +98,7 @@ async def main():
             await asyncio.sleep((target - now).total_seconds())
             for chat_id in db.get_all_dm_registered():
                 try:
-                    text = tg.build_digest(bot_start, chat_id)
+                    text = tg.build_digest(chat_id)
                     if text:
                         await tg.send_dm_to(chat_id, text, silent=True, parse_mode="Markdown")
                 except Exception:
