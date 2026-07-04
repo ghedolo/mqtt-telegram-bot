@@ -69,7 +69,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("silent", self._cmd_silent))
         self._app.add_handler(CommandHandler("list", self._cmd_list))
         self._app.add_handler(CommandHandler("get", self._cmd_get))
-        self._app.add_handler(CommandHandler("setalarm", self._cmd_setalarm))
+        self._app.add_handler(CommandHandler("setAlarm", self._cmd_setalarm))
         self._app.add_handler(CommandHandler("setAlarmLow", self._cmd_setalarmlow))
         self._app.add_handler(CommandHandler("clearAlarm", self._cmd_clearalarm))
         self._app.add_handler(CommandHandler("clearAlarmLow", self._cmd_clearalarmlow))
