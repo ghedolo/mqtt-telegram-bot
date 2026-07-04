@@ -1205,7 +1205,7 @@ class TelegramBot:
         cmds = [
             BotCommand("get", "show sensors (no args = digest)"),
             BotCommand("getalarm", "show alarm threshold(s)"),
-            BotCommand("graph", "chart <expr> [Nh] (default 8h)"),
+            BotCommand("graph", "chart <expr> [Nh] (default 8h, max 24h)"),
             BotCommand("csv", "download readings as CSV"),
             BotCommand("xlsx", "download readings as Excel"),
             BotCommand("last", "last time anything arrived from MQTT"),
