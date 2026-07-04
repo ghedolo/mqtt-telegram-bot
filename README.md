@@ -128,8 +128,8 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-s` by name, `-f` by field (default) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h; 72h for admins) |
-| `/csv <expr> [Nh]` | Download readings as CSV |
-| `/xlsx <expr> [Nh]` | Download readings as Excel (one sheet per sensor) |
+| `/csv <expr> [Nh]` | Download readings as CSV (default 8h, max 24h; 72h for admins) |
+| `/xlsx <expr> [Nh]` | Download readings as Excel, one sheet per sensor (default 8h, max 24h; 72h for admins) |
 | `/last` | Last time any message arrived from MQTT (no content shown) |
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |

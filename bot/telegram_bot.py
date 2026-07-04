@@ -544,8 +544,8 @@ class TelegramBot:
             "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h, max 24h; 72h for admins)\n"
-            "/csv <expr> [Nh] — download readings as CSV\n"
-            "/xlsx <expr> [Nh] — download readings as Excel (one sheet per sensor)\n"
+            "/csv <expr> [Nh] — download readings as CSV (default 8h, max 24h; 72h admins)\n"
+            "/xlsx <expr> [Nh] — download readings as Excel, one sheet per sensor (max 24h; 72h admins)\n"
             "/last — last time anything arrived from MQTT\n"
             "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
@@ -1128,10 +1128,14 @@ class TelegramBot:
             await self._prompt_args(reply_chat, "csv")
             return
 
+        user_id = update.effective_user.id
+        max_hours = 72 if (
+            self._cfg.is_any_admin(user_id) or self._cfg.is_superadmin(user_id)
+        ) else 24
         args = list(ctx.args)
         hours = 8
         if args[-1].lower().endswith("h") and args[-1][:-1].isdigit():
-            hours = max(1, min(24, int(args[-1].lower()[:-1])))
+            hours = max(1, min(max_hours, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
             await self._app.bot.send_message(
@@ -1188,10 +1192,14 @@ class TelegramBot:
             await self._prompt_args(reply_chat, "xlsx")
             return
 
+        user_id = update.effective_user.id
+        max_hours = 72 if (
+            self._cfg.is_any_admin(user_id) or self._cfg.is_superadmin(user_id)
+        ) else 24
         args = list(ctx.args)
         hours = 8
         if args[-1].lower().endswith("h") and args[-1][:-1].isdigit():
-            hours = max(1, min(24, int(args[-1].lower()[:-1])))
+            hours = max(1, min(max_hours, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
             await self._app.bot.send_message(
