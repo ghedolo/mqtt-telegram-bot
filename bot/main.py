@@ -103,7 +103,7 @@ async def main():
                 try:
                     text = tg.build_digest(bot_start, chat_id)
                     if text:
-                        await tg.send_dm_to(chat_id, text, silent=True)
+                        await tg.send_dm_to(chat_id, text, silent=True, parse_mode="Markdown")
                 except Exception:
                     log.exception("Failed to send daily digest to %s", chat_id)
 

@@ -242,11 +242,14 @@ class TelegramBot:
             disable_notification=silent,
         )
 
-    async def send_dm_to(self, chat_id: int, text: str, silent: bool = False):
+    async def send_dm_to(
+        self, chat_id: int, text: str, silent: bool = False, parse_mode: Optional[str] = None
+    ):
         await self._app.bot.send_message(
             chat_id=chat_id,
             text=text,
             disable_notification=silent,
+            parse_mode=parse_mode,
         )
 
     async def notify_sensor(self, sensor: str, text: str):
@@ -291,28 +294,13 @@ class TelegramBot:
         return f"🟢 live since {self._uptime_str(bot_start)}"
 
     def build_digest(self, bot_start: float, user_id: int) -> str:
+        # Same output as /get with no args: subscribed & visible sensors,
+        # rendered as the shared monospace table.
         subscribed = set(db.get_digest_subscriptions(user_id))
         visible = set(self._cfg.visible_sensors(user_id))
-        active = subscribed & visible
-        if not active:
-            return ""
-        since_ts = int(time.time()) - 86400
-        lines = [f"🟢 live since {self._uptime_str(bot_start)}"]
-        for dev_key, device in self._cfg.devices.items():
-            parts = []
-            has_alarm = False
-            for fk, sc in device.fields.items():
-                if sc.name not in active:
-                    continue
-                row = db.get_latest(sc.name)
-                val = f"{self._cfg.fmt(sc.name, row['value'])}{sc.unit}" if row else "--"
-                if db.has_threshold_alarm_since(sc.name, since_ts):
-                    has_alarm = True
-                parts.append(f"{fk}={val}")
-            if parts:
-                flag = " *" if has_alarm else ""
-                lines.append(f"{device.info}: {' '.join(parts)}{flag}")
-        return "\n".join(lines)
+        names = [n for n in self._cfg.sensors if n in subscribed and n in visible]
+        names = self._apply_sort(names, None)
+        return self._render_sensors_text(names) or ""
 
     # ── formatting helpers ─────────────────────────────────────────────────────
 
@@ -367,12 +355,9 @@ class TelegramBot:
             return (fk.lower(), n.lower())
         return sorted(names, key=key)
 
-    async def _show_sensors(self, reply_chat: int, names: list[str]):
-        if not names:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
-            return
+    def _render_sensors_text(self, names: list[str]) -> Optional[str]:
+        """Build the monospace sensor table shared by /get and the digest.
+        Returns a Markdown code block, or None if no sensors resolve."""
         rows_map = {r["sensor"]: r for r in db.get_all_latest()}
         now = int(time.time())
         entries = []  # (name, value, ago)
@@ -390,19 +375,25 @@ class TelegramBot:
                 ago = "∞"
             entries.append((name, val, ago))
         if not entries:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
-            return
+            return None
         wname = max(len("Sensor"), *(len(e[0]) for e in entries))
         wval = max(len("value"), *(len(e[1]) for e in entries))
         wago = max(len("min ago"), *(len(e[2]) for e in entries))
         lines = [f"{'Sensor':<{wname}}  {'value':>{wval}}  {'min ago':>{wago}}", ""]
         for n, v, a in entries:
             lines.append(f"{n:<{wname}}  {v:>{wval}}  {a:>{wago}}")
+        return "```\n" + "\n".join(lines) + "\n```"
+
+    async def _show_sensors(self, reply_chat: int, names: list[str]):
+        text = self._render_sensors_text(names) if names else None
+        if text is None:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="No matching sensors.", **_SILENT
+            )
+            return
         await self._app.bot.send_message(
             chat_id=reply_chat,
-            text="```\n" + "\n".join(lines) + "\n```",
+            text=text,
             parse_mode="Markdown",
             **_SILENT,
         )
