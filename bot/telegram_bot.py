@@ -534,7 +534,7 @@ class TelegramBot:
             "/get [expr] [-s|-f] — show sensors (no args = digest; sort -s name / -f field, default field)\n"
             "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
-            "/graph <expr> [Nh] — chart (default 8h)\n"
+            "/graph <expr> [Nh] — chart (default 8h, max 24h)\n"
             "/csv <expr> [Nh] — download readings as CSV\n"
             "/xlsx <expr> [Nh] — download readings as Excel (one sheet per sensor)\n"
             "/last — last time anything arrived from MQTT\n"
