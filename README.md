@@ -95,6 +95,8 @@ Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed)
 
 Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently.
 
+Threshold alarms are evaluated on every incoming reading. When a value first crosses a field's high threshold (`/setAlarm`) or low threshold (`/setAlarmLow`), a `🔴` alarm is sent. While the value stays out of range the alarm repeats, but no more often than `alarm_threshold_repeat` seconds (default 720). The repeat is not a fixed timer: it is checked only when a new reading arrives, so it fires on the first reading after that interval has elapsed — a rarely-reporting sensor repeats later than the nominal period. When the value returns within range a single `🟢` recovery message is sent and the alarm resets. Offline alarms repeat the same way, gated by `alarm_offline_repeat` (default 3600), and auto-clear when the device reports again.
+
 ### Glitch filtering and graph gaps
 
 All raw readings are always stored in the DB. The optional per-field `validMin`/`validMax` bounds filter only downstream:
@@ -134,6 +136,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions (no arg = show active) |
+| `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute. Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
 | `/exprSyntax` | Sensor filter expression syntax |
 | `/myid` | Your Telegram user ID |
 | `/help` | Command list |
@@ -202,7 +205,7 @@ Every 24 hours the bot moves readings older than `retention_days` from `readings
 
 - **Threshold alarms** — sent via DM to admins of the affected field (sensor).
 - **Offline alarms** — one alarm per device, sent via DM to admins of fields for which the user has an active `/digest` subscription.
-- **Daily digest** — sent via DM to each user, showing only their subscribed sensors grouped by device. Subscriptions start empty; manage with `/digest`. No daily message is posted to the group — the digest is per-user DM only.
+- **Daily digest** — sent via DM to each user, showing only their subscribed sensors as the same monospace `Sensor | value | min ago` table as `/get` with no args. Subscriptions start empty; manage with `/digest`. No daily message is posted to the group — the digest is per-user DM only.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
 - Bot replies never quote or echo user input.
 

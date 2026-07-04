@@ -475,7 +475,7 @@ class TelegramBot:
         last = ctx.args[-1]
         m = re.fullmatch(r"(\d+)[hH]", last)
         if m:
-            hours = min(12, max(1, int(m.group(1))))
+            hours = min(24, max(1, int(m.group(1))))
             names = self._resolve_sensors(ctx.args[:-1], user_id)
             if not names:
                 await self._app.bot.send_message(
@@ -535,7 +535,7 @@ class TelegramBot:
             "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/digest [expr on|off] — manage daily digest subscriptions\n"
-            "/silent [expr [Nh]] — mute alarm DMs (no args=list, expr only=unmute, 1-12h)\n"
+            "/silent [expr [Nh]] — mute alarm DMs (no args=list, expr=unmute sensor, expr Nh (1-24h)=mute sensor)\n"
             "/list — list all sensors\n"
             "/myid — show your Telegram user ID"
         )
