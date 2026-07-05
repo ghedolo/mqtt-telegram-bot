@@ -114,7 +114,9 @@ blackouts:
     repeat_seconds: 3600                # re-notify interval (default: alarm_offline_repeat)
 ```
 
-Unknown field names are rejected at startup. A blackout alarm (`⚡`) is raised when **every** field has a *fresh* reading (newer than `stale_after`) below `below`, sustained for `for_seconds`; it repeats no more often than `repeat_seconds`, and auto-clears with an end-of-blackout message (`🔌`) when any field rises above the threshold (or goes stale).
+Unknown field names are rejected at startup. Each field is classified from its latest reading: **DARK** (fresh — newer than `stale_after` — and below `below`), **LIT** (fresh and at/above `below` → power present), or **UNKNOWN** (stale or missing → no evidence). A blackout alarm (`⚡`) is raised when **every** field is DARK, sustained for `for_seconds`, and repeats no more often than `repeat_seconds`.
+
+The end-of-blackout message (`🔌`) is sent **only on positive proof** — when at least one field becomes LIT. A field going UNKNOWN (its meter stopped publishing) does **not** end the blackout: without a fresh reading the bot can't claim power is back, so it holds the alarm and stays silent, while that field's own device **offline** alarm reports the silence. This avoids a false "power restored" when, during a real outage, one current meter dies but another still reads zero.
 
 `for_seconds` (the sustain window) and `stale_after` (the freshness window) are **independent**: set `for_seconds` as low as you like to catch brief outages, but keep `stale_after ≥ the meter's real publish interval`, or fresh readings would be wrongly discarded and the blackout never raised. Evaluation is **event-driven** — the group is re-checked on every incoming current reading, so detection latency is roughly the meter's publish cadence. That cadence is also the hard floor on resolution: a blackout shorter than the interval between two published readings cannot be observed.
 

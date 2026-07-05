@@ -171,22 +171,31 @@ class AlarmManager:
     async def check_blackout(self, group):
         """Raise a blackout Alarm when every current Field in the group has a
         fresh reading below the threshold, sustained for the group duration.
-        Auto-clears (with a recovery message) when any Field rises above it."""
+
+        Each field is classified from its latest reading:
+          - DARK    : fresh (age ≤ stale_after) and below the threshold
+          - LIT     : fresh and at/above the threshold → power confirmed present
+          - UNKNOWN : stale or missing → no evidence either way
+        Raise when *all* fields are DARK. End (recovery) only on positive proof,
+        i.e. when *any* field is LIT — a stale/UNKNOWN field never ends a
+        blackout, so a meter dying mid-outage cannot emit a false recovery;
+        that field's own device offline alarm covers the silence instead."""
         if self._notify_blackout is None:
             return
         now = int(time.time())
         state = self._state(group.id, "blackout")
 
         all_dark = True
+        any_lit = False
         for name in group.fields:
             row = db.get_latest(name)
-            if (
-                row is None
-                or row["value"] >= group.below
-                or (now - row["ts"]) > group.stale_after
-            ):
+            fresh = row is not None and (now - row["ts"]) <= group.stale_after
+            if not fresh:
+                all_dark = False            # UNKNOWN
+            elif row["value"] >= group.below:
                 all_dark = False
-                break
+                any_lit = True              # LIT
+            # else: DARK
 
         if all_dark:
             if state.since == 0:
@@ -203,13 +212,15 @@ class AlarmManager:
                 msg = f"⚡ BLACKOUT {group.info}: still no current"
                 db.insert_alarm(group.id, "BLACKOUT", msg)
                 await self._notify_blackout(group.id, msg)
-        else:
+        elif any_lit:
+            # confirmed power on at least one field → real end
             state.since = 0
             if state.active:
                 state.active = False
                 msg = f"🔌 BLACKOUT END {group.info}: power restored"
                 db.insert_alarm(group.id, "BLACKOUT_END", msg)
                 await self._notify_blackout(group.id, msg)
+        # else: only UNKNOWN fields (stale) and none LIT → hold, no message
 
     async def check_blackout_for(self, sensor: str):
         """Event-driven blackout evaluation: re-check every group that watches
