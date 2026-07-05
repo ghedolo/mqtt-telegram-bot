@@ -67,6 +67,9 @@ async def main():
 
     tg.last_mqtt_fn = alarms.last_mqtt_ts
     tg.reset_alarm_fn = alarms.reset_sensor_alarm
+    tg.apply_alarm_config_fn = lambda new: alarms.apply_config(
+        new.alarm_threshold_repeat, new.alarm_offline_repeat, new.blackouts
+    )
 
     async def on_reading(sensor: str, value: float):
         value = round(value, cfg.decimals_of(sensor))

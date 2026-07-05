@@ -63,6 +63,7 @@ class TelegramBot:
         self._bot_username: Optional[str] = None
         self.last_mqtt_fn: Optional[Callable[[], Optional[int]]] = None
         self.reset_alarm_fn: Optional[Callable[[str], None]] = None
+        self.apply_alarm_config_fn: Optional[Callable[["AppConfig"], None]] = None
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("start", self._cmd_start))
         self._app.add_handler(CommandHandler("digest", self._cmd_digest))
@@ -1073,6 +1074,8 @@ class TelegramBot:
         self._cfg.sensors.update(new.sensors)
         self._cfg.devices.clear()
         self._cfg.devices.update(new.devices)
+        self._cfg.blackouts.clear()
+        self._cfg.blackouts.update(new.blackouts)
 
         for sc in new.sensors.values():
             if sc.default_alarm_high is not None and db.get_threshold(sc.name) is None:
@@ -1080,9 +1083,13 @@ class TelegramBot:
             if sc.default_alarm_low is not None and db.get_threshold_low(sc.name) is None:
                 db.set_threshold_low(sc.name, sc.default_alarm_low)
 
+        # push alarm-repeat intervals and blackout rules into the running AlarmManager
+        if self.apply_alarm_config_fn:
+            self.apply_alarm_config_fn(new)
+
         await self._app.bot.send_message(
             chat_id=reply_chat,
-            text="Config reloaded.\nNote: new sensor MQTT subscriptions require a restart.",
+            text="Config reloaded.\nNote: new/changed MQTT topics (new sensors, topic edits) still require a restart.",
             **_SILENT,
         )
 

@@ -165,7 +165,7 @@ Every value in the YAML has a different cost to change. Three levels, cheapest t
 - **Restart** — `docker compose restart` (or `down`/`up`); a few seconds of downtime.
 - **DB migration** — the data in `data/sensors.db` is keyed by name, so a rename orphans history unless the DB is migrated too (see [RENAME_SENSOR.md](RENAME_SENSOR.md)).
 
-Why some changes need a restart: MQTT topic subscriptions are set up **once at startup**, and the `AlarmManager` keeps its own copy of the alarm-repeat intervals and blackout rules — `/reloadConfig` does not re-subscribe MQTT or refresh those.
+Why some changes still need a restart: MQTT topic subscriptions are set up **once at startup**, so anything that changes what/where the bot subscribes needs a restart. Everything else the `AlarmManager` uses (alarm-repeat intervals, blackout rules) is refreshed live by `/reloadConfig`.
 
 | Change | Cost | Notes |
 |---|---|---|
@@ -181,8 +181,8 @@ Why some changes need a restart: MQTT topic subscriptions are set up **once at s
 | `topic` (same sensor name) | **Restart** | MQTT re-subscribes only at startup. |
 | Adding a new device / field / sensor | **Restart** | Reload makes it visible in commands, but no data flows until MQTT subscribes at restart. |
 | Removing a device / field | **Restart** | Reload hides it; the old MQTT subscription lingers until restart (harmless). Old DB rows remain — archive them with `/forgetSensor`. |
-| `alarm_threshold_repeat` / `alarm_offline_repeat` | **Restart** | Held inside `AlarmManager`; reload does not apply them to the running instance. |
-| Anything under `blackouts:` (add group, `below`, `for_seconds`, `stale_after`, `fields`, …) | **Restart** | Blackout rules are not reloaded. |
+| `alarm_threshold_repeat` / `alarm_offline_repeat` | **Reload** | Pushed into the running `AlarmManager` on reload. |
+| Anything under `blackouts:` (add group, `below`, `for_seconds`, `stale_after`, `fields`, …) | **Reload** | Blackout rules are refreshed on reload — but the watched `fields` must already exist (a brand-new sensor still needs a restart to receive data). |
 | MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug` | **Restart** | Read only at startup. |
 | Renaming a **device key** (`SM_UTA1` → `SM1_UTA1`) | **Restart + DB migration** | Changes every derived sensor name. Use `rename_device.py` (config + DB); see [RENAME_SENSOR.md](RENAME_SENSOR.md). Without migration, history/thresholds/subscriptions/mutes for the old name are orphaned and the new name starts empty. |
 | Renaming a **field key** (`T` → `Temp`) | **Restart + DB migration** | Same orphaning — the sensor name (`device_field`) changes. No dedicated script; migrate the DB by hand or accept the history loss. |

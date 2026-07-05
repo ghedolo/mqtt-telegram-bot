@@ -41,6 +41,12 @@ class AlarmManager:
         self._started_at = int(time.time())
         self._last_topic_ts: dict[str, int] = {}
 
+    def apply_config(self, threshold_repeat: int, offline_repeat: int, blackout_groups: dict):
+        """Hot-apply reloadable alarm settings (from /reloadConfig) without a restart."""
+        self._threshold_repeat = threshold_repeat
+        self._offline_repeat = offline_repeat
+        self._blackout_groups = blackout_groups or {}
+
     def record_topic_message(self, topic: str):
         self._last_topic_ts[topic] = int(time.time())
 
