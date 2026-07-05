@@ -77,6 +77,7 @@ async def main():
             return
         await alarms.check_threshold(sensor, value)
         await alarms.check_threshold_low(sensor, value)
+        await alarms.check_blackout_for(sensor)
 
     async def on_topic_message(topic: str):
         alarms.record_topic_message(topic)

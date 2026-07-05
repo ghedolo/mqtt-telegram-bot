@@ -651,6 +651,9 @@ class TelegramBot:
         if not lines and not blackouts:
             await self._app.bot.send_message(chat_id=reply_chat, text="No sensors.", **_SILENT)
             return
+        lines.append("")
+        lines.append("Sensor name = device_field (e.g. SM2_UTA1_T)")
+        lines.append("Use sensor name with /get /setAlarm /digest /graph")
         if blackouts:
             subs = set(db.get_digest_subscriptions(user_id))
             lines.append("")
@@ -658,9 +661,6 @@ class TelegramBot:
             for g in blackouts:
                 mark = "🔔" if g.id in subs else "🔕"
                 lines.append(f"{mark} {g.id} — {g.info}")
-        lines.append("")
-        lines.append("Sensor name = device_field (e.g. SM2_UTA1_T)")
-        lines.append("Use sensor name with /get /setAlarm /digest /graph")
         await self._app.bot.send_message(chat_id=reply_chat, text="\n".join(lines), **_SILENT)
 
     async def _cmd_get(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):

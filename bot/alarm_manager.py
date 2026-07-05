@@ -177,7 +177,7 @@ class AlarmManager:
             if (
                 row is None
                 or row["value"] >= group.below
-                or (now - row["ts"]) > group.for_seconds
+                or (now - row["ts"]) > group.stale_after
             ):
                 all_dark = False
                 break
@@ -205,6 +205,16 @@ class AlarmManager:
                 db.insert_alarm(group.id, "BLACKOUT_END", msg)
                 await self._notify_blackout(group.id, msg)
 
+    async def check_blackout_for(self, sensor: str):
+        """Event-driven blackout evaluation: re-check every group that watches
+        this sensor, on each incoming reading (detection latency ≈ meter cadence)."""
+        for group in self._blackout_groups.values():
+            if sensor in group.fields:
+                try:
+                    await self.check_blackout(group)
+                except Exception:
+                    log.exception("Error checking blackout for %s", group.id)
+
     async def run_offline_checks(self, devices: dict):
         while True:
             for dev_key, device in list(devices.items()):
@@ -212,9 +222,4 @@ class AlarmManager:
                     await self.check_offline(device)
                 except Exception:
                     log.exception("Error checking offline for %s", dev_key)
-            for gid, group in list(self._blackout_groups.items()):
-                try:
-                    await self.check_blackout(group)
-                except Exception:
-                    log.exception("Error checking blackout for %s", gid)
             await asyncio.sleep(60)

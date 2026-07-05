@@ -38,8 +38,9 @@ class BlackoutGroup:
     info: str              # human label shown in messages
     fields: list[str]      # canonical Sensor names watched together
     below: float           # amps; every field must read under this
-    for_seconds: int       # sustained duration before raising
+    for_seconds: int       # sustained duration before raising (0 = on first dark reading)
     repeat_seconds: int    # re-notify interval while a blackout persists
+    stale_after: int       # a reading older than this doesn't count (must be ≥ meter interval)
 
 
 @dataclass
@@ -329,11 +330,14 @@ def load(
         if "below" not in gv:
             raise ValueError(f"Blackout group {gid!r}: 'below' is required")
         below = float(gv["below"])
-        for_seconds = int(gv.get("for_seconds", 300))
+        for_seconds = int(gv.get("for_seconds", 10))
+        stale_after = int(gv.get("stale_after", 15))
         if below <= 0:
             raise ValueError(f"Blackout group {gid!r}: 'below' must be > 0")
-        if for_seconds <= 0:
-            raise ValueError(f"Blackout group {gid!r}: 'for_seconds' must be > 0")
+        if for_seconds < 0:
+            raise ValueError(f"Blackout group {gid!r}: 'for_seconds' must be >= 0")
+        if stale_after <= 0:
+            raise ValueError(f"Blackout group {gid!r}: 'stale_after' must be > 0")
         blackouts[gid] = BlackoutGroup(
             id=gid,
             info=gv.get("info", gid),
@@ -341,6 +345,7 @@ def load(
             below=below,
             for_seconds=for_seconds,
             repeat_seconds=int(gv.get("repeat_seconds", default_repeat)),
+            stale_after=stale_after,
         )
 
     tg = sec["telegram"]
