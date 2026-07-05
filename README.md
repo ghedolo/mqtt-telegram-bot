@@ -157,6 +157,38 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 `superadmin` is a flat list of Telegram `chat_id`s with access to `/forgetSensor` and `/reloadConfig`. Independent of sensor-level groups.
 
+### Changing configuration — what each change costs
+
+Every value in the YAML has a different cost to change. Three levels, cheapest to most expensive:
+
+- **Reload** — run `/reloadConfig` (superadmin); no downtime.
+- **Restart** — `docker compose restart` (or `down`/`up`); a few seconds of downtime.
+- **DB migration** — the data in `data/sensors.db` is keyed by name, so a rename orphans history unless the DB is migrated too (see [RENAME_SENSOR.md](RENAME_SENSOR.md)).
+
+Why some changes need a restart: MQTT topic subscriptions are set up **once at startup**, and the `AlarmManager` keeps its own copy of the alarm-repeat intervals and blackout rules — `/reloadConfig` does not re-subscribe MQTT or refresh those.
+
+| Change | Cost | Notes |
+|---|---|---|
+| `info`, `note` (labels) | **Reload** | Cosmetic; shown in `/list`. |
+| `unit`, `decimals` | **Reload** | `decimals` affects only *new* readings; old stored values keep their precision. |
+| `validMin` / `validMax` | **Reload** | Glitch filter, applied to new readings. |
+| `viewers` / `admins` | **Reload** | Access changes take effect immediately. |
+| `defaultAlarmHigh` / `defaultAlarmLow` | **Reload** | Only *seeds* a threshold when none is set yet; to re-seed, clear the threshold first. |
+| `interval` (device/field) | **Reload** | Offline detection (`3×interval`) picks it up live. |
+| Access Groups / `superadmin` (credentials) | **Reload** | Membership and admin lists are live. |
+| `retention_days` | **Reload** | Read by the daily archive task. |
+| Renaming a **config file** (e.g. `SM1.yaml` → `foo.yaml`) | **Reload** | Files are merged by *content*, not filename — no effect. Exception: renaming **to/from `00-defaults.yaml`** changes which file may carry `defaults:`/`blackouts:`. |
+| `topic` (same sensor name) | **Restart** | MQTT re-subscribes only at startup. |
+| Adding a new device / field / sensor | **Restart** | Reload makes it visible in commands, but no data flows until MQTT subscribes at restart. |
+| Removing a device / field | **Restart** | Reload hides it; the old MQTT subscription lingers until restart (harmless). Old DB rows remain — archive them with `/forgetSensor`. |
+| `alarm_threshold_repeat` / `alarm_offline_repeat` | **Restart** | Held inside `AlarmManager`; reload does not apply them to the running instance. |
+| Anything under `blackouts:` (add group, `below`, `for_seconds`, `stale_after`, `fields`, …) | **Restart** | Blackout rules are not reloaded. |
+| MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug` | **Restart** | Read only at startup. |
+| Renaming a **device key** (`SM_UTA1` → `SM1_UTA1`) | **Restart + DB migration** | Changes every derived sensor name. Use `rename_device.py` (config + DB); see [RENAME_SENSOR.md](RENAME_SENSOR.md). Without migration, history/thresholds/subscriptions/mutes for the old name are orphaned and the new name starts empty. |
+| Renaming a **field key** (`T` → `Temp`) | **Restart + DB migration** | Same orphaning — the sensor name (`device_field`) changes. No dedicated script; migrate the DB by hand or accept the history loss. |
+
+The safe order for a rename is always: stop the bot → migrate the DB → edit the YAML → restart (the DB step reads the *old* key from config, so migrate before editing the YAML — or follow the two-step procedure in RENAME_SENSOR.md for the read-only-mounted Docker setup).
+
 ---
 
 ## Bot commands
