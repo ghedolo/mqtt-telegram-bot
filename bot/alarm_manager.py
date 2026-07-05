@@ -16,6 +16,7 @@ class AlarmState:
     kind: str
     active: bool = False
     last_notified: int = 0
+    since: int = 0          # blackout: when the all-dark condition first held (0 = not)
 
 
 class AlarmManager:
@@ -26,11 +27,15 @@ class AlarmManager:
         notify_fn: Callable[[str, str], Awaitable[None]],
         notify_device_fn: Callable[[str, str], Awaitable[None]],
         fmt_fn: Callable[[str, float], str],
+        notify_blackout_fn: Callable[[str, str], Awaitable[None]] = None,
+        blackout_groups: dict = None,
     ):
         self._threshold_repeat = threshold_repeat
         self._offline_repeat = offline_repeat
         self._notify = notify_fn
         self._notify_device = notify_device_fn
+        self._notify_blackout = notify_blackout_fn
+        self._blackout_groups = blackout_groups or {}
         self._fmt = fmt_fn
         self._states: dict[str, AlarmState] = {}
         self._started_at = int(time.time())
@@ -157,6 +162,49 @@ class AlarmManager:
                 db.insert_alarm(device.key, "ONLINE", msg)
                 await self._notify_device(device.key, msg)
 
+    async def check_blackout(self, group):
+        """Raise a blackout Alarm when every current Field in the group has a
+        fresh reading below the threshold, sustained for the group duration.
+        Auto-clears (with a recovery message) when any Field rises above it."""
+        if self._notify_blackout is None:
+            return
+        now = int(time.time())
+        state = self._state(group.id, "blackout")
+
+        all_dark = True
+        for name in group.fields:
+            row = db.get_latest(name)
+            if (
+                row is None
+                or row["value"] >= group.below
+                or (now - row["ts"]) > group.for_seconds
+            ):
+                all_dark = False
+                break
+
+        if all_dark:
+            if state.since == 0:
+                state.since = now
+            sustained = (now - state.since) >= group.for_seconds
+            if sustained and not state.active:
+                state.active = True
+                state.last_notified = now
+                msg = f"⚡ BLACKOUT {group.info}: no current for >{group.for_seconds}s"
+                db.insert_alarm(group.id, "BLACKOUT", msg)
+                await self._notify_blackout(group.id, msg)
+            elif state.active and (now - state.last_notified) >= group.repeat_seconds:
+                state.last_notified = now
+                msg = f"⚡ BLACKOUT {group.info}: still no current"
+                db.insert_alarm(group.id, "BLACKOUT", msg)
+                await self._notify_blackout(group.id, msg)
+        else:
+            state.since = 0
+            if state.active:
+                state.active = False
+                msg = f"🔌 BLACKOUT END {group.info}: power restored"
+                db.insert_alarm(group.id, "BLACKOUT_END", msg)
+                await self._notify_blackout(group.id, msg)
+
     async def run_offline_checks(self, devices: dict):
         while True:
             for dev_key, device in list(devices.items()):
@@ -164,4 +212,9 @@ class AlarmManager:
                     await self.check_offline(device)
                 except Exception:
                     log.exception("Error checking offline for %s", dev_key)
+            for gid, group in list(self._blackout_groups.items()):
+                try:
+                    await self.check_blackout(group)
+                except Exception:
+                    log.exception("Error checking blackout for %s", gid)
             await asyncio.sleep(60)

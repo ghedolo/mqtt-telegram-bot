@@ -33,6 +33,16 @@ class DeviceConfig:
 
 
 @dataclass
+class BlackoutGroup:
+    id: str                # doubles as the blackout Alarm key / digest target
+    info: str              # human label shown in messages
+    fields: list[str]      # canonical Sensor names watched together
+    below: float           # amps; every field must read under this
+    for_seconds: int       # sustained duration before raising
+    repeat_seconds: int    # re-notify interval while a blackout persists
+
+
+@dataclass
 class AppConfig:
     telegram_token: str
     telegram_group_id: int
@@ -52,6 +62,7 @@ class AppConfig:
     debug: int
     silent_start: bool
     digest_time: str
+    blackouts: dict[str, "BlackoutGroup"] = field(default_factory=dict)
 
     def _members(self, group_names: list[str]) -> set[int]:
         result: set[int] = set()
@@ -122,6 +133,18 @@ class AppConfig:
             return False
         return any(user_id in self.admins_of(sc.name) for sc in dev.fields.values())
 
+    def viewers_of_blackout(self, group_id: str) -> set[int]:
+        grp = self.blackouts.get(group_id)
+        if grp is None:
+            return set()
+        result: set[int] = set()
+        for name in grp.fields:
+            result |= self.viewers_of(name)
+        return result
+
+    def is_viewer_of_blackout(self, user_id: int, group_id: str) -> bool:
+        return user_id in self.viewers_of_blackout(group_id)
+
 
 def _load_yaml(path: str) -> dict:
     with open(path) as f:
@@ -157,20 +180,23 @@ def _load_sensors_dir(d: str) -> dict:
 
     defaults: dict = {}
     devices: dict = {}
+    blackouts: dict = {}
     origin: dict[str, str] = {}
     for fp in files:
         data = _load_yaml(fp)
         is_defaults_file = os.path.basename(fp) == DEFAULTS_FILE
-        allowed = {"devices", "defaults"} if is_defaults_file else {"devices"}
+        allowed = {"devices", "defaults", "blackouts"} if is_defaults_file else {"devices"}
         extra = set(data) - allowed
         if extra:
             raise ValueError(
                 f"Unexpected top-level key(s) {sorted(extra)} in {fp!r}; "
                 f"only {sorted(allowed)} allowed "
-                f"('defaults:' belongs in {DEFAULTS_FILE!r})"
+                f"('defaults:' and 'blackouts:' belong in {DEFAULTS_FILE!r})"
             )
         if is_defaults_file and data.get("defaults"):
             defaults = dict(data["defaults"])
+        if is_defaults_file and data.get("blackouts"):
+            blackouts = dict(data["blackouts"])
         for dev_key, dv in (data.get("devices") or {}).items():
             if dev_key in devices:
                 raise ValueError(
@@ -179,7 +205,7 @@ def _load_sensors_dir(d: str) -> dict:
                 )
             devices[dev_key] = dv
             origin[dev_key] = fp
-    return {"defaults": defaults, "devices": devices}
+    return {"defaults": defaults, "devices": devices, "blackouts": blackouts}
 
 
 def load(
@@ -286,6 +312,37 @@ def load(
             fields=device_fields,
         )
 
+    default_repeat = int(defaults.get("alarm_offline_repeat", 3600))
+    blackouts: dict[str, BlackoutGroup] = {}
+    for gid, gv in (raw.get("blackouts") or {}).items():
+        gv = gv or {}
+        if gid in sensors:
+            raise ValueError(
+                f"Blackout group {gid!r} collides with a sensor name"
+            )
+        g_fields = list(gv.get("fields", []))
+        if not g_fields:
+            raise ValueError(f"Blackout group {gid!r}: 'fields' is required and non-empty")
+        for fn in g_fields:
+            if fn not in sensors:
+                raise ValueError(f"Blackout group {gid!r}: unknown field {fn!r}")
+        if "below" not in gv:
+            raise ValueError(f"Blackout group {gid!r}: 'below' is required")
+        below = float(gv["below"])
+        for_seconds = int(gv.get("for_seconds", 300))
+        if below <= 0:
+            raise ValueError(f"Blackout group {gid!r}: 'below' must be > 0")
+        if for_seconds <= 0:
+            raise ValueError(f"Blackout group {gid!r}: 'for_seconds' must be > 0")
+        blackouts[gid] = BlackoutGroup(
+            id=gid,
+            info=gv.get("info", gid),
+            fields=g_fields,
+            below=below,
+            for_seconds=for_seconds,
+            repeat_seconds=int(gv.get("repeat_seconds", default_repeat)),
+        )
+
     tg = sec["telegram"]
     mq = sec["mqtt"]
     raw_groups = sec.get("groups", {})
@@ -311,4 +368,5 @@ def load(
         debug=int(tg.get("debug", 1)),
         silent_start=bool(int(tg.get("silent_start", 0))),
         digest_time=str(tg.get("digest_time", "15:00")),
+        blackouts=blackouts,
     )

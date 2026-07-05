@@ -97,6 +97,26 @@ Offline detection is per-device: one alarm fires when no message arrives on the 
 
 Threshold alarms are evaluated on every incoming reading. When a value first crosses a field's high threshold (`/setAlarm`) or low threshold (`/setAlarmLow`), a `🔴` alarm is sent. While the value stays out of range the alarm repeats, but no more often than `alarm_threshold_repeat` seconds (default 720). The repeat is not a fixed timer: it is checked only when a new reading arrives, so it fires on the first reading after that interval has elapsed — a rarely-reporting sensor repeats later than the nominal period. When the value returns within range a single `🟢` recovery message is sent and the alarm resets. Offline alarms repeat the same way, gated by `alarm_offline_repeat` (default 3600), and auto-clear when the device reports again.
 
+### Blackout detection
+
+A **blackout** is a derived alarm inferred from current (amps) Fields. The monitoring stack (sensors, MQTT, the bot) runs on UPS while the measured loads (e.g. air-handling units) run on mains, so a mains outage shows up as every watched current dropping to near-zero while the meters keep reporting. A live-but-idle load still draws a baseline current, so a near-zero reading means *unpowered*, not idle.
+
+Configure blackout groups under `blackouts:` in `00-defaults.yaml` (the only file allowed non-`devices` keys), as a map of group id → rule:
+
+```yaml
+blackouts:
+  R2:
+    info: "Blackout R2 — CDZ senza corrente"
+    fields: [SM1_UTA1_I, SM1_UTA2_I]   # canonical sensor names to watch
+    below: 0.5                          # A; all fields must read under this
+    for_seconds: 300                    # sustained duration before raising
+    repeat_seconds: 3600                # re-notify interval (default: alarm_offline_repeat)
+```
+
+Unknown field names are rejected at startup. A blackout alarm (`⚡`) is raised when **every** field has a fresh reading below `below` sustained for `for_seconds`, repeats no more often than `repeat_seconds`, and auto-clears with an end-of-blackout message (`🔌`) when any field rises above the threshold.
+
+Notification is **opt-in**: the group id is a subscribable pseudo-entity — `/digest R2 on`. It carries no reading, so it never appears as a value row in `/get` or the daily digest; it only serves as the notification flag. Any **viewer** of at least one watched field may subscribe (more permissive than offline alarms, which are admin-gated, because subscription is an explicit opt-in). See [ADR-0007](docs/adr/0007-blackout-detection-from-current.md).
+
 ### Glitch filtering and graph gaps
 
 All raw readings are always stored in the DB. The optional per-field `validMin`/`validMax` bounds filter only downstream:
@@ -135,7 +155,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/last` | Last time any message arrived from MQTT (no content shown) |
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
-| `/digest [expr on\|off]` | Manage daily digest subscriptions (no arg = show active) |
+| `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
 | `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute. Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
 | `/exprSyntax` | Sensor filter expression syntax |
 | `/myid` | Your Telegram user ID |
@@ -205,6 +225,7 @@ Every 24 hours the bot moves readings older than `retention_days` from `readings
 
 - **Threshold alarms** — sent via DM to admins of the affected field (sensor).
 - **Offline alarms** — one alarm per device, sent via DM to admins of fields for which the user has an active `/digest` subscription.
+- **Blackout alarms** — one alarm per blackout group when all its current fields read near-zero for a sustained duration; sent via DM to viewers of a watched field who subscribed to the group id via `/digest`. Auto-clears with an end-of-blackout message. See _Blackout detection_ above.
 - **Daily digest** — sent via DM to each user, showing only their subscribed sensors as the same monospace `Sensor | value | min ago` table as `/get` with no args. Subscriptions start empty; manage with `/digest`. No daily message is posted to the group — the digest is per-user DM only.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
 - Bot replies never quote or echo user input.

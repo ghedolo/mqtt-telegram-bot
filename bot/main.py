@@ -49,12 +49,20 @@ async def main():
         except Exception:
             log.exception("Failed to send device alarm for %s", device_key)
 
+    async def notify_blackout(group_id: str, text: str):
+        try:
+            await tg.notify_blackout(group_id, text)
+        except Exception:
+            log.exception("Failed to send blackout alarm for %s", group_id)
+
     alarms = AlarmManager(
         threshold_repeat=cfg.alarm_threshold_repeat,
         offline_repeat=cfg.alarm_offline_repeat,
         notify_fn=notify,
         notify_device_fn=notify_device,
         fmt_fn=cfg.fmt,
+        notify_blackout_fn=notify_blackout,
+        blackout_groups=cfg.blackouts,
     )
 
     tg.last_mqtt_fn = alarms.last_mqtt_ts

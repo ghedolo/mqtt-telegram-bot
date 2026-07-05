@@ -285,6 +285,17 @@ class TelegramBot:
                     except Exception:
                         log.exception("DM notify failed for chat_id %s", chat_id)
 
+    async def notify_blackout(self, group_id: str, text: str):
+        # opt-in: DM to Viewers of a watched Field who subscribed to the group id
+        for chat_id in self._cfg.viewers_of_blackout(group_id):
+            if not db.is_dm_registered(chat_id):
+                continue
+            if group_id in db.get_digest_subscriptions(chat_id):
+                try:
+                    await self._app.bot.send_message(chat_id=chat_id, text=text)
+                except Exception:
+                    log.exception("Blackout notify failed for chat_id %s", chat_id)
+
     # ── digest ─────────────────────────────────────────────────────────────────
 
     def build_digest(self, user_id: int) -> str:
@@ -327,6 +338,20 @@ class TelegramBot:
                 if n not in seen and fnmatch.fnmatch(n.lower(), pat.lower()):
                     result.append(n)
                     seen.add(n)
+        return result
+
+    def _resolve_blackouts(self, args: list[str], user_id: int) -> list[str]:
+        """Glob-match Blackout Group ids the User may view (subscribable via /digest)."""
+        ids = [g for g in self._cfg.blackouts if self._cfg.is_viewer_of_blackout(user_id, g)]
+        patterns = []
+        for a in args:
+            patterns.extend(p.strip() for p in a.split(",") if p.strip())
+        result, seen = [], set()
+        for pat in patterns:
+            for gid in ids:
+                if gid not in seen and fnmatch.fnmatch(gid.lower(), pat.lower()):
+                    result.append(gid)
+                    seen.add(gid)
         return result
 
     def _extract_sort(self, args: list[str]) -> tuple[list[str], Optional[str]]:
@@ -415,6 +440,7 @@ class TelegramBot:
         if not ctx.args:
             subs = db.get_digest_subscriptions(user_id)
             visible = set(self._cfg.visible_sensors(user_id))
+            visible |= {g for g in self._cfg.blackouts if self._cfg.is_viewer_of_blackout(user_id, g)}
             active = [s for s in subs if s in visible]
             if not active:
                 text = "No digest subscriptions."
@@ -430,14 +456,15 @@ class TelegramBot:
             return
 
         action = ctx.args[-1].lower()
-        names = self._resolve_sensors(ctx.args[:-1], user_id)
-        if not names:
+        patterns = ctx.args[:-1]
+        targets = self._resolve_sensors(patterns, user_id) + self._resolve_blackouts(patterns, user_id)
+        if not targets:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="No matching sensors.", **_SILENT
             )
             return
 
-        for name in names:
+        for name in targets:
             if action == "on":
                 db.subscribe_digest(user_id, name)
             else:
@@ -446,7 +473,7 @@ class TelegramBot:
         verb = "Subscribed to" if action == "on" else "Unsubscribed from"
         await self._app.bot.send_message(
             chat_id=reply_chat,
-            text=f"{verb}: {', '.join(names)}",
+            text=f"{verb}: {', '.join(targets)}",
             **_SILENT,
         )
 
@@ -534,7 +561,7 @@ class TelegramBot:
             "/last — last time anything arrived from MQTT\n"
             "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
-            "/digest [expr on|off] — manage daily digest subscriptions\n"
+            "/digest [expr on|off] — manage daily digest subscriptions (also blackout group ids)\n"
             "/silent [expr [Nh]] — mute alarm DMs (no args=list, expr=unmute sensor, expr Nh (1-24h)=mute sensor)\n"
             "/list — list all sensors\n"
             "/myid — show your Telegram user ID"
