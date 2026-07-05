@@ -40,7 +40,7 @@ class BlackoutGroup:
     below: float           # amps; every field must read under this
     for_seconds: int       # sustained duration before raising (0 = on first dark reading)
     repeat_seconds: int    # re-notify interval while a blackout persists
-    stale_after: int       # a reading older than this doesn't count (must be ≥ meter interval)
+    stale_after: int       # a reading older than `stale_after` seconds does not count (keep it ≥ meter publish interval)
 
 
 @dataclass

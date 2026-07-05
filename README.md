@@ -110,7 +110,7 @@ blackouts:
     fields: [SM1_UTA1_I, SM1_UTA2_I]   # canonical sensor names to watch
     below: 0.5                          # A; all fields must read under this
     for_seconds: 10                     # sustained duration before raising (0 = on first dark reading)
-    stale_after: 15                     # a reading older than this is ignored; keep ≥ meter publish interval
+    stale_after: 15                     # a reading older than `stale_after` seconds does not count; keep it ≥ meter publish interval
     repeat_seconds: 3600                # re-notify interval (default: alarm_offline_repeat)
 ```
 
