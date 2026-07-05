@@ -118,6 +118,8 @@ Unknown field names are rejected at startup. Each field is classified from its l
 
 The end-of-blackout message (`🔌`) is sent **only on positive proof** — when at least one field becomes LIT. A field going UNKNOWN (its meter stopped publishing) does **not** end the blackout: without a fresh reading the bot can't claim power is back, so it holds the alarm and stays silent, while that field's own device **offline** alarm reports the silence. This avoids a false "power restored" when, during a real outage, one current meter dies but another still reads zero.
 
+The full state model (per-field DARK/LIT/UNKNOWN inputs plus the group POWERED→SUSPECTED→OUTAGE machine, with a diagram) is in [docs/blackout-states.md](docs/blackout-states.md).
+
 `for_seconds` (the sustain window) and `stale_after` (the freshness window) are **independent**: set `for_seconds` as low as you like to catch brief outages, but keep `stale_after ≥ the meter's real publish interval`, or fresh readings would be wrongly discarded and the blackout never raised. Evaluation is **event-driven** — the group is re-checked on every incoming current reading, so detection latency is roughly the meter's publish cadence. That cadence is also the hard floor on resolution: a blackout shorter than the interval between two published readings cannot be observed.
 
 #### Understanding `stale_after`
