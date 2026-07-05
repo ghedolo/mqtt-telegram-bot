@@ -644,9 +644,20 @@ class TelegramBot:
                     parts.append(f"{fk}=--")
             if parts:
                 lines.append(f"{dev_key} {' '.join(parts)}")
-        if not lines:
+        blackouts = [
+            g for g in self._cfg.blackouts.values()
+            if self._cfg.is_viewer_of_blackout(user_id, g.id)
+        ]
+        if not lines and not blackouts:
             await self._app.bot.send_message(chat_id=reply_chat, text="No sensors.", **_SILENT)
             return
+        if blackouts:
+            subs = set(db.get_digest_subscriptions(user_id))
+            lines.append("")
+            lines.append("Blackout groups (subscribe with /digest <id> on):")
+            for g in blackouts:
+                mark = "🔔" if g.id in subs else "🔕"
+                lines.append(f"{mark} {g.id} — {g.info}")
         lines.append("")
         lines.append("Sensor name = device_field (e.g. SM2_UTA1_T)")
         lines.append("Use sensor name with /get /setAlarm /digest /graph")

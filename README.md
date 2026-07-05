@@ -115,7 +115,7 @@ blackouts:
 
 Unknown field names are rejected at startup. A blackout alarm (`⚡`) is raised when **every** field has a fresh reading below `below` sustained for `for_seconds`, repeats no more often than `repeat_seconds`, and auto-clears with an end-of-blackout message (`🔌`) when any field rises above the threshold.
 
-Notification is **opt-in**: the group id is a subscribable pseudo-entity — `/digest R2 on`. It carries no reading, so it never appears as a value row in `/get` or the daily digest; it only serves as the notification flag. Any **viewer** of at least one watched field may subscribe (more permissive than offline alarms, which are admin-gated, because subscription is an explicit opt-in). See [ADR-0007](docs/adr/0007-blackout-detection-from-current.md).
+Notification is **opt-in**: the group id is a subscribable pseudo-entity — `/digest R2 on`. It carries no reading, so it never appears as a value row in `/get` or the daily digest; it only serves as the notification flag. Any **viewer** of at least one watched field may subscribe (more permissive than offline alarms, which are admin-gated, because subscription is an explicit opt-in). Blackout groups are listed at the bottom of `/list` (with a 🔔/🔕 subscription marker) so users can discover them. See [ADR-0007](docs/adr/0007-blackout-detection-from-current.md).
 
 ### Glitch filtering and graph gaps
 
@@ -146,7 +146,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 
 | Command | Description |
 |---|---|
-| `/list` | All devices — one line per device with all visible fields and thresholds |
+| `/list` | All devices — one line per device with all visible fields and thresholds; also lists subscribable blackout groups with your subscription state (🔔/🔕) |
 | `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-s` by name, `-f` by field (default) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h; 72h for admins) |
