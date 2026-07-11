@@ -26,6 +26,10 @@ async def main():
     cfg = load("sensors.d", "credentials.yaml")
     level = _DEBUG_LEVELS.get(cfg.debug, logging.INFO)
     logging.getLogger().setLevel(level)
+    # httpx logs every Telegram API call at INFO, and the URL embeds the bot
+    # token in cleartext. Pin it to WARNING regardless of debug level so the
+    # token never lands in the logs (even at debug 3).
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     db.init()
 
     for sc in cfg.sensors.values():
