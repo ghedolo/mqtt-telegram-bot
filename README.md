@@ -320,22 +320,22 @@ Built with [Claude Code](https://claude.ai/claude-code) by Anthropic.
 This project was built entirely through a conversation with Claude Code.
 Numbers extracted from local session transcripts.
 
-- **First message:** 2026-06-03
+- **First message:** 2026-06-13
 - **Last message:** 2026-07-11
-- **Sessions:** 17 — 6271 messages (2424 user + 3847 assistant)
-- **Active conversation time:** ~1576 min (~26h 16m)
+- **Sessions:** 9 — 3373 messages (1235 user + 2138 assistant)
+- **Active conversation time:** ~738 min (~12h 18m)
 
 *Active time: sum of consecutive gaps ≤ 5 min across all sessions. Longer gaps discarded.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 468,326 |
-| Output | 2,036,990 |
-| Cache write | 9,138,541 |
-| Cache read | 368,361,756 |
-| **Total** | **~380 M** |
+| Input (non-cache) | 445,863 |
+| Output | 1,233,153 |
+| Cache write | 5,833,897 |
+| Cache read | 235,891,688 |
+| **Total** | **~243 M** |
 
 ### Caveman mode
 
-All 17 sessions ran with caveman mode active — a Claude Code skill that drops filler words, articles, and pleasantries from assistant responses while keeping full technical content. The assistant produced an average of **530 output tokens per message**. The saving is modest compared to prose-heavy projects because the dominant output here is code, which caveman leaves untouched.
+All 9 sessions ran with caveman mode active — a Claude Code skill that drops filler words, articles, and pleasantries from assistant responses while keeping full technical content. The assistant produced an average of **577 output tokens per message**. The saving is modest compared to prose-heavy projects because the dominant output here is code, which caveman leaves untouched.
 <!-- devstats:end -->
