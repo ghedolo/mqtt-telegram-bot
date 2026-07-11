@@ -63,6 +63,8 @@ class AppConfig:
     debug: int
     silent_start: bool
     digest_time: str
+    archive_time: str
+    enable_menu: bool
     blackouts: dict[str, "BlackoutGroup"] = field(default_factory=dict)
 
     def _members(self, group_names: list[str]) -> set[int]:
@@ -373,5 +375,7 @@ def load(
         debug=int(tg.get("debug", 1)),
         silent_start=bool(int(tg.get("silent_start", 0))),
         digest_time=str(tg.get("digest_time", "15:00")),
+        archive_time=str(defaults.get("archive_time", "12:00")),
+        enable_menu=bool(int(tg.get("enableMenu", 1))),
         blackouts=blackouts,
     )

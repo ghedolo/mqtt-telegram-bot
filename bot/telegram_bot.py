@@ -1307,7 +1307,12 @@ class TelegramBot:
         await self._app.start()
         me = await self._app.bot.get_me()
         self._bot_username = me.username
-        await self._set_user_commands()
+        if self._cfg.enable_menu:
+            await self._set_user_commands()
+        else:
+            # menu disabled: clear any command list previously registered with
+            # Telegram. Handlers still work when commands are typed manually.
+            await self._app.bot.delete_my_commands()
         await self._app.updater.start_polling(
             drop_pending_updates=True,
             poll_interval=self._cfg.poll_interval,

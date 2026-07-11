@@ -85,6 +85,7 @@ devices:
 defaults:
   interval: 300
   retention_days: 30
+  archive_time: "12:00"           # HH:MM the daily archive runs (local time); keep within host uptime
   alarm_threshold_repeat: 720     # seconds between repeated threshold alarms
   alarm_offline_repeat: 3600      # seconds between repeated offline alarms
 ```
@@ -181,6 +182,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | `interval` (device/field) | **Reload** | Offline detection (`3×interval`) picks it up live. |
 | Access Groups / `superadmin` (credentials) | **Reload** | Membership and admin lists are live. |
 | `retention_days` | **Reload** | Read by the daily archive task. |
+| `archive_time` | **Restart** | Read only at startup by the archive loop. |
 | Renaming a **config file** (e.g. `SM1.yaml` → `foo.yaml`) | **Reload** | Files are merged by *content*, not filename — no effect. Exception: renaming **to/from `00-defaults.yaml`** changes which file may carry `defaults:`/`blackouts:`. |
 | `topic` (same sensor name) | **Restart** | MQTT re-subscribes only at startup. |
 | Adding a new device / field / sensor | **Restart** | Reload makes it visible in commands, but no data flows until MQTT subscribes at restart. |
@@ -190,7 +192,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | Add / remove a **blackout group** | **Reload** | New group active at once. Removing one leaves its old alarm history and `/digest` subscriptions in the DB (harmless, just ignored). |
 | Add / remove a **current field** in a group (`fields:`) | **Reload** *(existing sensor)* / **Restart** *(brand-new sensor)* | All listed fields must be near-zero *at the same time* to trigger, so adding one tightens the condition and removing one loosens it. A field that is a brand-new sensor needs a restart first (it has no readings until MQTT subscribes). |
 | Rename a **blackout group id** (`R2` → `R2b`) | **Reload** *(+ re-subscribe)* | The new id works after reload, but the id is the key for `/digest` subscriptions and past alarm rows: users subscribed to the old id are silently dropped and **must re-subscribe** (`/digest R2b on`). To preserve them, migrate the old id to the new one in the `digest_subscriptions` (and `alarms`) tables. |
-| MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug` | **Restart** | Read only at startup. |
+| MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug`, `enableMenu` | **Restart** | Read only at startup. |
 | Renaming a **device key** (`SM_UTA1` → `SM1_UTA1`) | **Restart + DB migration** | Changes every derived sensor name. Use `rename_device.py` (config + DB); see [RENAME_SENSOR.md](RENAME_SENSOR.md). Without migration, history/thresholds/subscriptions/mutes for the old name are orphaned and the new name starts empty. |
 | Renaming a **field key** (`T` → `Temp`) | **Restart + DB migration** | Same orphaning — the sensor name (`device_field`) changes. No dedicated script; migrate the DB by hand or accept the history loss. |
 
@@ -201,6 +203,8 @@ The safe order for a rename is always: stop the bot → migrate the DB → edit 
 ## Bot commands
 
 Only the **user commands** below are registered with Telegram via `set_my_commands`, so they appear in the client's `/` autocomplete menu. Admin and superadmin commands are intentionally left out of the menu but their handlers still work when typed.
+
+> Set `enableMenu: 0` under `telegram:` in `credentials.yaml` to skip menu registration entirely (the bot then calls `delete_my_commands` on startup to clear any menu already registered). All command handlers still work when typed by hand. Default is `1` (menu on).
 
 > Tapping a command in Telegram's `/` menu sends it immediately, before you can type an argument (fixed client behaviour). For commands that need an argument (`/graph`, `/csv`, `/xlsx`, `/last5Alarm`), sending them bare replies with a `ForceReply` prompt — reply with the argument and the command runs. Telegram Web ignores ForceReply focus, so there you can just send the argument as a normal message within 30s of the prompt. The prompt message is deleted once you answer, so its reply box clears on all your devices.
 
@@ -281,7 +285,7 @@ Readings are stored in SQLite in two tables:
 - `readings` — active window (default 30 days, set via `retention_days` in `sensors.d/`)
 - `readings_archive` — all readings older than the retention window, kept indefinitely
 
-Every 24 hours the bot moves readings older than `retention_days` from `readings` to `readings_archive`. No data is ever deleted automatically.
+Once a day at `archive_time` (default 12:00 local) the bot moves readings older than `retention_days` from `readings` to `readings_archive`. No data is ever deleted automatically. The archive fires at a fixed wall-clock time rather than on a rolling 24 h timer, so it still runs on hosts that are powered off overnight (a plain 24 h sleep would never elapse on <24 h of daily uptime).
 
 `/forgetSensor <name>` moves all current readings for that sensor to the archive, deletes its alarm history and silence state, and preserves the alarm threshold.
 

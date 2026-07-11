@@ -95,9 +95,23 @@ async def main():
 
     # periodic tasks
     async def archive_loop():
+        # Fire at a fixed wall-clock time (not a relative sleep): the host is
+        # powered off overnight, so a plain sleep(86400) never elapses on ~9h
+        # of daily uptime and archiving would never run. Pick archive_time
+        # within host-on hours. Same next-target scheme as digest_loop, so a
+        # restart just waits for the next occurrence instead of resetting.
+        from datetime import datetime, timedelta
+        h, m = (int(x) for x in cfg.archive_time.split(":"))
         while True:
-            await asyncio.sleep(86400)
-            db.archive_old_readings(cfg.retention_days)
+            now = datetime.now()
+            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if target <= now:
+                target += timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            try:
+                db.archive_old_readings(cfg.retention_days)
+            except Exception:
+                log.exception("archive_old_readings failed")
 
     async def digest_loop():
         from datetime import datetime, timedelta
