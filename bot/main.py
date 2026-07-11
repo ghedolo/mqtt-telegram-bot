@@ -15,9 +15,10 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 _DEBUG_LEVELS = {
-    0: logging.CRITICAL,
-    1: logging.INFO,
-    2: logging.DEBUG,
+    0: logging.CRITICAL,   # near-silent (crashes still hit stderr via the interpreter)
+    1: logging.WARNING,    # warnings + errors
+    2: logging.INFO,
+    3: logging.DEBUG,      # verbose
 }
 
 
