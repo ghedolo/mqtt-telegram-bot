@@ -180,3 +180,67 @@ def test_blackout_collides_with_sensor_name(tmp_path):
     bad = BLACKOUT_BASE.replace("  R2:", "  SM1_I:")
     with pytest.raises(ValueError, match="collides with a sensor name"):
         _write_env(tmp_path, defaults=bad)
+
+
+# --- topics & credentials ---
+
+def test_duplicate_topic_rejected(tmp_path):
+    defaults = """
+devices:
+  A:
+    topic: "t/same"
+    fields:
+      T: {}
+  B:
+    topic: "t/same"
+    fields:
+      T: {}
+"""
+    with pytest.raises(ValueError, match="Duplicate topic"):
+        _write_env(tmp_path, defaults=defaults)
+
+
+def test_field_without_topic_rejected(tmp_path):
+    defaults = """
+devices:
+  A:
+    fields:
+      T: {}
+"""
+    with pytest.raises(ValueError, match="has no topic"):
+        _write_env(tmp_path, defaults=defaults)
+
+
+def test_mqtt_tls_inferred_from_port_8883(tmp_path):
+    creds = CREDS.replace("port: 1883", "port: 8883")
+    cfg = _write_env(tmp_path, creds=creds)
+    assert cfg.mqtt_tls is True
+
+
+def test_mqtt_tls_off_on_plain_port(tmp_path):
+    cfg = _write_env(tmp_path)  # port 1883
+    assert cfg.mqtt_tls is False
+
+
+def test_poll_interval_clamped(tmp_path):
+    creds = CREDS.replace("group_id: -100", "group_id: -100\n  poll_interval: 99")
+    cfg = _write_env(tmp_path, creds=creds)
+    assert cfg.poll_interval == 10   # clamped to max
+
+
+def test_group_ids_coerced_to_int(tmp_path):
+    creds = """
+telegram:
+  token: "T"
+  group_id: "-100"
+mqtt:
+  host: "broker"
+  port: 1883
+groups:
+  ops: ["1", "2"]
+superadmin: ["9"]
+"""
+    cfg = _write_env(tmp_path, creds=creds)
+    assert cfg.groups["ops"] == [1, 2]
+    assert cfg.superadmin == [9]
+    assert cfg.telegram_group_id == -100

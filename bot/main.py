@@ -4,6 +4,7 @@ import signal
 
 from .config import load
 from . import db
+from .schedule import seconds_until
 from .mqtt_client import MqttClient
 from .alarm_manager import AlarmManager
 from .telegram_bot import TelegramBot
@@ -102,17 +103,12 @@ async def main():
     async def archive_loop():
         # Fire at a fixed wall-clock time (not a relative sleep): the host is
         # powered off overnight, so a plain sleep(86400) never elapses on ~9h
-        # of daily uptime and archiving would never run. Pick archive_time
-        # within host-on hours. Same next-target scheme as digest_loop, so a
-        # restart just waits for the next occurrence instead of resetting.
-        from datetime import datetime, timedelta
-        h, m = (int(x) for x in cfg.archive_time.split(":"))
+        # of daily uptime and archiving would never run. archive_time must sit
+        # within host-on hours. A restart just waits for the next occurrence
+        # instead of resetting the countdown. (see bot/schedule.py)
+        from datetime import datetime
         while True:
-            now = datetime.now()
-            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            if target <= now:
-                target += timedelta(days=1)
-            await asyncio.sleep((target - now).total_seconds())
+            await asyncio.sleep(seconds_until(datetime.now(), cfg.archive_time))
             try:
                 db.archive_old_readings(cfg.retention_days)
             except Exception:
