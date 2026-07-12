@@ -1,7 +1,7 @@
 # Testing
 
-Unit tests run on the **development machine**, never inside the production
-container. They exercise the pure logic (config parsing, DB, alarms, MQTT
+**84 tests** (pytest). They run on the **development machine**, never inside
+the production container. They exercise the pure logic (config parsing, DB, alarms, MQTT
 payload parsing, scheduling) against throwaway SQLite/YAML created under
 pytest's `tmp_path`, so they never touch `data/sensors.db` or any real config.
 

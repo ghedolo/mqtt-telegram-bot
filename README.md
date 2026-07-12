@@ -302,10 +302,13 @@ Once a day at `archive_time` (default 12:00 local) the bot moves readings older 
 
 ## Testing
 
-Unit tests (pytest) cover config parsing/validation, the DB layer and archive
-cutoff, alarm logic (thresholds, offline, blackout state machine), MQTT payload
-parsing, and wall-clock scheduling. They run on the dev machine against
-throwaway data — never the production container. See [docs/TESTING.md](docs/TESTING.md).
+The pytest suite (84 tests) covers config parsing/validation, the DB layer and
+archive cutoff, alarm logic (thresholds, offline, full blackout state machine),
+MQTT payload parsing, chart data prep, wall-clock scheduling, the Telegram-bot
+helpers (sensor resolution, sort, registration-token HMAC, digest), and the
+reading-ingest path end-to-end. They run on the dev machine against throwaway
+SQLite/YAML — never the production container. See [docs/TESTING.md](docs/TESTING.md)
+for the full catalogue.
 
 ```bash
 source .venv/bin/activate
