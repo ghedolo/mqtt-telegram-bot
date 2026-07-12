@@ -5,6 +5,7 @@ import signal
 from .config import load
 from . import db
 from .schedule import seconds_until
+from .ingest import process_reading
 from .mqtt_client import MqttClient
 from .alarm_manager import AlarmManager
 from .telegram_bot import TelegramBot
@@ -78,15 +79,7 @@ async def main():
     )
 
     async def on_reading(sensor: str, value: float):
-        value = round(value, cfg.decimals_of(sensor))
-        log.info("Reading: %s = %s", sensor, cfg.fmt(sensor, value))
-        db.insert_reading(sensor, value)
-        if not cfg.is_valid(sensor, value):
-            log.info("Out-of-range reading ignored for alarms: %s = %s", sensor, cfg.fmt(sensor, value))
-            return
-        await alarms.check_threshold(sensor, value)
-        await alarms.check_threshold_low(sensor, value)
-        await alarms.check_blackout_for(sensor)
+        await process_reading(cfg, alarms, sensor, value)
 
     async def on_topic_message(topic: str):
         alarms.record_topic_message(topic)

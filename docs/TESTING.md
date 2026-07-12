@@ -75,6 +75,14 @@ run tests.
 - `test_json_missing_field_skipped` — absent json field skipped (intermittent field is normal).
 - `test_oversized_payload_dropped` — payload over 64 KiB rejected.
 
+### `tests/test_ingest.py` — reading path integration (`bot/ingest.py`)
+Wires `process_reading` to the real DB and a real `AlarmManager` (only the
+notifiers are stubbed) and drives one full flow.
+- `test_reading_rounded_before_storage` — value rounded to the field's `decimals` before it is stored.
+- `test_out_of_range_stored_but_not_alarmed` — a reading outside `validMin/Max` is persisted but skips alarm checks (glitch never alarms).
+- `test_threshold_alarm_end_to_end` — an in-range reading over threshold produces a 🔴 notification carrying the formatted value.
+- `test_blackout_evaluated_on_reading` — a dark current reading re-evaluates and raises its blackout group.
+
 ### `tests/test_graph.py` — chart data prep & rendering (`bot/graph.py`)
 - `test_prepare_series_plain` — in-range readings pass through unchanged.
 - `test_prepare_series_high_glitch_dropped` / `test_prepare_series_low_glitch_dropped` — readings outside `validMin/Max` become NaN in the line and are recorded as edge markers, not in `in_vals`.
