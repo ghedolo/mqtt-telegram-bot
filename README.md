@@ -300,6 +300,21 @@ Once a day at `archive_time` (default 12:00 local) the bot moves readings older 
 
 ---
 
+## Testing
+
+Unit tests (pytest) cover config parsing/validation, the DB layer and archive
+cutoff, alarm logic (thresholds, offline, blackout state machine), MQTT payload
+parsing, and wall-clock scheduling. They run on the dev machine against
+throwaway data — never the production container. See [docs/TESTING.md](docs/TESTING.md).
+
+```bash
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+---
+
 ## License
 
 GPL-3.0. See [LICENSE](LICENSE).
