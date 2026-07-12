@@ -83,6 +83,19 @@ run tests.
 - `test_prepare_series_no_gap_when_within_threshold` — small gap → no break.
 - `test_build_renders_png` / `test_build_handles_no_data` / `test_build_multi_sensor_with_glitch` — `build()` returns a valid PNG for normal, empty, and glitchy multi-sensor inputs.
 
+### `tests/test_telegram.py` — bot helpers (`bot/telegram_bot.py`)
+Pure helpers only; the PTB Application builds offline and never starts polling.
+- `test_fmt_ago` / `test_fmt_bytes` — human-readable duration/size formatting.
+- `test_resolve_sensors_wildcard_respects_visibility` — `*` resolves only to sensors the user may view.
+- `test_resolve_sensors_exact_and_hidden` — exact name resolves; a non-visible sensor resolves to nothing.
+- `test_resolve_sensors_glob_comma_dedup_caseinsensitive` — glob, comma lists, dedup, case-insensitive matching.
+- `test_resolve_blackouts_viewer_gated` — blackout ids resolve only for viewers.
+- `test_extract_sort` — `-f`/`-s` flag split, last flag wins.
+- `test_apply_sort_alphabetical` / `test_apply_sort_by_field` — `-s` alphabetical vs default field-grouped order.
+- `test_token_roundtrip` / `..._wrong_sender` / `..._tampered_signature` / `..._malformed` / `..._expired` — registration-token HMAC accepts a valid token and rejects wrong sender, tampering, garbage, and >24h-old tokens.
+- `test_build_digest_only_subscribed_and_visible` — digest lists only sensors both subscribed and visible.
+- `test_build_digest_empty_when_no_subscriptions` — no subscriptions → empty string.
+
 ### `tests/test_schedule.py` — wall-clock scheduling (`bot/schedule.py`)
 - `test_next_occurrence_later_today` — target still ahead today.
 - `test_next_occurrence_already_passed_rolls_tomorrow` — past target rolls to tomorrow.
