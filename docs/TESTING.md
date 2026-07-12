@@ -45,6 +45,8 @@ run tests.
 - `test_blackout_unknown_field` — blackout referencing an unknown sensor rejected.
 - `test_blackout_below_must_be_positive` — `below` must be > 0.
 - `test_blackout_collides_with_sensor_name` — group id can't equal a sensor name.
+- `test_blackout_stale_after_must_be_positive` / `test_blackout_for_seconds_negative_rejected` — numeric bounds enforced.
+- `test_blackout_viewers_resolved_from_watched_fields` — blackout viewers resolved from the watched fields' device viewers.
 - `test_duplicate_topic_rejected` / `test_field_without_topic_rejected` — topic rules.
 - `test_mqtt_tls_inferred_from_port_8883` / `test_mqtt_tls_off_on_plain_port` — TLS inferred from port.
 - `test_poll_interval_clamped` — clamped to 1–10.
@@ -57,7 +59,12 @@ run tests.
 - `test_offline_then_recovery` — OFFLINE after `3×interval` of silence, ONLINE when data returns.
 - `test_offline_suppressed_during_startup_grace` — no offline alarm during the initial grace window.
 - `test_blackout_not_raised_until_sustained` — all-dark but below `for_seconds` → no alarm.
-- `test_blackout_lifecycle_raise_hold_end` — raise on sustained all-dark; **hold** (no false recovery) when one meter goes stale mid-outage; END only on a confirmed LIT reading.
+- `test_blackout_lifecycle_raise_hold_end` — raise on sustained all-dark; **hold** (no false recovery) when one meter goes stale mid-outage; END only on a confirmed LIT reading; recovery resets the sustain timer.
+- `test_blackout_for_seconds_zero_raises_immediately` — `for_seconds: 0` raises on the first dark reading.
+- `test_blackout_repeat_notification` — re-notifies "still no current" only after `repeat_seconds`.
+- `test_blackout_all_stale_never_raises` — all fields stale (UNKNOWN) → never raised.
+- `test_check_blackout_for_dispatches_only_watching_groups` — an event re-checks only groups watching that sensor.
+- `test_blackout_notify_none_is_noop` — no blackout notifier → early return, no state/crash.
 
 ### `tests/test_mqtt.py` — payload parsing (`bot/mqtt_client.py`)
 - `test_plain_float` — plain numeric payload parsed.
@@ -67,6 +74,14 @@ run tests.
 - `test_malformed_json_dropped` — invalid JSON dropped.
 - `test_json_missing_field_skipped` — absent json field skipped (intermittent field is normal).
 - `test_oversized_payload_dropped` — payload over 64 KiB rejected.
+
+### `tests/test_graph.py` — chart data prep & rendering (`bot/graph.py`)
+- `test_prepare_series_plain` — in-range readings pass through unchanged.
+- `test_prepare_series_high_glitch_dropped` / `test_prepare_series_low_glitch_dropped` — readings outside `validMin/Max` become NaN in the line and are recorded as edge markers, not in `in_vals`.
+- `test_prepare_series_no_bounds_keeps_everything` — no bounds → nothing filtered.
+- `test_prepare_series_gap_inserts_break` — a gap over `interval×2.5` inserts a NaN breakpoint so no segment bridges the silence.
+- `test_prepare_series_no_gap_when_within_threshold` — small gap → no break.
+- `test_build_renders_png` / `test_build_handles_no_data` / `test_build_multi_sensor_with_glitch` — `build()` returns a valid PNG for normal, empty, and glitchy multi-sensor inputs.
 
 ### `tests/test_schedule.py` — wall-clock scheduling (`bot/schedule.py`)
 - `test_next_occurrence_later_today` — target still ahead today.

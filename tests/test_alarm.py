@@ -169,3 +169,84 @@ def test_blackout_lifecycle_raise_hold_end(temp_db, clock):
     asyncio.run(am.check_blackout(g))
     assert len(recbo.msgs) == 2 and recbo.msgs[1][1].startswith("🔌")
     assert am._state("R2", "blackout").active is False
+    # recovery reset the sustain timer so a new outage restarts cleanly
+    assert am._state("R2", "blackout").since == 0
+
+
+def test_blackout_for_seconds_zero_raises_immediately(temp_db, clock):
+    recbo = Rec()
+    g = BlackoutGroup(id="R2", info="R2", fields=["X_I1"], below=0.5,
+                      for_seconds=0, repeat_seconds=3600, stale_after=15)
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g})
+    temp_db.insert_reading("X_I1", 0.0, ts=1000)      # fresh & dark
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 1 and recbo.msgs[0][1].startswith("⚡")
+
+
+def test_blackout_repeat_notification(temp_db, clock):
+    recbo = Rec()
+    g = _group()
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g})
+    # raise
+    temp_db.insert_reading("X_I1", 0.0, ts=1000)
+    temp_db.insert_reading("X_I2", 0.0, ts=1000)
+    asyncio.run(am.check_blackout(g))
+    clock["t"] = 1011
+    temp_db.insert_reading("X_I1", 0.0, ts=1011)
+    temp_db.insert_reading("X_I2", 0.0, ts=1011)
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 1
+
+    # still dark, but within repeat_seconds -> no repeat
+    clock["t"] = 1100
+    temp_db.insert_reading("X_I1", 0.0, ts=1100)
+    temp_db.insert_reading("X_I2", 0.0, ts=1100)
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 1
+
+    # past repeat_seconds (3600) -> repeat "still no current"
+    clock["t"] = 1011 + 3600 + 1
+    ts = clock["t"]
+    temp_db.insert_reading("X_I1", 0.0, ts=ts)
+    temp_db.insert_reading("X_I2", 0.0, ts=ts)
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 2 and "still no current" in recbo.msgs[1][1]
+
+
+def test_blackout_all_stale_never_raises(temp_db, clock):
+    recbo = Rec()
+    g = _group()
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g})
+    # readings exist but are older than stale_after -> all UNKNOWN, not DARK
+    temp_db.insert_reading("X_I1", 0.0, ts=900)   # age 100 > 15
+    temp_db.insert_reading("X_I2", 0.0, ts=900)
+    asyncio.run(am.check_blackout(g))
+    assert recbo.msgs == []
+    assert am._state("R2", "blackout").active is False
+
+
+def test_check_blackout_for_dispatches_only_watching_groups(temp_db, clock):
+    recbo = Rec()
+    ga = BlackoutGroup(id="A", info="A", fields=["X_I"], below=0.5,
+                       for_seconds=0, repeat_seconds=3600, stale_after=15)
+    gb = BlackoutGroup(id="B", info="B", fields=["Y_I"], below=0.5,
+                       for_seconds=0, repeat_seconds=3600, stale_after=15)
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo,
+                             {"A": ga, "B": gb})
+    # both groups could raise (both fields dark & fresh)
+    temp_db.insert_reading("X_I", 0.0, ts=1000)
+    temp_db.insert_reading("Y_I", 0.0, ts=1000)
+    # event on X_I must evaluate only group A
+    asyncio.run(am.check_blackout_for("X_I"))
+    assert [gid for gid, _ in recbo.msgs] == ["A"]
+    assert "B:blackout" not in am._states
+
+
+def test_blackout_notify_none_is_noop(temp_db, clock):
+    g = _group()
+    # no notify_blackout_fn -> check_blackout returns early, no crash/state
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt)
+    temp_db.insert_reading("X_I1", 0.0, ts=1000)
+    temp_db.insert_reading("X_I2", 0.0, ts=1000)
+    asyncio.run(am.check_blackout(g))
+    assert "R2:blackout" not in am._states

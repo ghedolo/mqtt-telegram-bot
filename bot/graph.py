@@ -1,5 +1,6 @@
 import io
 import math
+from dataclasses import dataclass, field
 from typing import Optional
 
 import matplotlib
@@ -17,6 +18,49 @@ _INDICATORS = {"-": "─────", "--": "╌╌╌╌╌", "-.": "─·─�
 
 
 _GAP_FACTOR = 2.5  # break the line when the time between readings exceeds interval * this
+
+
+@dataclass
+class Series:
+    """Plot-ready data prepared from raw readings."""
+    times: list = field(default_factory=list)       # x values (incl. gap breakpoints)
+    line_vals: list = field(default_factory=list)   # y values, NaN at gaps/glitches
+    in_vals: list = field(default_factory=list)     # (time, value) pairs within range
+    hi_times: list = field(default_factory=list)    # times of readings above valid_max
+    lo_times: list = field(default_factory=list)    # times of readings below valid_min
+
+
+def prepare_series(rows, gap_thr: float, vmin_b: Optional[float],
+                   vmax_b: Optional[float]) -> Series:
+    """Turn raw (ts, value) rows into plot arrays.
+
+    - inserts a NaN break when the gap between consecutive readings exceeds
+      `gap_thr`, so no line segment bridges a silence;
+    - drops readings outside [vmin_b, vmax_b] from the line (NaN) and records
+      their times in hi_times/lo_times for edge markers;
+    - collects in-range (time, value) pairs for min/max markers and stats.
+    """
+    s = Series()
+    prev_ts = None
+    for r in rows:
+        ts = r["ts"]
+        t = datetime.fromtimestamp(ts)
+        v = r["value"]
+        if prev_ts is not None and (ts - prev_ts) > gap_thr:
+            s.times.append(datetime.fromtimestamp(prev_ts + 1))
+            s.line_vals.append(math.nan)
+        prev_ts = ts
+        s.times.append(t)
+        if vmax_b is not None and v > vmax_b:
+            s.hi_times.append(t)
+            s.line_vals.append(math.nan)
+        elif vmin_b is not None and v < vmin_b:
+            s.lo_times.append(t)
+            s.line_vals.append(math.nan)
+        else:
+            s.line_vals.append(v)
+            s.in_vals.append((t, v))
+    return s
 
 
 def build(
@@ -44,28 +88,9 @@ def build(
         padded = name.ljust(max_name_len)
 
         gap_thr = interval * _GAP_FACTOR
-        times, line_vals, in_vals = [], [], []
-        hi_times, lo_times = [], []  # discarded above / below range
-        prev_ts = None
-        for r in rows:
-            ts = r["ts"]
-            t = datetime.fromtimestamp(ts)
-            v = r["value"]
-            # missing data: break the line so no segment bridges the silence
-            if prev_ts is not None and (ts - prev_ts) > gap_thr:
-                times.append(datetime.fromtimestamp(prev_ts + 1))
-                line_vals.append(math.nan)
-            prev_ts = ts
-            times.append(t)
-            if vmax_b is not None and v > vmax_b:
-                hi_times.append(t)
-                line_vals.append(math.nan)   # break line at glitch
-            elif vmin_b is not None and v < vmin_b:
-                lo_times.append(t)
-                line_vals.append(math.nan)
-            else:
-                line_vals.append(v)
-                in_vals.append((t, v))
+        s = prepare_series(rows, gap_thr, vmin_b, vmax_b)
+        times, line_vals, in_vals = s.times, s.line_vals, s.in_vals
+        hi_times, lo_times = s.hi_times, s.lo_times
 
         if in_vals:
             any_data = True

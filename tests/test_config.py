@@ -182,6 +182,25 @@ def test_blackout_collides_with_sensor_name(tmp_path):
         _write_env(tmp_path, defaults=bad)
 
 
+def test_blackout_stale_after_must_be_positive(tmp_path):
+    bad = BLACKOUT_BASE.replace("stale_after: 15", "stale_after: 0")
+    with pytest.raises(ValueError, match="'stale_after' must be > 0"):
+        _write_env(tmp_path, defaults=bad)
+
+
+def test_blackout_for_seconds_negative_rejected(tmp_path):
+    bad = BLACKOUT_BASE.replace("for_seconds: 10", "for_seconds: -1")
+    with pytest.raises(ValueError, match="'for_seconds' must be >= 0"):
+        _write_env(tmp_path, defaults=bad)
+
+
+def test_blackout_viewers_resolved_from_watched_fields(tmp_path):
+    cfg = _write_env(tmp_path, defaults=BLACKOUT_BASE)
+    # SM1 device viewers = [ops] -> ops members can view the R2 blackout
+    assert cfg.is_viewer_of_blackout(1, "R2") is True
+    assert cfg.is_viewer_of_blackout(999, "R2") is False
+
+
 # --- topics & credentials ---
 
 def test_duplicate_topic_rejected(tmp_path):
