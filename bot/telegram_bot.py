@@ -56,6 +56,16 @@ def _fmt_bytes(n: int) -> str:
         size /= 1024
 
 
+def _threshold_order_error(*, high: Optional[float], low: Optional[float]) -> Optional[str]:
+    """Guard against an inverted alarm band. Return a user-facing error string
+    when both thresholds are set and the high one is not strictly above the low
+    one, else None. Only pairs that would leave an incoherent band (where a
+    single reading can trip both alarms at once) are rejected."""
+    if high is not None and low is not None and high <= low:
+        return f"High threshold ({high:g}) must be greater than low threshold ({low:g})."
+    return None
+
+
 class TelegramBot:
     def __init__(self, cfg: AppConfig, reload_fn: Optional[Callable[[], AppConfig]] = None):
         self._cfg = cfg
@@ -711,6 +721,13 @@ class TelegramBot:
             )
             return
 
+        err = _threshold_order_error(high=value, low=db.get_threshold_low(name))
+        if err:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text=err, **_SILENT
+            )
+            return
+
         db.set_threshold(name, value)
         if self.reset_alarm_fn:
             self.reset_alarm_fn(name)
@@ -747,6 +764,13 @@ class TelegramBot:
         except ValueError:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Value must be a number.", **_SILENT
+            )
+            return
+
+        err = _threshold_order_error(high=db.get_threshold(name), low=value)
+        if err:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text=err, **_SILENT
             )
             return
 

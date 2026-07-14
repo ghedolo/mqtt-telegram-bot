@@ -1,6 +1,6 @@
 # Testing
 
-**84 tests** (pytest). They run on the **development machine**, never inside
+**88 tests** (pytest). They run on the **development machine**, never inside
 the production container. They exercise the pure logic (config parsing, DB, alarms, MQTT
 payload parsing, scheduling) against throwaway SQLite/YAML created under
 pytest's `tmp_path`, so they never touch `data/sensors.db` or any real config.
@@ -94,6 +94,7 @@ notifiers are stubbed) and drives one full flow.
 ### `tests/test_telegram.py` — bot helpers (`bot/telegram_bot.py`)
 Pure helpers only; the PTB Application builds offline and never starts polling.
 - `test_fmt_ago` / `test_fmt_bytes` — human-readable duration/size formatting.
+- `test_threshold_order_ok_when_high_above_low` / `..._ignores_missing_thresholds` / `..._rejects_inverted_band` / `..._rejects_equal_band` — the alarm-band ordering guard: a high threshold must stay strictly above the low one, missing sides never conflict, and inverted or equal bands are rejected (blocks `/setAlarm`/`/setAlarmLow` from creating an incoherent band).
 - `test_resolve_sensors_wildcard_respects_visibility` — `*` resolves only to sensors the user may view.
 - `test_resolve_sensors_exact_and_hidden` — exact name resolves; a non-visible sensor resolves to nothing.
 - `test_resolve_sensors_glob_comma_dedup_caseinsensitive` — glob, comma lists, dedup, case-insensitive matching.

@@ -231,8 +231,8 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 
 | Command | Description |
 |---|---|
-| `/setAlarm <name> <value>` | Set high alarm threshold (alarm if value >) |
-| `/setAlarmLow <name> <value>` | Set low alarm threshold (alarm if value <) |
+| `/setAlarm <name> <value>` | Set high alarm threshold (alarm if value >). Rejected if it would not stay strictly above the low threshold |
+| `/setAlarmLow <name> <value>` | Set low alarm threshold (alarm if value <). Rejected if it would not stay strictly below the high threshold |
 | `/clearAlarm <name>` | Clear high alarm threshold |
 | `/clearAlarmLow <name>` | Clear low alarm threshold |
 | `/ackOff <device>` | Acknowledge offline alarm for a device (suppresses repeats until it reconnects) |
@@ -302,7 +302,7 @@ Once a day at `archive_time` (default 12:00 local) the bot moves readings older 
 
 ## Testing
 
-The pytest suite (84 tests) covers config parsing/validation, the DB layer and
+The pytest suite (88 tests) covers config parsing/validation, the DB layer and
 archive cutoff, alarm logic (thresholds, offline, full blackout state machine),
 MQTT payload parsing, chart data prep, wall-clock scheduling, the Telegram-bot
 helpers (sensor resolution, sort, registration-token HMAC, digest), and the

@@ -74,6 +74,30 @@ def test_fmt_bytes():
     assert tb._fmt_bytes(5 * 1024 * 1024) == "5.0 MB"
 
 
+# --- alarm band ordering guard ---
+
+def test_threshold_order_ok_when_high_above_low():
+    assert tb._threshold_order_error(high=30.0, low=10.0) is None
+
+
+def test_threshold_order_ignores_missing_thresholds():
+    # a threshold not yet set can never form an inverted band
+    assert tb._threshold_order_error(high=None, low=10.0) is None
+    assert tb._threshold_order_error(high=5.0, low=None) is None
+    assert tb._threshold_order_error(high=None, low=None) is None
+
+
+def test_threshold_order_rejects_inverted_band():
+    err = tb._threshold_order_error(high=10.0, low=30.0)
+    assert err is not None
+    assert "10" in err and "30" in err
+
+
+def test_threshold_order_rejects_equal_band():
+    # equal thresholds leave no coherent band → rejected
+    assert tb._threshold_order_error(high=20.0, low=20.0) is not None
+
+
 # --- sensor resolution + visibility ---
 
 def test_resolve_sensors_wildcard_respects_visibility(bot):
