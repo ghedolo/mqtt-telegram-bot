@@ -26,6 +26,7 @@ from telegram.ext import (
     filters,
 )
 
+from . import __version__
 from .config import AppConfig
 from . import db, graph
 
@@ -562,7 +563,7 @@ class TelegramBot:
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = update.effective_chat.id
         text = (
-            "Commands:\n"
+            f"🐶 LorTe v{__version__} — Available commands:\n"
             "/get [expr] [-s|-f] — show sensors (no args = digest; sort -s name / -f field, default field)\n"
             "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
