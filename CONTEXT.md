@@ -54,14 +54,15 @@ _Avoid_: silence (reserved for the offline-ack state).
 | `/lastAlarm [name]` | Last alarm event (all or specific Sensor/Device) |
 | `/last5Alarm <name>` | Last 5 alarm events for a Sensor or Device |
 | `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions |
-| `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute; expr + `Nh` (1–12, clamped) = Mute for N hours |
+| `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute; expr + `Nh` (1–24, clamped) = Mute for N hours |
 | `/myid` | Show own Telegram user ID |
 | `/help` | Show command list (admin-aware) |
 
 ### Admin-only commands
 | Command | Description |
 |---|---|
-| `/setAlarm <name> <value>` | Set alarm threshold for a Field (Sensor name) |
+| `/setAlarm <name> <value>` | Set high alarm threshold for a Field (Sensor name); alarm if value > threshold |
+| `/setAlarmLow <name> <value>` | Set low alarm threshold for a Field (Sensor name); alarm if value < threshold |
 | `/ackOff <device>` | Acknowledge offline alarm for a Device (suppresses repeats until Device reconnects) |
 | `/forgetSensor <device>` | Archive all readings for a Device to history; clear alarms, threshold, offline-ack state |
 
