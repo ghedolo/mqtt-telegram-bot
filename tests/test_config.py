@@ -121,6 +121,62 @@ devices:
         _write_env(tmp_path, defaults=defaults)
 
 
+# --- state render tables (discrete fields, e.g. a door contact) ---
+
+_STATES_BASE = """
+devices:
+  DK1:
+    topic: "t/dk1"
+    viewers: [ops]
+    fields:
+      contact:
+        json_path: contact
+        decimals: 1
+        states:
+{keys}
+"""
+
+
+def _states_cfg(tmp_path, keys):
+    defaults = _STATES_BASE.format(keys=keys)
+    return _write_env(tmp_path, defaults=defaults)
+
+
+@pytest.mark.parametrize("keys", [
+    "          false: Aperta\n          true: Chiusa",   # bool keys
+    "          0: Aperta\n          1: Chiusa",           # int keys
+    '          "0": Aperta\n          "1": Chiusa',       # string keys
+])
+def test_states_key_forms_all_normalise_to_float(tmp_path, keys):
+    cfg = _states_cfg(tmp_path, keys)
+    sc = cfg.sensors["DK1_contact"]
+    assert sc.states == {0.0: "Aperta", 1.0: "Chiusa"}
+
+
+def test_fmt_renders_state_label(tmp_path):
+    cfg = _states_cfg(tmp_path, "          false: Aperta\n          true: Chiusa")
+    assert cfg.fmt("DK1_contact", 0.0) == "Aperta"
+    assert cfg.fmt("DK1_contact", 1.0) == "Chiusa"
+
+
+def test_fmt_falls_back_to_number_for_unmapped_value(tmp_path):
+    # A threshold like 0.5 is not in the table -> render numerically, so an
+    # alarm message never claims "0 < thr_low 0".
+    cfg = _states_cfg(tmp_path, "          false: Aperta\n          true: Chiusa")
+    assert cfg.fmt("DK1_contact", 0.5) == "0.5"
+
+
+def test_fmt_without_states_is_plain_number(tmp_path):
+    cfg = _write_env(tmp_path)          # SM1_T has no states
+    assert cfg.fmt("SM1_T", 21.5) == "21.5"
+
+
+def test_states_non_numeric_key_rejected(tmp_path):
+    bad = "          open: Aperta"     # 'open' is not numeric
+    with pytest.raises(ValueError, match="'states' must map"):
+        _states_cfg(tmp_path, bad)
+
+
 def test_stray_key_in_non_defaults_file(tmp_path):
     # only 00-defaults.yaml may carry a defaults: block
     bad = """

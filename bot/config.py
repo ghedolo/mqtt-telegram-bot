@@ -17,6 +17,7 @@ class SensorConfig:
     valid_min: Optional[float] = None
     valid_max: Optional[float] = None
     decimals: int = 1   # decimal places kept for storage/display (0-5)
+    states: Optional[dict[float, str]] = None  # value→label render table (e.g. {0.0: "Aperta"})
     viewers: list[str] = field(default_factory=list)
     admins: list[str] = field(default_factory=list)
     device_key: str = ""
@@ -114,7 +115,11 @@ class AppConfig:
         return sc.decimals if sc is not None else 1
 
     def fmt(self, sensor: str, value: float) -> str:
-        """Format a value with the sensor's configured decimal places."""
+        """Format a value: a configured state label if the value maps to one,
+        otherwise the number at the sensor's configured decimal places."""
+        sc = self.sensors.get(sensor)
+        if sc is not None and sc.states is not None and value in sc.states:
+            return sc.states[value]
         return f"{value:.{self.decimals_of(sensor)}f}"
 
     def visible_sensors(self, user_id: int) -> list[str]:
@@ -287,6 +292,20 @@ def load(
                     f"Field {fk!r} of device {dev_key!r}: decimals must be 0-5, got {decimals}"
                 )
 
+            states = None
+            if "states" in fv:
+                # Readings are stored as floats, so normalise every key form
+                # (bool false/true, int 0/1, str "0"/"1") to a float key. This
+                # renders discrete values (e.g. a door contact) as labels while
+                # the stored value stays numeric.
+                try:
+                    states = {float(k): str(v) for k, v in fv["states"].items()}
+                except (TypeError, ValueError, AttributeError):
+                    raise ValueError(
+                        f"Field {fk!r} of device {dev_key!r}: 'states' must map "
+                        f"numeric keys to labels"
+                    )
+
             sc = SensorConfig(
                 name=sensor_name,
                 topic=f_topic,
@@ -299,6 +318,7 @@ def load(
                 valid_min=float(fv["validMin"]) if "validMin" in fv else None,
                 valid_max=float(fv["validMax"]) if "validMax" in fv else None,
                 decimals=decimals,
+                states=states,
                 viewers=f_viewers,
                 admins=f_admins,
                 device_key=dev_key,
