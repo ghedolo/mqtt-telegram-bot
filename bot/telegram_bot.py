@@ -75,9 +75,11 @@ class TelegramBot:
         self.last_mqtt_fn: Optional[Callable[[], Optional[int]]] = None
         self.reset_alarm_fn: Optional[Callable[[str], None]] = None
         self.apply_alarm_config_fn: Optional[Callable[["AppConfig"], None]] = None
+        self.signal_snapshot_fn: Optional[Callable[[], dict]] = None
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("start", self._cmd_start))
         self._app.add_handler(CommandHandler("digest", self._cmd_digest))
+        self._app.add_handler(CommandHandler("listSignal", self._cmd_listsignal))
         self._app.add_handler(CommandHandler("silent", self._cmd_silent))
         self._app.add_handler(CommandHandler("list", self._cmd_list))
         self._app.add_handler(CommandHandler("get", self._cmd_get))
@@ -489,6 +491,48 @@ class TelegramBot:
             **_SILENT,
         )
 
+    def _render_signal_list(self, user_id: int) -> str:
+        # Discovery surface for blackout detection: the Blackout Groups this
+        # user may see, the Signals feeding each (live value shown to Admins of
+        # that signal), and the user's subscription state. Pure text — the
+        # subscription action itself stays in /digest.
+        groups = [
+            (gid, grp) for gid, grp in self._cfg.blackouts.items()
+            if self._cfg.is_viewer_of_blackout(user_id, gid)
+        ]
+        if not groups:
+            return "No blackout detection visible to you."
+
+        subs = set(db.get_digest_subscriptions(user_id))
+        snap = self.signal_snapshot_fn() if self.signal_snapshot_fn else {}
+        now = int(time.time())
+
+        lines: list[str] = []
+        for gid, grp in groups:
+            state = "🔔 subscribed" if gid in subs else "🔕 not subscribed"
+            lines.append(f"⚡ {gid} — {grp.info}  [{state}]")
+            for fn in grp.fields:
+                if not self._cfg.is_signal(fn):
+                    continue
+                if user_id in self._cfg.admins_of(fn):
+                    if fn in snap:
+                        v = snap[fn]
+                        lines.append(f"    · {fn} = {v['value']:g} ({now - v['ts']}s ago)")
+                    else:
+                        lines.append(f"    · {fn} = (no data yet)")
+                else:
+                    lines.append(f"    · {fn}")
+            verb = "off" if gid in subs else "on"
+            lines.append(f"    → /digest {gid} {verb}")
+        return "\n".join(lines)
+
+    async def _cmd_listsignal(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        text = self._render_signal_list(update.effective_user.id)
+        await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
+
     async def _cmd_silent(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
@@ -574,6 +618,7 @@ class TelegramBot:
             "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/digest [expr on|off] — manage daily digest subscriptions (also blackout group ids)\n"
+            "/listSignal — blackout detection you can subscribe to (fed by non-stored Signals)\n"
             "/silent [expr [Nh]] — mute alarm DMs (no args=list, expr=unmute sensor, expr Nh (1-24h)=mute sensor)\n"
             "/list — list all sensors\n"
             "/myid — show your Telegram user ID"

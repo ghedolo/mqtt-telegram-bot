@@ -6,7 +6,7 @@ from typing import Callable, Awaitable, Optional
 
 import paho.mqtt.client as mqtt
 
-from .config import AppConfig, SensorConfig
+from .config import AppConfig
 
 log = logging.getLogger(__name__)
 
@@ -29,8 +29,10 @@ class MqttClient:
         self._cfg = cfg
         self._on_reading = on_reading
         self._on_topic_message = on_topic_message
-        self._topic_map: dict[str, list[SensorConfig]] = {}
-        for sc in cfg.sensors.values():
+        # Signals share the dispatch path with sensors — both expose .name and
+        # .json_path — but are subscribed here too so their topic is received.
+        self._topic_map: dict[str, list] = {}
+        for sc in (*cfg.sensors.values(), *cfg.signals.values()):
             self._topic_map.setdefault(sc.topic, []).append(sc)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)

@@ -40,6 +40,9 @@ class AlarmManager:
         self._states: dict[str, AlarmState] = {}
         self._started_at = int(time.time())
         self._last_topic_ts: dict[str, int] = {}
+        # Latest value of each Signal (never stored in the DB). check_blackout
+        # reads this in preference to db.get_latest for signal-backed fields.
+        self._signal_latest: dict[str, dict] = {}
 
     def apply_config(self, threshold_repeat: int, offline_repeat: int, blackout_groups: dict):
         """Hot-apply reloadable alarm settings (from /reloadConfig) without a restart."""
@@ -49,6 +52,14 @@ class AlarmManager:
 
     def record_topic_message(self, topic: str):
         self._last_topic_ts[topic] = int(time.time())
+
+    def record_signal(self, name: str, value: float):
+        """Store a Signal's latest value in memory only (not the DB)."""
+        self._signal_latest[name] = {"value": float(value), "ts": int(time.time())}
+
+    def signal_snapshot(self) -> dict[str, dict]:
+        """Read-only view of the in-memory Signal cache (for /listSignal)."""
+        return dict(self._signal_latest)
 
     def last_mqtt_ts(self) -> int | None:
         return max(self._last_topic_ts.values(), default=None)
@@ -188,7 +199,9 @@ class AlarmManager:
         all_dark = True
         any_lit = False
         for name in group.fields:
-            row = db.get_latest(name)
+            # Signal-backed fields live in the in-memory cache (never in the DB);
+            # a regular field is never in the cache, so this routes correctly.
+            row = self._signal_latest.get(name) or db.get_latest(name)
             fresh = row is not None and (now - row["ts"]) <= group.stale_after
             if not fresh:
                 all_dark = False            # UNKNOWN

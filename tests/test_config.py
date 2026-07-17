@@ -177,6 +177,81 @@ def test_states_non_numeric_key_rejected(tmp_path):
         _states_cfg(tmp_path, bad)
 
 
+# --- signals (non-stored fields, consumed only for blackout detection) ---
+
+_SIGNAL_BASE = """
+defaults:
+  interval: 300
+devices:
+  SM1:
+    topic: "t/sm1"
+    viewers: [ops]
+    fields:
+      I:
+        unit: A
+      IF:
+        signal: true
+        topic: "t/sm1fast"
+        json_path: cur
+blackouts:
+  SIG:
+    fields: [SM1_IF]
+    below: 0.5
+    for_seconds: 0
+    stale_after: 9
+"""
+
+
+def test_signal_lands_in_signals_not_sensors(tmp_path):
+    cfg = _write_env(tmp_path, defaults=_SIGNAL_BASE)
+    assert "SM1_IF" in cfg.signals
+    assert "SM1_IF" not in cfg.sensors          # excluded from the flat sensor view
+    assert "SM1_I" in cfg.sensors
+    sig = cfg.signals["SM1_IF"]
+    assert sig.topic == "t/sm1fast"
+    assert sig.json_path == "cur"
+
+
+def test_signal_excluded_from_visible_sensors(tmp_path):
+    cfg = _write_env(tmp_path, defaults=_SIGNAL_BASE)
+    assert "SM1_IF" not in cfg.visible_sensors(1)
+    assert cfg.is_signal("SM1_IF") is True
+    assert cfg.is_signal("SM1_I") is False
+
+
+def test_signal_not_in_device_fields(tmp_path):
+    # kept out of device.fields so the per-device offline check ignores it
+    cfg = _write_env(tmp_path, defaults=_SIGNAL_BASE)
+    assert set(cfg.devices["SM1"].fields) == {"I"}
+
+
+def test_blackout_accepts_signal_field_and_resolves_viewers(tmp_path):
+    cfg = _write_env(tmp_path, defaults=_SIGNAL_BASE)
+    assert cfg.blackouts["SIG"].fields == ["SM1_IF"]
+    # signal inherits device viewers -> ops members can view/subscribe the group
+    assert cfg.viewers_of("SM1_IF") == {1, 2}
+    assert cfg.is_viewer_of_blackout(1, "SIG") is True
+
+
+def test_signal_name_collision_with_sensor_rejected(tmp_path):
+    # A signal must share the derived-name namespace with sensors. Device "A"
+    # field "B_C" and device "A_B" field "C" both derive "A_B_C"; the signal
+    # collides with the sensor and is rejected.
+    bad = """
+devices:
+  A:
+    topic: "t/a"
+    fields:
+      B_C: {}
+  A_B:
+    topic: "t/b"
+    fields:
+      C: {signal: true, topic: "t/c"}
+"""
+    with pytest.raises(ValueError, match="Duplicate sensor name"):
+        _write_env(tmp_path, defaults=bad)
+
+
 def test_stray_key_in_non_defaults_file(tmp_path):
     # only 00-defaults.yaml may carry a defaults: block
     bad = """

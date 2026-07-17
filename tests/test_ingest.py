@@ -37,9 +37,18 @@ devices:
         validMax: 80
       I:
         decimals: 2
+      IF:
+        signal: true
+        topic: "t/sm1fast"
+        json_path: cur
 blackouts:
   R2:
     fields: [SM1_I]
+    below: 0.5
+    for_seconds: 0
+    stale_after: 15
+  SIG:
+    fields: [SM1_IF]
     below: 0.5
     for_seconds: 0
     stale_after: 15
@@ -107,3 +116,14 @@ def test_blackout_evaluated_on_reading(env):
     assert len(blackout.msgs) == 1
     assert blackout.msgs[0][0] == "R2"
     assert blackout.msgs[0][1].startswith("⚡")
+
+
+def test_signal_not_stored_but_feeds_blackout(env):
+    cfg, alarms, thr, blackout, db = env
+    # SM1_IF is a Signal: the reading is never written, but it drives the SIG
+    # blackout group (for_seconds 0 -> a dark signal raises at once).
+    asyncio.run(process_reading(cfg, alarms, "SM1_IF", 0.0))
+    assert db.get_latest("SM1_IF") is None                    # never stored
+    assert alarms.signal_snapshot()["SM1_IF"]["value"] == 0.0  # kept in memory
+    assert [m for m in blackout.msgs if m[0] == "SIG"]         # blackout fired
+    assert thr.msgs == []                                      # no threshold path

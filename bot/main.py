@@ -74,6 +74,7 @@ async def main():
 
     tg.last_mqtt_fn = alarms.last_mqtt_ts
     tg.reset_alarm_fn = alarms.reset_sensor_alarm
+    tg.signal_snapshot_fn = alarms.signal_snapshot
     tg.apply_alarm_config_fn = lambda new: alarms.apply_config(
         new.alarm_threshold_repeat, new.alarm_offline_repeat, new.blackouts
     )

@@ -15,6 +15,12 @@ log = logging.getLogger(__name__)
 
 
 async def process_reading(cfg, alarms, sensor: str, value: float):
+    if cfg.is_signal(sensor):
+        # A Signal is never stored and has no thresholds: keep only the latest
+        # value in memory and re-evaluate the blackout it feeds.
+        alarms.record_signal(sensor, value)
+        await alarms.check_blackout_for(sensor)
+        return
     value = round(value, cfg.decimals_of(sensor))
     log.info("Reading: %s = %s", sensor, cfg.fmt(sensor, value))
     db.insert_reading(sensor, value)

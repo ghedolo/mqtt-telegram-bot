@@ -183,6 +183,27 @@ def test_blackout_for_seconds_zero_raises_immediately(temp_db, clock):
     assert len(recbo.msgs) == 1 and recbo.msgs[0][1].startswith("⚡")
 
 
+def test_blackout_reads_signal_cache_without_db(temp_db, clock):
+    # A signal-backed field has no DB rows: check_blackout must classify it
+    # from the in-memory cache (record_signal), routing cache-or-DB.
+    recbo = Rec()
+    g = BlackoutGroup(id="SIG", info="SIG", fields=["X_IF"], below=0.5,
+                      for_seconds=0, repeat_seconds=3600, stale_after=15)
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"SIG": g})
+
+    am.record_signal("X_IF", 0.0)                     # fresh & dark, in memory only
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 1 and recbo.msgs[0][1].startswith("⚡")
+    assert temp_db.get_latest("X_IF") is None         # never stored
+    assert am.signal_snapshot()["X_IF"]["value"] == 0.0
+
+    # a LIT signal value confirms recovery from the cache too
+    clock["t"] = 1005
+    am.record_signal("X_IF", 2.0)
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 2 and recbo.msgs[1][1].startswith("🔌")
+
+
 def test_blackout_repeat_notification(temp_db, clock):
     recbo = Rec()
     g = _group()

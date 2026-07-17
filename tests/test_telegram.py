@@ -21,6 +21,7 @@ mqtt:
 groups:
   ops: [1, 2]
   other: [3]
+  watchers: [4]
 """
 
 DEFAULTS = """
@@ -39,12 +40,23 @@ devices:
     fields:
       T: {}
       H: {}
+  SM3:
+    topic: "t/sm3"
+    admins: [ops]
+    viewers: [watchers]
+    fields:
+      IF: {signal: true, topic: "t/sm3fast", json_path: cur}
 blackouts:
   R2:
     fields: [SM1_T]
     below: 0.5
     for_seconds: 10
     stale_after: 15
+  SIG:
+    fields: [SM3_IF]
+    below: 0.5
+    for_seconds: 0
+    stale_after: 9
 """
 
 
@@ -121,7 +133,8 @@ def test_resolve_sensors_glob_comma_dedup_caseinsensitive(bot):
 
 
 def test_resolve_blackouts_viewer_gated(bot):
-    assert bot._resolve_blackouts(["*"], user_id=1) == ["R2"]   # ops views SM1_T
+    # ops (user 1) views SM1_T (R2) and is admin of SM3_IF (SIG)
+    assert bot._resolve_blackouts(["*"], user_id=1) == ["R2", "SIG"]
     assert bot._resolve_blackouts(["*"], user_id=99) == []
 
 
@@ -194,3 +207,36 @@ def test_build_digest_only_subscribed_and_visible(bot, temp_db):
 
 def test_build_digest_empty_when_no_subscriptions(bot):
     assert bot.build_digest(1) == ""
+
+
+# --- /listSignal rendering (pure) ---
+
+def test_listsignal_admin_sees_live_signal_value(bot):
+    # user 1 is admin of SM3 (ops) -> sees the live cached value of SM3_IF
+    bot.signal_snapshot_fn = lambda: {"SM3_IF": {"value": 0.42, "ts": int(time.time())}}
+    out = bot._render_signal_list(1)
+    assert "⚡ SIG" in out
+    assert "SM3_IF = 0.42" in out
+    assert "🔕 not subscribed" in out
+    assert "/digest SIG on" in out
+    # R2 watches SM1_T which user 1 can view -> also listed, no signal rows
+    assert "⚡ R2" in out
+
+
+def test_listsignal_viewer_hides_live_value(bot):
+    # user 4 (watchers) is a viewer of SM3 but not an admin -> name only, no value
+    bot.signal_snapshot_fn = lambda: {"SM3_IF": {"value": 0.42, "ts": int(time.time())}}
+    out = bot._render_signal_list(4)
+    assert "SM3_IF" in out
+    assert "0.42" not in out
+
+
+def test_listsignal_subscription_state_flips_hint(bot, temp_db):
+    temp_db.subscribe_digest(1, "SIG")
+    out = bot._render_signal_list(1)
+    assert "🔔 subscribed" in out
+    assert "/digest SIG off" in out
+
+
+def test_listsignal_none_for_outsider(bot):
+    assert bot._render_signal_list(99) == "No blackout detection visible to you."

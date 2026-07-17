@@ -24,6 +24,21 @@ class SensorConfig:
 
 
 @dataclass
+class SignalConfig:
+    """A Field whose Readings are never stored — consumed only for derived
+    Alarm detection (Blackout). Lives in AppConfig.signals, outside sensors, so
+    every value-view (/get, /graph, /list, digest, thresholds) excludes it by
+    construction. The latest value is kept only in AlarmManager's in-memory
+    cache."""
+    name: str           # derived: {device_key}_{field_key}
+    topic: str
+    json_path: Optional[str]
+    viewers: list[str] = field(default_factory=list)
+    admins: list[str] = field(default_factory=list)
+    device_key: str = ""
+
+
+@dataclass
 class DeviceConfig:
     key: str
     topic: Optional[str]        # shared topic; None = per-field topics
@@ -67,6 +82,7 @@ class AppConfig:
     archive_time: str
     enable_menu: bool
     blackouts: dict[str, "BlackoutGroup"] = field(default_factory=dict)
+    signals: dict[str, SignalConfig] = field(default_factory=dict)  # signal_name → SignalConfig
 
     def _members(self, group_names: list[str]) -> set[int]:
         result: set[int] = set()
@@ -75,13 +91,13 @@ class AppConfig:
         return result
 
     def viewers_of(self, sensor: str) -> set[int]:
-        sc = self.sensors.get(sensor)
+        sc = self.sensors.get(sensor) or self.signals.get(sensor)
         if sc is None:
             return set()
         return self._members(sc.viewers) | self._members(sc.admins)
 
     def admins_of(self, sensor: str) -> set[int]:
-        sc = self.sensors.get(sensor)
+        sc = self.sensors.get(sensor) or self.signals.get(sensor)
         if sc is None:
             return set()
         return self._members(sc.admins)
@@ -124,6 +140,9 @@ class AppConfig:
 
     def visible_sensors(self, user_id: int) -> list[str]:
         return [n for n in self.sensors if self.is_viewer(user_id, n)]
+
+    def is_signal(self, name: str) -> bool:
+        return name in self.signals
 
     def resolve_sensor(self, name: str) -> str:
         """Map a user-supplied sensor name to its canonical name (case-insensitive)."""
@@ -227,6 +246,7 @@ def load(
     default_interval = int(defaults.get("interval", 300))
 
     sensors: dict[str, SensorConfig] = {}
+    signals: dict[str, SignalConfig] = {}
     devices: dict[str, DeviceConfig] = {}
     seen_topics: set[str] = set()
     seen_names: set[str] = set()
@@ -285,6 +305,21 @@ def load(
             else:
                 f_viewers = dev_viewers[:]
                 f_admins = dev_admins[:]
+
+            if fv.get("signal"):
+                # A Signal: never stored, consumed only for blackout detection.
+                # Kept out of `sensors`/`device_fields` so all value-views and
+                # the per-device offline check ignore it. It still claimed its
+                # name and topic above, so collisions are caught like any field.
+                signals[sensor_name] = SignalConfig(
+                    name=sensor_name,
+                    topic=f_topic,
+                    json_path=fv.get("json_path") or fv.get("json_field"),
+                    viewers=f_viewers,
+                    admins=f_admins,
+                    device_key=dev_key,
+                )
+                continue
 
             decimals = int(fv.get("decimals", 1))
             if not 0 <= decimals <= 5:
@@ -347,7 +382,7 @@ def load(
         if not g_fields:
             raise ValueError(f"Blackout group {gid!r}: 'fields' is required and non-empty")
         for fn in g_fields:
-            if fn not in sensors:
+            if fn not in sensors and fn not in signals:
                 raise ValueError(f"Blackout group {gid!r}: unknown field {fn!r}")
         if "below" not in gv:
             raise ValueError(f"Blackout group {gid!r}: 'below' is required")
@@ -398,4 +433,5 @@ def load(
         archive_time=str(defaults.get("archive_time", "12:00")),
         enable_menu=bool(int(tg.get("enableMenu", 1))),
         blackouts=blackouts,
+        signals=signals,
     )
