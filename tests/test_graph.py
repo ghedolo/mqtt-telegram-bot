@@ -71,13 +71,13 @@ def _is_png(buf):
 def test_build_renders_png(monkeypatch):
     monkeypatch.setattr(graph.db, "get_history",
                         lambda name, seconds: _rows([(1000, 20.0), (1010, 21.5)]))
-    buf = graph.build([("A_T", 30.0, "°C", -20, 80, 300, 1)], hours=8)
+    buf = graph.build([("A_T", 30.0, "°C", -20, 80, 300, 1, None)], hours=8)
     assert _is_png(buf)
 
 
 def test_build_handles_no_data(monkeypatch):
     monkeypatch.setattr(graph.db, "get_history", lambda name, seconds: [])
-    buf = graph.build([("A_T", None, "°C", None, None, 300, 1)], hours=8)
+    buf = graph.build([("A_T", None, "°C", None, None, 300, 1, None)], hours=8)
     assert _is_png(buf)
 
 
@@ -85,7 +85,16 @@ def test_build_multi_sensor_with_glitch(monkeypatch):
     monkeypatch.setattr(graph.db, "get_history",
                         lambda name, seconds: _rows([(1000, 20.0), (1010, 999.0), (1020, 21.0)]))
     buf = graph.build([
-        ("A_T", 30.0, "°C", -20, 80, 300, 1),
-        ("B_H", None, "%", 0, 100, 300, 0),
+        ("A_T", 30.0, "°C", -20, 80, 300, 1, None),
+        ("B_H", None, "%", 0, 100, 300, 0, None),
     ], hours=8)
+    assert _is_png(buf)
+
+
+def test_build_state_field_renders_as_steps(monkeypatch):
+    # a door contact: discrete states -> steps + labeled y-axis, no crash
+    monkeypatch.setattr(graph.db, "get_history",
+                        lambda name, seconds: _rows([(1000, 1.0), (1010, 0.0), (1020, 1.0)]))
+    states = {0.0: "Aperta", 1.0: "Chiusa"}
+    buf = graph.build([("DK1_C", 0.5, "", None, None, 3600, 1, states)], hours=8)
     assert _is_png(buf)

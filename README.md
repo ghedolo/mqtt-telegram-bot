@@ -75,6 +75,9 @@ devices:
         json_path: "temperature"   # optional: JSON field to extract (dot notation for nested)
         unit: "°C"                 # optional
         decimals: 1                # optional, decimal places kept (0-5, default 1)
+        states:                    # optional: render values as labels (discrete state field, e.g. a door contact)
+          false: Aperta            #   keys accept bool/int/string (false, 0, "0" all map to 0.0)
+          true: Chiusa
         defaultAlarmHigh: 30.0     # optional, seeds high threshold on first run
         defaultAlarmLow: 10.0      # optional, seeds low threshold on first run
         validMin: -20              # optional, plausible range floor (glitch filter)
@@ -94,6 +97,8 @@ defaults:
 Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed).
 
 `decimals` (0-5, default 1) sets how many decimal places each reading is rounded to for storage and shown with everywhere — `/get`, `/list`, alarm messages, `/setAlarm` input, and graph stats. Out-of-range values are rejected at startup.
+
+`states` turns a numeric field into a **discrete state field** — the value is still stored as a number, but displayed as a label. It maps values to names (keys accept `false`/`true`, `0`/`1`, or `"0"`/`"1"` — all normalised to `0.0`/`1.0`), so a Zigbee2MQTT door contact (`contact: false`/`true`) shows as `Aperta`/`Chiusa` in `/get`, `/list` and the digest instead of `0.0`/`1.0`. It also changes how the field is **graphed**: a state field is drawn as a **step line** (holds its value between readings, jumps at each change) with the y-axis labelled by the state names, rather than an interpolated line with a numeric axis. A threshold set on the raw number (e.g. `/setAlarmLow contact 0.5`) still fires an edge alarm on the transition. Unmapped values (like the `0.5` threshold itself) fall back to the number.
 
 A field marked **`signal: true`** is a **Signal**: its readings are *never stored*. It is diverted out of the sensor set, so it never appears in `/get`, `/graph`, `/list`, the digest, thresholds, or the per-device offline check — its latest value is kept only in memory and used as an input to blackout detection. This lets a fast current meter (e.g. a 3 s `IF` alongside the slow 60 s `I`) drive detection without the storage cost of persisting every fast sample; see _Blackout detection_ below.
 

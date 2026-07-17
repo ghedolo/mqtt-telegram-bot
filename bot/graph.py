@@ -64,7 +64,8 @@ def prepare_series(rows, gap_thr: float, vmin_b: Optional[float],
 
 
 def build(
-    sensors: list[tuple[str, Optional[float], str, Optional[float], Optional[float], int, int]],
+    sensors: list[tuple[str, Optional[float], str, Optional[float], Optional[float],
+                        int, int, Optional[dict]]],
     hours: int = 8,
 ) -> io.BytesIO:
     n = len(sensors)
@@ -80,7 +81,7 @@ def build(
     # blended transform: x in data coords, y in axes fraction (edge markers)
     edge_tf = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
 
-    for i, (name, threshold, unit, vmin_b, vmax_b, interval, decimals) in enumerate(sensors):
+    for i, (name, threshold, unit, vmin_b, vmax_b, interval, decimals, states) in enumerate(sensors):
         rows = db.get_history(name, seconds=hours * 3600)
         color = _COLORS[i % len(_COLORS)]
         style = _STYLES[i // len(_COLORS)]
@@ -101,11 +102,17 @@ def build(
             dropped = len(hi_times) + len(lo_times)
             extra = f", {dropped} fuori scala" if dropped else ""
             stats = f"{vmin:.{decimals}f}/{vmax:.{decimals}f}  {t_from} – {t_to}  ({len(rows)}{extra})"
-            ax.plot(times, line_vals, color=color, linestyle=style, linewidth=1.5)
-            t_min, v_min = min(in_vals, key=lambda p: p[1])
-            t_max, v_max = max(in_vals, key=lambda p: p[1])
-            ax.plot(t_min, v_min, "o", color="#4CAF50", markersize=6, zorder=5)
-            ax.plot(t_max, v_max, "o", color="#F44336", markersize=6, zorder=5)
+            # a discrete state field (e.g. a door contact) holds its value
+            # between readings and jumps at each change — draw it as steps, not
+            # an interpolated line, and skip the min/max dots (meaningless on 0/1).
+            drawstyle = "steps-post" if states else "default"
+            ax.plot(times, line_vals, color=color, linestyle=style, linewidth=1.5,
+                    drawstyle=drawstyle)
+            if not states:
+                t_min, v_min = min(in_vals, key=lambda p: p[1])
+                t_max, v_max = max(in_vals, key=lambda p: p[1])
+                ax.plot(t_min, v_min, "o", color="#4CAF50", markersize=6, zorder=5)
+                ax.plot(t_max, v_max, "o", color="#F44336", markersize=6, zorder=5)
             # tiny edge markers at the time of each discarded reading
             if hi_times:
                 ax.plot(hi_times, [0.985] * len(hi_times), "v", transform=edge_tf,
@@ -126,6 +133,16 @@ def build(
 
     units = list({s[2] for s in sensors if s[2]})
     ax.set_ylabel(units[0] if len(units) == 1 else "")
+
+    # a lone discrete state field: label the y-axis with its state names
+    # (e.g. Aperta / Chiusa) instead of the meaningless 0.0 / 1.0 ticks.
+    if len(sensors) == 1 and sensors[0][7]:
+        st = sensors[0][7]
+        keys = sorted(st)
+        ax.set_yticks(keys)
+        ax.set_yticklabels([st[k] for k in keys])
+        pad = (keys[-1] - keys[0]) * 0.25 or 0.25
+        ax.set_ylim(keys[0] - pad, keys[-1] + pad)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     # denser horizontal ticks on wide spans: aim for ~12 hourly divisions
     tick_step = max(1, round(hours / 12))
