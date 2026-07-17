@@ -35,7 +35,18 @@ devices:
     fields:
       Temp:
         json_path: "sensor.temp"
+  Z:
+    topic: "t/z"
+    viewers: [ops]
+    fields:
+      OCC:
+        json_path: occupancy
+        states: {false: Assente, true: Presente}
+      LUX:
+        json_path: illumination
+        states: {0: dim, 1: bright}
 """
+
 
 
 class Msg:
@@ -120,6 +131,33 @@ def test_json_missing_field_skipped(tmp_path, monkeypatch):
     # path sensor.temp absent -> KeyError -> silently skipped (intermittent field)
     mc._on_message(None, None, Msg("t/json", b'{"sensor": {}}'))
     assert rec.calls == []
+
+
+_Z_PAYLOAD = b'{"illumination": "dim", "linkquality": 255, "occupancy": false}'
+
+
+def test_bool_and_string_payload_via_states(tmp_path, monkeypatch):
+    # occupancy=false -> float(False)=0.0; illumination="dim" -> mapped via
+    # the states map used in reverse (label "dim" -> value 0.0).
+    rec = Recorder()
+    mc = _build_client(tmp_path, monkeypatch, rec)
+    mc._on_message(None, None, Msg("t/z", _Z_PAYLOAD))
+    assert dict(rec.calls) == {"Z_OCC": 0.0, "Z_LUX": 0.0}
+
+
+def test_string_state_bright_maps_to_one(tmp_path, monkeypatch):
+    rec = Recorder()
+    mc = _build_client(tmp_path, monkeypatch, rec)
+    mc._on_message(None, None, Msg("t/z", b'{"illumination": "bright", "occupancy": true}'))
+    assert dict(rec.calls) == {"Z_OCC": 1.0, "Z_LUX": 1.0}
+
+
+def test_unknown_state_string_dropped(tmp_path, monkeypatch):
+    # a string not among the states labels can't be coerced -> dropped
+    rec = Recorder()
+    mc = _build_client(tmp_path, monkeypatch, rec)
+    mc._on_message(None, None, Msg("t/z", b'{"illumination": "foggy", "occupancy": false}'))
+    assert dict(rec.calls) == {"Z_OCC": 0.0}   # LUX dropped, OCC still parsed
 
 
 def test_oversized_payload_dropped(tmp_path, monkeypatch):

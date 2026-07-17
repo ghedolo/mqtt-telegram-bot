@@ -19,6 +19,22 @@ def _log_future_exc(fut):
         log.error("Async handler failed: %s", exc)
 
 
+def _coerce(sc, raw):
+    """Parse a payload node to a number. A bool/number goes through float()
+    directly; a discrete string payload (e.g. "dim"/"bright") is mapped to its
+    numeric code via the field's `states` map used in reverse (label → value).
+    Re-raises the original error if neither applies, preserving the caller's
+    absent-field vs unparseable distinction."""
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        if sc.states:
+            for num, label in sc.states.items():
+                if label == raw:
+                    return num
+        raise
+
+
 class MqttClient:
     def __init__(
         self,
@@ -83,9 +99,9 @@ class MqttClient:
                     node = data
                     for key in sc.json_path.split("."):
                         node = node[key]
-                    value = float(node)
+                    value = _coerce(sc, node)
                 else:
-                    value = float(payload)
+                    value = _coerce(sc, payload)
             except (KeyError, TypeError):
                 continue  # field absent from this message — normal for intermittent fields
             except Exception:
