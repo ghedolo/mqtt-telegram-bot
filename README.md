@@ -172,6 +172,12 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 `superadmin` is a flat list of Telegram `chat_id`s with access to `/forgetSensor` and `/reloadConfig`. Independent of sensor-level groups.
 
+### Backing up the config
+
+`sensors.d/` and `credentials.yaml` are gitignored and live only on the host — losing the host loses them. [docs/backup-config.md](docs/backup-config.md) sets up a **separate, private, git-crypt-encrypted repo** for them, operated only from production (the dev machine never holds the secrets): `credentials.yaml` is encrypted at rest, `sensors.d/` stays plaintext.
+
+The config source path is overridable via the `LORTE_CONFIG` env var (read from `.env` by `docker-compose.yml`). It defaults to `.` (the legacy in-place layout); production sets `LORTE_CONFIG=../lortebot-config` to mount the config from the sibling backup repo. `sensors.d/` and `credentials.yaml` are **not** baked into the image — they arrive solely via the bind mount.
+
 ### Changing configuration — what each change costs
 
 Every value in the YAML has a different cost to change. Three levels, cheapest to most expensive:
