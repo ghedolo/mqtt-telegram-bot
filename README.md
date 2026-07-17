@@ -81,6 +81,7 @@ devices:
         validMax: 80               # optional, plausible range ceiling (glitch filter)
         viewers: [other_group]     # optional: overrides device-level viewers (replaces, not merges)
         admins: [other_group]      # optional: overrides device-level admins (replaces, not merges)
+        signal: true               # optional: a Signal — never stored, feeds only blackout detection (see below)
 
 defaults:
   interval: 300
@@ -93,6 +94,8 @@ defaults:
 Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed).
 
 `decimals` (0-5, default 1) sets how many decimal places each reading is rounded to for storage and shown with everywhere — `/get`, `/list`, alarm messages, `/setAlarm` input, and graph stats. Out-of-range values are rejected at startup.
+
+A field marked **`signal: true`** is a **Signal**: its readings are *never stored*. It is diverted out of the sensor set, so it never appears in `/get`, `/graph`, `/list`, the digest, thresholds, or the per-device offline check — its latest value is kept only in memory and used as an input to blackout detection. This lets a fast current meter (e.g. a 3 s `IF` alongside the slow 60 s `I`) drive detection without the storage cost of persisting every fast sample; see _Blackout detection_ below.
 
 Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently.
 
@@ -122,6 +125,8 @@ The end-of-blackout message (`🔌`) is sent **only on positive proof** — when
 The full state model (per-field DARK/LIT/UNKNOWN inputs plus the group POWERED→SUSPECTED→OUTAGE machine, with a diagram) is in [docs/blackout-states.md](docs/blackout-states.md).
 
 `for_seconds` (the sustain window) and `stale_after` (the freshness window) are **independent**: set `for_seconds` as low as you like to catch brief outages, but keep `stale_after ≥ the meter's real publish interval`, or fresh readings would be wrongly discarded and the blackout never raised. Evaluation is **event-driven** — the group is re-checked on every incoming current reading, so detection latency is roughly the meter's publish cadence. That cadence is also the hard floor on resolution: a blackout shorter than the interval between two published readings cannot be observed.
+
+**Watching a Signal for finer resolution.** Because the resolution floor is the publish cadence, detecting short dips means watching a *faster* current. A blackout group's `fields` may name a **Signal** (`signal: true`) instead of a stored sensor — e.g. a 3 s `IF` field — dropping the floor to ~6 s (versus ~124 s for a 60 s meter) without storing every fast sample. With `for_seconds: 0` the group then fires on the first all-dark reading, catching momentary outages ("microbuchi"). This still requires **every** watched meter to sample the same dip (they must publish near-synchronously); an event shorter than the cadence that falls between one meter's samples is unobservable — catching arbitrarily short flickers would need a latching signal (a power-fail contact), not a sampled current. Use `/listSignal` to see which signals feed each blackout group and their live values.
 
 #### Understanding `stale_after`
 
@@ -186,6 +191,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | Renaming a **config file** (e.g. `SM1.yaml` → `foo.yaml`) | **Reload** | Files are merged by *content*, not filename — no effect. Exception: renaming **to/from `00-defaults.yaml`** changes which file may carry `defaults:`/`blackouts:`. |
 | `topic` (same sensor name) | **Restart** | MQTT re-subscribes only at startup. |
 | Adding a new device / field / sensor | **Restart** | Reload makes it visible in commands, but no data flows until MQTT subscribes at restart. |
+| Adding / removing a **Signal** (`signal: true`) | **Restart** | Like any field its MQTT subscription is set at startup; point a blackout group's `fields` at it with a **reload**. |
 | Removing a device / field | **Restart** | Reload hides it; the old MQTT subscription lingers until restart (harmless). Old DB rows remain — archive them with `/forgetSensor`. |
 | `alarm_threshold_repeat` / `alarm_offline_repeat` | **Reload** | Pushed into the running `AlarmManager` on reload. |
 | Blackout tuning: `below`, `for_seconds`, `stale_after`, `repeat_seconds`, `info` | **Reload** | Applied to the running `AlarmManager` immediately. |
@@ -222,6 +228,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
+| `/listSignal` | Subscribable blackout groups, the Signals feeding each (live value for admins), and your subscription state — subscribe via `/digest <id> on` |
 | `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute. Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
 | `/exprSyntax` | Sensor filter expression syntax |
 | `/myid` | Your Telegram user ID |
