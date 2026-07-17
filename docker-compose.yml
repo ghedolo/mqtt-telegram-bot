@@ -13,7 +13,7 @@ services:
     volumes:
       - ./data:/app/data
       # Config source path is overridable so it can live in a separate,
-      # git-crypt-encrypted backup repo (see docs/BACKUP.md). Default '.' keeps
+      # git-crypt-encrypted backup repo (see docs/backup-config.md). Default '.' keeps
       # the legacy in-place layout; production sets LORTE_CONFIG in .env.
       - ${LORTE_CONFIG:-.}/sensors.d:/app/sensors.d:ro
       - ${LORTE_CONFIG:-.}/credentials.yaml:/app/credentials.yaml:ro

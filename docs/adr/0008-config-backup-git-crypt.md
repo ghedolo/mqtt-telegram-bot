@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (setup steps in [docs/BACKUP.md](../BACKUP.md); performed on production).
+Accepted (setup steps in [docs/backup-config.md](../backup-config.md); performed on production).
 
 ## Context
 
