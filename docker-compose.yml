@@ -12,8 +12,11 @@ services:
       - /app/tmp
     volumes:
       - ./data:/app/data
-      - ./sensors.d:/app/sensors.d:ro
-      - ./credentials.yaml:/app/credentials.yaml:ro
+      # Config source path is overridable so it can live in a separate,
+      # git-crypt-encrypted backup repo (see docs/BACKUP.md). Default '.' keeps
+      # the legacy in-place layout; production sets LORTE_CONFIG in .env.
+      - ${LORTE_CONFIG:-.}/sensors.d:/app/sensors.d:ro
+      - ${LORTE_CONFIG:-.}/credentials.yaml:/app/credentials.yaml:ro
     environment:
       - TZ=Europe/Rome
       - MPLCONFIGDIR=/tmp/matplotlib
