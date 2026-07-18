@@ -317,6 +317,7 @@ Once a day at `archive_time` (default 12:00 local) the bot moves readings older 
 - **Blackout alarms** — one alarm per blackout group when all its current fields read near-zero for a sustained duration; sent via DM to viewers of a watched field who subscribed to the group id via `/digest`. Auto-clears with an end-of-blackout message. See _Blackout detection_ above.
 - **Daily digest** — sent via DM to each user, showing only their subscribed sensors as the same monospace `Sensor | value | min ago` table as `/get` with no args. Subscriptions start empty; manage with `/digest`. No daily message is posted to the group — the digest is per-user DM only.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
+- **Unknown commands** — reply `❓ Unknown command` via DM, but only to a DM-registered user; a command addressed to another bot in a shared group (`/x@otherbot`) and any command from a non-registered sender are ignored (no reply, no registration prompt).
 - Bot replies never quote or echo user input.
 
 ---
