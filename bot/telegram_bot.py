@@ -427,15 +427,12 @@ class TelegramBot:
         return rest, sort_key
 
     def _apply_sort(self, names: list[str], sort_key: Optional[str]) -> list[str]:
-        if sort_key == "-f":
-            # group by field (suffix after device_key), then by name
-            def key(n: str):
-                sc = self._cfg.sensors.get(n)
-                fk = n[len(sc.device_key) + 1:] if sc and sc.device_key else n
-                return (fk.lower(), n.lower())
-            return sorted(names, key=key)
-        # default (and -s): by sensor name -> keeps a device's fields together
-        return sorted(names, key=lambda n: n.lower())
+        if sort_key == "-s":
+            return sorted(names, key=lambda n: n.lower())
+        # default (and -f): group by measured quantity — the last '_'-segment of
+        # the sensor name — then by name. So SM1_UTA1_T and UPS_cip_T both group
+        # under "T" (all temperatures together), regardless of device structure.
+        return sorted(names, key=lambda n: (n.rsplit("_", 1)[-1].lower(), n.lower()))
 
     def _render_sensors_text(self, names: list[str]) -> Optional[str]:
         """Build the monospace sensor table shared by /get and the digest.
@@ -705,7 +702,7 @@ class TelegramBot:
         reply_chat = update.effective_chat.id
         text = (
             f"🐶 LorTe v{__version__} — Available commands:\n"
-            "/get [expr] [-s|-f] — show sensors (no args = digest; sort -s name (default) / -f by field)\n"
+            "/get [expr] [-s|-f] — show sensors (no args = digest; sort -f by quantity/field (default) / -s by name)\n"
             "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h, max 24h; 72h for admins)\n"

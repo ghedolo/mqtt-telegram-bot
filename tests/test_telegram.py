@@ -155,11 +155,21 @@ def test_apply_sort_alphabetical(bot):
 
 
 def test_apply_sort_by_field(bot):
-    # -f groups by field suffix (H before T), then by name;
-    # default (None) and -s sort by name so a device's fields stay together
+    # default (None) and -f group by measured quantity (H before T), then name
     names = ["SM1_T", "SM2_H", "SM1_H", "SM2_T"]
-    assert bot._apply_sort(names, "-f") == ["SM1_H", "SM2_H", "SM1_T", "SM2_T"]
-    assert bot._apply_sort(names, None) == ["SM1_H", "SM1_T", "SM2_H", "SM2_T"]
+    field_grouped = ["SM1_H", "SM2_H", "SM1_T", "SM2_T"]
+    assert bot._apply_sort(names, None) == field_grouped
+    assert bot._apply_sort(names, "-f") == field_grouped
+
+
+def test_apply_sort_groups_multisegment_field_with_quantity(bot):
+    # a multi-part field key (UPS_cip_T on device UPS) groups under "T" with the
+    # plain _T sensors, not as a separate "cip_T" field
+    names = ["UPS_cip_T", "SM1_UTA1_T", "UPS_ciop_T", "DK1_B"]
+    # within the "T" group, tie-break by name ("ciop" < "cip": 'o' < 'p')
+    assert bot._apply_sort(names, None) == [
+        "DK1_B", "SM1_UTA1_T", "UPS_ciop_T", "UPS_cip_T",
+    ]
 
 
 # --- registration token (HMAC) ---

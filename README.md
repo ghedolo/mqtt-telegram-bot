@@ -232,7 +232,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | Command | Description |
 |---|---|
 | `/list` | All devices — one line per device with all visible fields and thresholds; also lists subscribable blackout groups with your subscription state (🔔/🔕) |
-| `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-s` by name (default, keeps a device's fields together), `-f` groups by field |
+| `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-f` groups by measured quantity (default — all temperatures together, by the sensor name's last `_`-segment), `-s` by full name (keeps a device's fields together) |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h; 72h for admins) |
 | `/csv <expr> [Nh]` | Download readings as CSV (default 8h, max 24h; 72h for admins) |
