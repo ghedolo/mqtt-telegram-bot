@@ -7,7 +7,6 @@ credentials.yaml.example
 sensors.d/
 .env
 telegramData.txt
-devstats.py
 __pycache__/
 *.pyc
 *.egg-info/

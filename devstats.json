@@ -1,0 +1,40 @@
+{
+  "baseline": {
+    "note": "Frozen pre-ledger history through the cutoff; the original transcripts were pruned and are not recomputable. Sessions after the cutoff accumulate under 'sessions', keyed by transcript UUID, across all machines.",
+    "cutoff": "2026-07-12",
+    "first": "2026-06-13",
+    "last": "2026-07-12",
+    "sessions": 9,
+    "user": 1321,
+    "asst": 2294,
+    "input": 457413,
+    "output": 1394604,
+    "cache_read": 261741882,
+    "cache_write": 6214551,
+    "active_secs": 46920
+  },
+  "sessions": {
+    "78ea829c-f79a-4cb2-bde2-53396efb1073": {
+      "first": "2026-07-14T08:23:04.690Z",
+      "last": "2026-07-14T14:33:56.894Z",
+      "active_secs": 2686,
+      "user": 89,
+      "asst": 168,
+      "input": 308,
+      "output": 85801,
+      "cache_read": 9360848,
+      "cache_write": 386211
+    },
+    "b56e1c7f-1094-4d7b-bae1-7a753bc8ad92": {
+      "first": "2026-07-15T15:56:39.696Z",
+      "last": "2026-07-18T08:43:32.836Z",
+      "active_secs": 19602,
+      "user": 433,
+      "asst": 877,
+      "input": 1626,
+      "output": 1346300,
+      "cache_read": 282049488,
+      "cache_write": 3523106
+    }
+  }
+}
