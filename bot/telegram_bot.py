@@ -697,7 +697,7 @@ class TelegramBot:
         if user is None or not db.is_dm_registered(user.id):
             return
         await self._app.bot.send_message(
-            chat_id=user.id, text="❓ Unknown command — /help", **_SILENT
+            chat_id=user.id, text="❓ Unknown command", **_SILENT
         )
 
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):

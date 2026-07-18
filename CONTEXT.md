@@ -90,4 +90,4 @@ _Avoid_: silence (reserved for the offline-ack state).
 - If DM Registration is not yet completed for a User, the bot replies in the Telegram Group with a registration prompt and HMAC Token deep link, and no sensor data.
 - Bot replies never quote or echo user input (`send_message` not `reply_text`).
 - If a Field is not visible to the requesting User, the bot responds as if it does not exist.
-- An unrecognised command replies `❓ Unknown command — /help` via DM, but only to a DM-registered User; a command addressed to another bot in a shared group (`/x@otherbot`) and any command from a non-registered sender are ignored (no reply, no registration prompt), so typos and other bots' commands never spam the Group.
+- An unrecognised command replies `❓ Unknown command` via DM, but only to a DM-registered User; a command addressed to another bot in a shared group (`/x@otherbot`) and any command from a non-registered sender are ignored (no reply, no registration prompt), so typos and other bots' commands never spam the Group.
