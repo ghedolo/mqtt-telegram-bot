@@ -113,3 +113,63 @@ def test_digest_subscriptions_roundtrip(temp_db):
     assert temp_db.get_digest_subscriptions(7) == ["A_T", "B_H"]
     temp_db.unsubscribe_digest(7, "A_T")
     assert temp_db.get_digest_subscriptions(7) == ["B_H"]
+
+
+# --- offline-ack (silence) state: the ackOff / auto-clear-on-reconnect flag ---
+
+def test_silence_roundtrip(temp_db):
+    assert temp_db.is_silenced("SM1") is False
+    temp_db.silence_sensor("SM1")
+    assert temp_db.is_silenced("SM1") is True
+    temp_db.unsilence_sensor("SM1")
+    assert temp_db.is_silenced("SM1") is False
+
+
+def test_silence_is_per_key(temp_db):
+    temp_db.silence_sensor("SM1")
+    assert temp_db.is_silenced("SM1") is True
+    assert temp_db.is_silenced("SM2") is False   # unrelated key unaffected
+
+
+# --- alarm history (behind /lastAlarm, /last5Alarm, /lastAlarms) ---
+
+def test_get_last_alarms_order_and_sensor_filter(temp_db, monkeypatch):
+    now = {"t": 1000}
+    monkeypatch.setattr(temp_db.time, "time", lambda: now["t"])
+    for kind in ("ALARM", "OK", "ALARM"):
+        temp_db.insert_alarm("SM1_T", kind, kind)
+        now["t"] += 10
+    temp_db.insert_alarm("SM2_T", "ALARM", "other")   # newest overall
+    # newest-first, limited, filtered to one sensor
+    last = temp_db.get_last_alarms("SM1_T", n=2)
+    assert [r["kind"] for r in last] == ["ALARM", "OK"]
+    # no filter -> across all sensors, newest is SM2_T
+    assert temp_db.get_last_alarms(n=1)[0]["sensor"] == "SM2_T"
+
+
+def test_get_alarms_since_filters_by_sensor_and_time(temp_db, monkeypatch):
+    now = {"t": 1000}
+    monkeypatch.setattr(temp_db.time, "time", lambda: now["t"])
+    temp_db.insert_alarm("SM1_T", "ALARM", "old")     # ts 1000
+    now["t"] = 2000
+    temp_db.insert_alarm("SM1_T", "OK", "new")        # ts 2000
+    temp_db.insert_alarm("SM2_T", "ALARM", "other")   # ts 2000, other sensor
+    rows = temp_db.get_alarms_since(["SM1_T"], since_ts=1500)
+    assert [r["message"] for r in rows] == ["new"]    # old (pre-1500) and SM2 excluded
+    assert temp_db.get_alarms_since([], since_ts=0) == []   # empty sensor list
+
+
+# --- user activity (behind /usersActivity) ---
+
+def test_record_activity_upserts_and_orders(temp_db, monkeypatch):
+    now = {"t": 1000}
+    monkeypatch.setattr(temp_db.time, "time", lambda: now["t"])
+    temp_db.record_activity(1, "alice", "Alice")
+    now["t"] = 2000
+    temp_db.record_activity(2, "bob", "Bob")
+    now["t"] = 3000
+    temp_db.record_activity(1, "alice2", "Alice A.")   # same user -> upsert
+    rows = temp_db.get_all_activity()
+    assert [r["user_id"] for r in rows] == [1, 2]      # newest last_seen first
+    assert rows[0]["username"] == "alice2"             # updated, not duplicated
+    assert sum(1 for r in rows if r["user_id"] == 1) == 1

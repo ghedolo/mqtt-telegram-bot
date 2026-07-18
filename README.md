@@ -324,13 +324,14 @@ Once a day at `archive_time` (default 12:00 local) the bot moves readings older 
 
 ## Testing
 
-The pytest suite (88 tests) covers config parsing/validation, the DB layer and
+The pytest suite covers config parsing/validation, the DB layer and
 archive cutoff, alarm logic (thresholds, offline, full blackout state machine),
-MQTT payload parsing, chart data prep, wall-clock scheduling, the Telegram-bot
-helpers (sensor resolution, sort, registration-token HMAC, digest), and the
-reading-ingest path end-to-end. They run on the dev machine against throwaway
-SQLite/YAML — never the production container. See [docs/TESTING.md](docs/TESTING.md)
-for the full catalogue.
+MQTT payload parsing (incl. state-enum decoding), chart data prep, wall-clock
+scheduling, the Telegram-bot helpers (sensor resolution, sort, registration-token
+HMAC, digest, `/sysinfo`, unknown-command), and the reading-ingest path
+end-to-end. They run on the dev machine against throwaway SQLite/YAML — never the
+production container. Run `pytest` for the current list and count; see
+[docs/TESTING.md](docs/TESTING.md) for a curated overview.
 
 ```bash
 source .venv/bin/activate

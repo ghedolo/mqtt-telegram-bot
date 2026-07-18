@@ -1,9 +1,14 @@
 # Testing
 
-**88 tests** (pytest). They run on the **development machine**, never inside
-the production container. They exercise the pure logic (config parsing, DB, alarms, MQTT
-payload parsing, scheduling) against throwaway SQLite/YAML created under
-pytest's `tmp_path`, so they never touch `data/sensors.db` or any real config.
+The **pytest** suite runs on the **development machine**, never inside the
+production container. It exercises the pure logic (config parsing, DB, alarms,
+MQTT payload parsing, scheduling) against throwaway SQLite/YAML created under
+pytest's `tmp_path`, so it never touches `data/sensors.db` or any real config.
+
+> **`pytest -q` is the source of truth** for the list and count of tests. The
+> catalogue below is a curated overview and may lag newly added tests — don't
+> treat it as an exhaustive, always-current index (that's what the test files
+> and `pytest` are for).
 
 ## Running
 
@@ -31,6 +36,10 @@ run tests.
 - `test_mute_expiry` — active mute is honoured; re-muting into the past expires it.
 - `test_forget_device_archives_and_clears` — readings archived, threshold cleared.
 - `test_digest_subscriptions_roundtrip` — subscribe (idempotent) / unsubscribe.
+- `test_silence_roundtrip` / `test_silence_is_per_key` — the offline-ack (silence) flag set/clear, keyed independently (behind `/ackOff` and auto-clear on reconnect).
+- `test_get_last_alarms_order_and_sensor_filter` — alarm history newest-first, limited, optionally filtered to one sensor.
+- `test_get_alarms_since_filters_by_sensor_and_time` — alarms since a timestamp, filtered by sensor list (empty list → no rows).
+- `test_record_activity_upserts_and_orders` — user-activity upsert (one row per user) ordered by last-seen (behind `/usersActivity`).
 
 ### `tests/test_config.py` — config loading & validation (`bot/config.py`)
 - `test_basic_parse_and_derived_names` — `{device}_{field}` names, defaults inherited.
