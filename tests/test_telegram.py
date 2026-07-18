@@ -155,9 +155,11 @@ def test_apply_sort_alphabetical(bot):
 
 
 def test_apply_sort_by_field(bot):
-    # default groups by field suffix (H before T), then by name
+    # -f groups by field suffix (H before T), then by name;
+    # default (None) and -s sort by name so a device's fields stay together
     names = ["SM1_T", "SM2_H", "SM1_H", "SM2_T"]
-    assert bot._apply_sort(names, None) == ["SM1_H", "SM2_H", "SM1_T", "SM2_T"]
+    assert bot._apply_sort(names, "-f") == ["SM1_H", "SM2_H", "SM1_T", "SM2_T"]
+    assert bot._apply_sort(names, None) == ["SM1_H", "SM1_T", "SM2_H", "SM2_T"]
 
 
 # --- registration token (HMAC) ---

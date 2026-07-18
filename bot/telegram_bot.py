@@ -427,14 +427,15 @@ class TelegramBot:
         return rest, sort_key
 
     def _apply_sort(self, names: list[str], sort_key: Optional[str]) -> list[str]:
-        if sort_key == "-s":
-            return sorted(names, key=lambda n: n.lower())
-        # default (and -f): group by field (suffix after device_key)
-        def key(n: str):
-            sc = self._cfg.sensors.get(n)
-            fk = n[len(sc.device_key) + 1:] if sc and sc.device_key else n
-            return (fk.lower(), n.lower())
-        return sorted(names, key=key)
+        if sort_key == "-f":
+            # group by field (suffix after device_key), then by name
+            def key(n: str):
+                sc = self._cfg.sensors.get(n)
+                fk = n[len(sc.device_key) + 1:] if sc and sc.device_key else n
+                return (fk.lower(), n.lower())
+            return sorted(names, key=key)
+        # default (and -s): by sensor name -> keeps a device's fields together
+        return sorted(names, key=lambda n: n.lower())
 
     def _render_sensors_text(self, names: list[str]) -> Optional[str]:
         """Build the monospace sensor table shared by /get and the digest.
@@ -704,7 +705,7 @@ class TelegramBot:
         reply_chat = update.effective_chat.id
         text = (
             f"🐶 LorTe v{__version__} — Available commands:\n"
-            "/get [expr] [-s|-f] — show sensors (no args = digest; sort -s name / -f field, default field)\n"
+            "/get [expr] [-s|-f] — show sensors (no args = digest; sort -s name (default) / -f by field)\n"
             "/exprSyntax — help for expr syntax\n"
             "/getAlarm [name] — show alarm threshold(s)\n"
             "/graph <expr> [Nh] — chart (default 8h, max 24h; 72h for admins)\n"
@@ -778,7 +779,7 @@ class TelegramBot:
         thresholds = db.get_all_thresholds()
         thresholds_low = db.get_all_thresholds_low()
         lines = []
-        for dev_key, device in self._cfg.devices.items():
+        for dev_key, device in sorted(self._cfg.devices.items()):
             parts = []
             for fk, sc in device.fields.items():
                 if sc.name not in visible:
