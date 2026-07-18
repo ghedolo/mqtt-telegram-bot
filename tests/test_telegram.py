@@ -3,7 +3,9 @@ visibility gating, sort flags, the registration-token HMAC, digest building,
 and the small formatting helpers. No network: the PTB Application builds
 offline and we never start polling.
 """
+import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -258,3 +260,54 @@ def test_render_sysinfo(bot, temp_db):
 def test_render_sysinfo_no_mqtt(bot):
     bot.last_mqtt_fn = lambda: None
     assert "ultimo MQTT: mai" in bot._render_sysinfo()
+
+
+# --- unknown command ---
+
+def _fake_app(sent):
+    async def send_message(chat_id, text, **kw):
+        sent.append((chat_id, text))
+    return SimpleNamespace(bot=SimpleNamespace(send_message=send_message))
+
+
+def _cmd_update(text, user_id):
+    return SimpleNamespace(
+        effective_message=SimpleNamespace(text=text),
+        effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=user_id),
+    )
+
+
+def test_unknown_command_replies_to_registered(bot, temp_db):
+    sent = []
+    bot._app = _fake_app(sent)
+    bot._bot_username = "lortebot"
+    temp_db.register_dm(1)
+    asyncio.run(bot._cmd_unknown(_cmd_update("/foobar", 1), None))
+    assert len(sent) == 1 and "unknown" in sent[0][1].lower()
+
+
+def test_unknown_command_addressed_to_us_replies(bot, temp_db):
+    sent = []
+    bot._app = _fake_app(sent)
+    bot._bot_username = "LorTeBot"          # case-insensitive match
+    temp_db.register_dm(1)
+    asyncio.run(bot._cmd_unknown(_cmd_update("/foobar@lortebot", 1), None))
+    assert len(sent) == 1
+
+
+def test_unknown_command_ignores_other_bot(bot, temp_db):
+    sent = []
+    bot._app = _fake_app(sent)
+    bot._bot_username = "lortebot"
+    temp_db.register_dm(1)
+    asyncio.run(bot._cmd_unknown(_cmd_update("/foobar@otherbot", 1), None))
+    assert sent == []
+
+
+def test_unknown_command_ignores_unregistered(bot, temp_db):
+    sent = []
+    bot._app = _fake_app(sent)
+    bot._bot_username = "lortebot"
+    asyncio.run(bot._cmd_unknown(_cmd_update("/foobar", 5), None))   # 5 not registered
+    assert sent == []

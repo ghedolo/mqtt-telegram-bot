@@ -147,6 +147,9 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
         self._app.add_handler(CommandHandler("usersActivity", self._cmd_usersactivity))
         self._app.add_handler(CommandHandler("dbStats", self._cmd_dbstats))
+        # catch-all for any command with no handler above (same group, so a
+        # matched CommandHandler stops the group before this runs) -> "unknown".
+        self._app.add_handler(MessageHandler(filters.COMMAND, self._cmd_unknown))
         # captures the argument for menu commands that Telegram sends
         # immediately. Catches both replies to the ForceReply prompt (phone)
         # and a plain follow-up message (browser ignores ForceReply focus).
@@ -677,6 +680,24 @@ class TelegramBot:
             return
         await self._app.bot.send_message(
             chat_id=reply_chat, text=self._render_sysinfo(), **_SILENT
+        )
+
+    async def _cmd_unknown(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        """Reply to an unrecognised command. Ignores commands addressed to
+        another bot in a shared group (`/x@otherbot`), and replies only to
+        DM-registered Users (so a typo — or another bot's bare command — from a
+        non-user doesn't trigger a registration prompt)."""
+        msg = update.effective_message
+        if msg is None or not msg.text:
+            return
+        token = msg.text.split(maxsplit=1)[0]
+        if "@" in token and token.split("@", 1)[1].lower() != (self._bot_username or "").lower():
+            return
+        user = update.effective_user
+        if user is None or not db.is_dm_registered(user.id):
+            return
+        await self._app.bot.send_message(
+            chat_id=user.id, text="❓ Unknown command — /help", **_SILENT
         )
 
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
