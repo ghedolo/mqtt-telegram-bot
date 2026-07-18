@@ -240,3 +240,21 @@ def test_listsignal_subscription_state_flips_hint(bot, temp_db):
 
 def test_listsignal_none_for_outsider(bot):
     assert bot._render_signal_list(99) == "No blackout detection visible to you."
+
+
+# --- /sysinfo ---
+
+def test_render_sysinfo(bot, temp_db):
+    bot.last_mqtt_fn = lambda: int(time.time()) - 5
+    out = bot._render_sysinfo()
+    assert f"v{tb.__version__}" in out
+    assert "uptime:" in out
+    assert "ultimo MQTT: 5s fa" in out
+    assert "device: 3" in out          # SM1, SM2, SM3
+    assert "sensori: 4" in out         # SM1_T/H, SM2_T/H (SM3_IF is a signal)
+    assert "DB:" in out                # temp_db file exists
+
+
+def test_render_sysinfo_no_mqtt(bot):
+    bot.last_mqtt_fn = lambda: None
+    assert "ultimo MQTT: mai" in bot._render_sysinfo()

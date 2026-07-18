@@ -244,6 +244,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/listSignal` | Subscribable blackout groups, the Signals feeding each (live value for admins), and your subscription state — subscribe via `/digest <id> on` |
 | `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute. Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
 | `/exprSyntax` | Sensor filter expression syntax |
+| `/sysinfo` | Health summary (any user): bot version, uptime, memory (RSS/limit), DB size, last-MQTT freshness, device/sensor counts |
 | `/myid` | Your Telegram user ID |
 | `/help` | Command list |
 

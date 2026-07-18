@@ -5,6 +5,7 @@ import hashlib
 import hmac as _hmac
 import io
 import logging
+import os
 import re
 import time
 from datetime import datetime
@@ -57,6 +58,48 @@ def _fmt_bytes(n: int) -> str:
         size /= 1024
 
 
+def _fmt_uptime(secs: float) -> str:
+    secs = max(0, int(secs))
+    d, r = divmod(secs, 86400)
+    h, r = divmod(r, 3600)
+    m = r // 60
+    parts = []
+    if d:
+        parts.append(f"{d}d")
+    if d or h:
+        parts.append(f"{h}h")
+    parts.append(f"{m}m")
+    return " ".join(parts)
+
+
+def _read_rss_bytes():
+    """Resident memory of this process from /proc (Linux); None elsewhere."""
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024   # kB → bytes
+    except OSError:
+        pass
+    return None
+
+
+def _read_mem_limit_bytes():
+    """Container memory limit from the cgroup (v2 then v1); None if unlimited."""
+    for path in ("/sys/fs/cgroup/memory.max",                      # cgroup v2
+                 "/sys/fs/cgroup/memory/memory.limit_in_bytes"):   # cgroup v1
+        try:
+            with open(path) as f:
+                raw = f.read().strip()
+            if raw == "max":
+                return None
+            val = int(raw)
+            return None if val > (1 << 50) else val   # v1 "unlimited" sentinel
+        except (OSError, ValueError):
+            continue
+    return None
+
+
 def _threshold_order_error(*, high: Optional[float], low: Optional[float]) -> Optional[str]:
     """Guard against an inverted alarm band. Return a user-facing error string
     when both thresholds are set and the high one is not strictly above the low
@@ -76,6 +119,7 @@ class TelegramBot:
         self.reset_alarm_fn: Optional[Callable[[str], None]] = None
         self.apply_alarm_config_fn: Optional[Callable[["AppConfig"], None]] = None
         self.signal_snapshot_fn: Optional[Callable[[], dict]] = None
+        self._started_at = time.time()
         self._app = Application.builder().token(cfg.telegram_token).build()
         self._app.add_handler(CommandHandler("start", self._cmd_start))
         self._app.add_handler(CommandHandler("digest", self._cmd_digest))
@@ -92,6 +136,7 @@ class TelegramBot:
         self._app.add_handler(CommandHandler("ackOff", self._cmd_ackoff))
         self._app.add_handler(CommandHandler("help", self._cmd_help))
         self._app.add_handler(CommandHandler("myid", self._cmd_myid))
+        self._app.add_handler(CommandHandler("sysinfo", self._cmd_sysinfo))
         self._app.add_handler(CommandHandler("last", self._cmd_last))
         self._app.add_handler(CommandHandler("lastAlarms", self._cmd_lastalarms))
         self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
@@ -604,6 +649,36 @@ class TelegramBot:
             **_SILENT,
         )
 
+    def _render_sysinfo(self) -> str:
+        """Lightweight, non-sensitive health summary (any user). Each metric is
+        best-effort: a source that isn't readable is simply omitted."""
+        now = time.time()
+        lines = [
+            f"🐶 LorTe v{__version__}",
+            f"uptime: {_fmt_uptime(now - self._started_at)}",
+        ]
+        rss = _read_rss_bytes()
+        if rss is not None:
+            limit = _read_mem_limit_bytes()
+            mem = _fmt_bytes(rss) + (f" / {_fmt_bytes(limit)}" if limit else "")
+            lines.append(f"memoria: {mem}")
+        try:
+            lines.append(f"DB: {_fmt_bytes(os.path.getsize(db.DB_PATH))}")
+        except OSError:
+            pass
+        ts = self.last_mqtt_fn() if self.last_mqtt_fn else None
+        lines.append(f"ultimo MQTT: {_fmt_ago(int(now) - ts) + ' fa' if ts else 'mai'}")
+        lines.append(f"device: {len(self._cfg.devices)} · sensori: {len(self._cfg.sensors)}")
+        return "\n".join(lines)
+
+    async def _cmd_sysinfo(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text=self._render_sysinfo(), **_SILENT
+        )
+
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = update.effective_chat.id
         text = (
@@ -621,6 +696,7 @@ class TelegramBot:
             "/listSignal — blackout detection you can subscribe to (fed by non-stored Signals)\n"
             "/silent [expr [Nh]] — mute alarm DMs (no args=list, expr=unmute sensor, expr Nh (1-24h)=mute sensor)\n"
             "/list — list all sensors\n"
+            "/sysinfo — bot version, uptime, memory, DB size, last MQTT\n"
             "/myid — show your Telegram user ID"
         )
         user_id = update.effective_user.id
@@ -1366,6 +1442,7 @@ class TelegramBot:
             BotCommand("digest", "manage daily digest subscriptions"),
             BotCommand("silent", "mute alarm DMs"),
             BotCommand("list", "list all sensors"),
+            BotCommand("sysinfo", "bot version, uptime, memory, DB size"),
             BotCommand("myid", "show your Telegram user ID"),
             BotCommand("exprsyntax", "expression syntax help"),
             BotCommand("help", "show command help"),

@@ -60,6 +60,7 @@ _Avoid_: silence (reserved for the offline-ack state).
 | `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions |
 | `/listSignal` | List visible Blackout Groups (subscribable), the Signals feeding each (live value for Admins), and your subscription state |
 | `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute; expr + `Nh` (1–24, clamped) = Mute for N hours |
+| `/sysinfo` | Bot version, uptime, memory (RSS/limit), DB size, last-MQTT freshness, device/sensor counts — a non-sensitive health summary for any User |
 | `/myid` | Show own Telegram user ID |
 | `/help` | Show command list (admin-aware) |
 
