@@ -49,14 +49,14 @@
     },
     "08fbd0a6-f9f8-4421-a175-44f3f514e28d": {
       "first": "2026-07-19T12:32:16.841Z",
-      "last": "2026-07-19T15:00:19.344Z",
-      "active_secs": 3992,
-      "user": 139,
-      "asst": 194,
-      "input": 373,
-      "output": 88480,
-      "cache_read": 15560279,
-      "cache_write": 338849
+      "last": "2026-07-19T16:45:15.609Z",
+      "active_secs": 6770,
+      "user": 204,
+      "asst": 276,
+      "input": 530,
+      "output": 130673,
+      "cache_read": 29044315,
+      "cache_write": 410607
     }
   }
 }
