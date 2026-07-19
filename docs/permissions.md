@@ -28,7 +28,7 @@ Two consequences that catch people out:
 - **Superadmin is orthogonal, not a promotion.** It is a separate list, not an
   Access Group, and it grants no view or admin rights on any Sensor. A
   superadmin who is in no Access Group sees no data at all — `/dbStats` works,
-  `/get` returns nothing.
+  `/get` returns nothing. Detailed in [§3](#superadmin--a-separate-axis-not-a-higher-rank).
 
 ## 2. How a role reaches a Field
 
@@ -102,61 +102,89 @@ Four kinds of thing carry permissions:
 | **has stored Readings?** | — | yes | **never** | no (not a Reading at all) |
 | **has Thresholds?** | — | yes | no | n/a (own threshold lives in config) |
 
-In the tables below, `—` = not available to anyone at that level. Every row
+The tables below have three columns because there are only three positions on
+this axis: outside every Access Group, Viewer, Admin. **Superadmin is not a
+fourth** — it is a separate flag, covered in its own section after the tables,
+and it appears in none of them. `—` = not available at that level. Every row
 also requires DM Registration.
 
 ### Actions on a Sensor
 
-| Action | Non-user | Viewer | Admin | Superadmin |
-|---|---|---|---|---|
-| see it exist at all (`/list`, `/get`) | — | ✅ | ✅ | — *(unless also a Viewer)* |
-| read value, threshold, history (`/get`, `/getAlarm`, `/lastAlarms`, `/last5Alarm`) | — | ✅ | ✅ | — |
-| chart / export (`/graph`, `/csv`, `/xlsx`) | — | ✅ max 24h | ✅ max 72h | — |
-| set / clear thresholds (`/setAlarm`, `/setAlarmLow`, `/clearAlarm`, `/clearAlarmLow`) | — | ❌ *"Not authorized"* | ✅ | ❌ |
-| receive threshold alarm DM | — | ✅ unless muted | ✅ unless muted | — |
-| mute own alarm DMs (`/silent`) | — | ✅ | ✅ | — |
-| subscribe to digest (`/digest`) | — | ✅ | ✅ | — |
+| Action | Non-user | Viewer | Admin |
+|---|---|---|---|
+| see it exist at all (`/list`, `/get`) | — | ✅ | ✅ |
+| read value, threshold, history (`/get`, `/getAlarm`, `/lastAlarms`, `/last5Alarm`) | — | ✅ | ✅ |
+| chart / export (`/graph`, `/csv`, `/xlsx`) | — | ✅ max 24h | ✅ max 72h |
+| set / clear thresholds (`/setAlarm`, `/setAlarmLow`, `/clearAlarm`, `/clearAlarmLow`) | — | ❌ *"Not authorized"* | ✅ |
+| receive threshold alarm DM | — | ✅ unless muted | ✅ unless muted |
+| mute own alarm DMs (`/silent`) | — | ✅ | ✅ |
+| subscribe to digest (`/digest`) | — | ✅ | ✅ |
 
 ### Actions on a Device
 
-| Action | Non-user | Viewer | Admin | Superadmin |
-|---|---|---|---|---|
-| see it in `/list` | — | ✅ *(only its visible Sensors)* | ✅ | — |
-| acknowledge offline alarm (`/ackOff <dev>`) | — | ❌ | ✅ *(admin of any one Sensor)* | ❌ |
-| list active acks (`/ackOff`, no arg) | ✅ **any DM-registered user, system-wide** | ✅ | ✅ | ✅ |
-| receive offline alarm DM | — | ❌ | ✅ **and** subscribed to that Sensor | — |
-| wipe to history (`/forgetSensor <dev>`) | — | ❌ | ❌ | ✅ |
+| Action | Non-user | Viewer | Admin |
+|---|---|---|---|
+| see it in `/list` | — | ✅ *(only its visible Sensors)* | ✅ |
+| acknowledge offline alarm (`/ackOff <dev>`) | — | ❌ | ✅ *(admin of any one Sensor)* |
+| list active acks (`/ackOff`, no arg) | ✅ **any DM-registered user, system-wide** | ✅ | ✅ |
+| receive offline alarm DM | — | ❌ | ✅ **and** subscribed to that Sensor |
+| wipe to history (`/forgetSensor <dev>`) | — | ❌ | ❌ — superadmin only |
 
 ### Actions on a Signal
 
-| Action | Non-user | Viewer | Admin | Superadmin |
-|---|---|---|---|---|
-| appears in `/get`, `/graph`, `/list`, digest, thresholds | **never — for anybody**, by design | never | never | never |
-| see its name (`/listSignal`) | — | ✅ | ✅ | — |
-| see its **live value** (`/listSignal`) | — | ❌ *(name only)* | ✅ `= 1.7 (3s ago)` | — |
+| Action | Non-user | Viewer | Admin |
+|---|---|---|---|
+| appears in `/get`, `/graph`, `/list`, digest, thresholds | **never — for anybody**, by design | never | never |
+| see its name (`/listSignal`) | — | ✅ | ✅ |
+| see its **live value** (`/listSignal`) | — | ❌ *(name only)* | ✅ `= 1.7 (3s ago)` |
 
 ### Actions on a Blackout Group
 
-| Action | Non-user | Viewer | Admin | Superadmin |
-|---|---|---|---|---|
-| see it (`/list` tail, `/listSignal`) | — | ✅ *(viewer of ≥1 watched Sensor)* | ✅ | — |
-| subscribe / unsubscribe (`/digest <id> on\|off`) | — | ✅ | ✅ | — |
-| receive blackout DM | — | ✅ **and** subscribed | ✅ **and** subscribed | — |
+| Action | Non-user | Viewer | Admin |
+|---|---|---|---|
+| see it (`/list` tail, `/listSignal`) | — | ✅ *(viewer of ≥1 watched Sensor)* | ✅ |
+| subscribe / unsubscribe (`/digest <id> on\|off`) | — | ✅ | ✅ |
+| receive blackout DM | — | ✅ **and** subscribed | ✅ **and** subscribed |
 
-### Actions with no entity
+### Actions on no entity
 
-| Action | Non-user | Viewer | Admin | Superadmin |
-|---|---|---|---|---|
-| `/sysinfo`, `/last`, `/myid`, `/help`, `/exprSyntax` | ✅ | ✅ | ✅ | ✅ |
-| `/reloadConfig`, `/usersActivity`, `/dbStats` | ❌ | ❌ | ❌ | ✅ |
+| Action | Non-user | Viewer | Admin |
+|---|---|---|---|
+| `/sysinfo`, `/last`, `/myid`, `/help`, `/exprSyntax` | ✅ | ✅ | ✅ |
 
-### Reading the table
+### Superadmin — a separate axis, not a higher rank
+
+Superadmin answers a different question from Viewer/Admin. Those say *how much
+of a Sensor you get*; superadmin says *may you operate on the installation*.
+The two do not compose, which is why it gets a section instead of a column:
+
+- **It grants no read access whatsoever.** A superadmin who belongs to no
+  Access Group sees nothing — `/get` returns nothing, `/list` is empty, no
+  alarm DM ever arrives. The `superadmin:` list in `credentials.yaml` is not an
+  Access Group and is never consulted by `is_viewer` / `is_admin`.
+- **It is not implied by, and does not imply, Admin.** They are set in
+  different files and checked by different predicates.
+- Most people who hold it are *also* in an Access Group, which is what makes it
+  look like a rank. That is two separate grants happening to land on one id.
+
+What it does grant, in full:
+
+| Command | Acts on |
+|---|---|
+| `/forgetSensor <dev>` | a Device — archives its readings, clears alarms, thresholds, ack state |
+| `/reloadConfig` | the installation — re-reads `sensors.d/` and `credentials.yaml` |
+| `/usersActivity` | the installation — last interaction time per user |
+| `/dbStats` | the installation — DB size, row counts, time span |
+
+Three of the four touch no sensor data. `/forgetSensor` is the exception: it
+destroys readings for a Device the superadmin may well not be able to *read*.
+That asymmetry is deliberate — it is a caretaker operation, not a data one —
+but it is the one place where the two axes brush against each other.
+
+### Reading the tables
 
 - **Admin ⊃ Viewer**, always: `viewers_of()` unions both lists, so an admin
   never needs listing in `viewers:`.
-- **Superadmin ⊅ Viewer.** The `—` in the superadmin column is not an
-  oversight: superadmin is a separate list of ids and grants zero read access.
-  A superadmin sees Sensors only where they *also* appear in an Access Group.
 - **Signal privacy is two-tiered**: any viewer of the feeding Sensor learns the
   Signal *exists* (so they can decide whether to subscribe to the group), only
   an admin sees the sampled current.
