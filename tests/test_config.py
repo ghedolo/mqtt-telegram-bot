@@ -88,6 +88,24 @@ def test_field_viewers_override_replaces_device(tmp_path):
     assert cfg.sensors["SM1_I"].viewers == ["nobody"]
 
 
+def test_field_admins_only_drops_inherited_viewers(tmp_path):
+    # The override is all-or-nothing on the pair: declaring `admins:` alone on a
+    # field discards the device-level `viewers:` as well, it does not keep them.
+    # Documented in docs/permissions.md — pinned here because the asymmetric
+    # case reads like a per-key merge and isn't one.
+    defaults = DEFAULTS + """      H:
+        admins: [ops2]
+"""
+    creds = CREDS.replace("  ops: [1, 2]", "  ops: [1, 2]\n  ops2: [4]")
+    cfg = _write_env(tmp_path, defaults=defaults, creds=creds)
+    h = cfg.sensors["SM1_H"]
+    assert h.admins == ["ops2"]
+    assert h.viewers == []                       # device-level [ops] is gone
+    assert cfg.viewers_of("SM1_H") == {4}        # admin implies viewer, and only 4
+    assert cfg.is_viewer(1, "SM1_H") is False    # ops lost the field entirely
+    assert cfg.is_viewer(1, "SM1_T") is True     # sibling field unaffected
+
+
 def test_access_helpers(tmp_path):
     cfg = _write_env(tmp_path)
     assert cfg.is_viewer(1, "SM1_T") is True

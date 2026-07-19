@@ -46,6 +46,7 @@ run tests.
 - `test_basic_parse_and_derived_names` — `{device}_{field}` names, defaults inherited.
 - `test_defaults_and_new_keys` — `retention_days`, `archive_time` (12:00), `enable_menu` (True), `digest_time`.
 - `test_field_viewers_override_replaces_device` — field-level viewers replace device-level.
+- `test_field_admins_only_drops_inherited_viewers` — the override is all-or-nothing on the pair: a field declaring only `admins:` also discards the device-level `viewers:`, so the device's viewer group loses that one field. Reads like a per-key merge and isn't one.
 - `test_access_helpers` — `is_viewer` / `is_superadmin`.
 - `test_duplicate_device_key_across_files` — duplicate device key is a hard error.
 - `test_case_insensitive_name_collision` — sensor names differing only by case rejected.
