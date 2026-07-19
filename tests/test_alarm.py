@@ -105,6 +105,48 @@ def test_offline_then_recovery(temp_db, clock):
     assert "ONLINE" in recdev.msgs[1][1]
 
 
+def test_ackoff_suppresses_repeats_then_auto_clears_on_reconnect(temp_db, clock):
+    """The /ackOff path: silence stops offline repeats, and a reconnect must
+    auto-clear the silence flag (regression: the old is_silenced early-return
+    short-circuited the reconnect branch, so silence never cleared)."""
+    recdev = Rec()
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am._started_at = clock["t"] - 1000     # past the startup grace
+    dev = make_device(interval=10)         # offline_after = 30s, repeat = 3600s
+
+    asyncio.run(am.check_offline(dev))     # offline -> first alarm
+    assert len(recdev.msgs) == 1 and "OFFLINE" in recdev.msgs[0][1]
+
+    temp_db.silence_sensor(dev.key)        # admin runs /ackOff
+    clock["t"] += 3600                     # past the offline repeat window
+    asyncio.run(am.check_offline(dev))     # still offline, but silenced
+    assert len(recdev.msgs) == 1           # no repeat notification
+    assert temp_db.is_silenced(dev.key) is True
+
+    am.record_topic_message("t/d")         # device reconnects
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 2 and "ONLINE" in recdev.msgs[1][1]
+    assert temp_db.is_silenced(dev.key) is False   # auto-cleared
+
+
+def test_ackoff_while_online_does_not_mute_future_offline(temp_db, clock):
+    """Acking with no live outage must drop the stale silence flag, or it would
+    swallow the next genuine offline alarm forever."""
+    recdev = Rec()
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am._started_at = clock["t"] - 1000
+    dev = make_device(interval=10)
+
+    am.record_topic_message("t/d")         # device is online
+    temp_db.silence_sensor(dev.key)        # stray /ackOff, nothing to ack
+    asyncio.run(am.check_offline(dev))     # online -> clears stale flag
+    assert temp_db.is_silenced(dev.key) is False
+
+    clock["t"] += 3600                     # now go stale -> genuine offline
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 1 and "OFFLINE" in recdev.msgs[0][1]
+
+
 def test_offline_suppressed_during_startup_grace(temp_db, clock):
     recdev = Rec()
     am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)

@@ -141,9 +141,6 @@ class AlarmManager:
         return max(tss) if tss else 0
 
     async def check_offline(self, device: DeviceConfig):
-        if db.is_silenced(device.key):
-            return
-
         offline_after = device.interval * 3
         if (int(time.time()) - self._started_at) < offline_after:
             return
@@ -160,6 +157,11 @@ class AlarmManager:
                     last_ts = row["ts"]
 
         if last_ts == 0 or (now - last_ts) > offline_after:
+            if db.is_silenced(device.key):
+                # ackOff active: suppress notifications, but keep tracking the
+                # active state so a later reconnect still auto-clears the silence.
+                state.active = True
+                return
             if not state.active:
                 state.active = True
                 state.last_notified = now
@@ -178,6 +180,10 @@ class AlarmManager:
                 msg = f"ONLINE {device.key}: back online"
                 db.insert_alarm(device.key, "ONLINE", msg)
                 await self._notify_device(device.key, msg)
+            elif db.is_silenced(device.key):
+                # Silenced while online (ackOff with no live outage): drop the
+                # stale flag so it can't mute a future genuine offline forever.
+                db.unsilence_sensor(device.key)
 
     async def check_blackout(self, group):
         """Raise a blackout Alarm when every current Field in the group has a
