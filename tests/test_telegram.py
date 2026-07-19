@@ -864,3 +864,76 @@ def test_exprsyntax_replies(hbot, temp_db):
 def test_listsignal_replies(hbot, temp_db):
     sent = _run(hbot, hbot._cmd_listsignal, ADMIN)
     assert sent and sent[-1][1]
+
+
+# --- /help vs the autocomplete menu vs the registered handlers ---
+#
+# The menu (set_my_commands) is deliberately user-level only: admin and
+# superadmin commands still work when typed but stay out of autocomplete.
+# These tests pin that split so a new *user* command can't silently miss the
+# menu (which is how /listSignal was lost).
+
+# Every command whose handler gates on is_admin / is_superadmin. Anything
+# registered but absent from the menu must be in here.
+MENU_EXEMPT = {
+    "setalarm", "setalarmlow", "clearalarm", "clearalarmlow",
+    "ackoff", "forgetsensor", "reloadconfig", "usersactivity", "dbstats",
+}
+
+
+def _registered_commands(bot):
+    from telegram.ext import CommandHandler
+    out = set()
+    for group in bot._app.handlers.values():
+        for h in group:
+            if isinstance(h, CommandHandler):
+                out |= set(h.commands)
+    return out
+
+
+def _menu_commands(bot):
+    captured = []
+
+    async def set_my_commands(cmds):
+        captured.extend(cmds)
+
+    real_app = bot._app
+    bot._app = SimpleNamespace(bot=SimpleNamespace(set_my_commands=set_my_commands))
+    try:
+        asyncio.run(bot._set_user_commands())
+    finally:
+        bot._app = real_app   # other assertions still need the real handlers
+    return captured
+
+
+def test_menu_commands_are_valid_telegram_names(bot):
+    import re
+    for c in _menu_commands(bot):
+        assert re.fullmatch(r"[a-z0-9_]{1,32}", c.command), c.command
+        assert 0 < len(c.description) <= 256, c.command
+
+
+def test_menu_has_no_duplicates(bot):
+    names = [c.command for c in _menu_commands(bot)]
+    assert len(names) == len(set(names))
+
+
+def test_every_menu_command_has_a_handler(bot):
+    menu = {c.command for c in _menu_commands(bot)}
+    assert menu <= _registered_commands(bot)
+
+
+def test_menu_omits_exactly_the_privileged_commands(bot):
+    # The regression guard: a newly added user-level command that never made it
+    # into set_my_commands shows up here as an unexpected omission.
+    menu = {c.command for c in _menu_commands(bot)}
+    assert _registered_commands(bot) - menu == MENU_EXEMPT
+
+
+def test_menu_contains_no_privileged_command(bot):
+    menu = {c.command for c in _menu_commands(bot)}
+    assert menu & MENU_EXEMPT == set()
+
+
+def test_listsignal_is_in_the_menu(bot):
+    assert "listsignal" in {c.command for c in _menu_commands(bot)}

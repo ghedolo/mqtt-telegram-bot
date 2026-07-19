@@ -1469,6 +1469,7 @@ class TelegramBot:
             BotCommand("digest", "manage daily digest subscriptions"),
             BotCommand("silent", "mute alarm DMs"),
             BotCommand("list", "list all sensors"),
+            BotCommand("listsignal", "blackout groups you can subscribe to"),
             BotCommand("sysinfo", "bot version, uptime, memory, DB size"),
             BotCommand("myid", "show your Telegram user ID"),
             BotCommand("exprsyntax", "expression syntax help"),

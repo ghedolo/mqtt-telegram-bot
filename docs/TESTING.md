@@ -150,6 +150,18 @@ user and return what was sent. Constants `ADMIN` / `VIEWER` / `OUTSIDER` / `SUPE
 - `test_help_*` — `/help` appends the admin section only for admins and the superadmin section only for superadmins.
 - `test_exprsyntax_replies` / `test_listsignal_replies` — thin wrappers reply with non-empty text.
 
+**Autocomplete menu**
+
+`set_my_commands` is deliberately user-level only — admin/superadmin commands
+still work when typed but stay out of the menu. `MENU_EXEMPT` in the test file
+lists the privileged commands; the split is pinned so a new *user* command
+cannot silently miss the menu (how `/listSignal` was lost).
+- `test_menu_commands_are_valid_telegram_names` / `test_menu_has_no_duplicates` — Telegram accepts each name (`[a-z0-9_]{1,32}`, non-empty description ≤256) and no name is listed twice.
+- `test_every_menu_command_has_a_handler` — nothing advertised in the menu is missing a `CommandHandler`.
+- `test_menu_omits_exactly_the_privileged_commands` — registered minus menu equals `MENU_EXEMPT`; the regression guard.
+- `test_menu_contains_no_privileged_command` — no admin/superadmin command leaks into autocomplete.
+- `test_listsignal_is_in_the_menu` — `/listSignal` is user-level, so it belongs there.
+
 ### `tests/test_schedule.py` — wall-clock scheduling (`bot/schedule.py`)
 - `test_next_occurrence_later_today` — target still ahead today.
 - `test_next_occurrence_already_passed_rolls_tomorrow` — past target rolls to tomorrow.
