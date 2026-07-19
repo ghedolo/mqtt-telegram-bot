@@ -29,21 +29,30 @@ Two consequences that catch people out:
 ```
 credentials.yaml            sensors.d/*.yaml
   groups:                     devices:
-    ops: [111, 222]  ◄──────    SM1:
-    watchers: [333]  ◄──────      viewers: [watchers]   ← device default
-                                  admins:  [ops]        ← device default
+    ops:      [111, 222] ◄──    SM1:
+    ops2:     [444]      ◄──      viewers: [watchers]   ← device default
+    watchers: [333]      ◄──      admins:  [ops]        ← device default
                                   fields:
                                     T: {}               ← inherits both
                                     H:
-                                      admins: [ops]     ← REPLACES, does not merge
+                                      admins: [ops2]    ← REPLACES, does not merge
 ```
+
+Resulting access:
+
+| Sensor | Admins | Viewers (admins included) |
+|---|---|---|
+| `SM1_T` | `ops` → 111, 222 | + `watchers` → 333 |
+| `SM1_H` | `ops2` → **444 only** | **444 only** — 111, 222 and 333 lost the Field |
 
 Resolution rules (`bot/config.py:87-115`, `bot/config.py:312-317`):
 
 - Field-level `viewers`/`admins` **fully replace** the Device-level lists when
-  *either* key is present on the Field. There is no merging. In the sketch
-  above, `SM1_H` has `admins: [ops]` and **no viewers at all** — `watchers` lost
-  access to that one Field.
+  *either* key is present on the Field. There is no merging. Declaring only
+  `admins:` on `SM1_H` drops the inherited `viewers:` too — `watchers` loses
+  that Field, and so does `ops`, which is no longer named anywhere in its
+  chain. This is the usual way access disappears by accident: to keep the
+  device defaults *and* add someone, restate every group you still want.
 - `viewers_of(sensor) = members(viewers) ∪ members(admins)` — **Admin implies
   Viewer**. You never list a group in both.
 - A Field with no `viewers` and no `admins` anywhere in its chain is visible to
