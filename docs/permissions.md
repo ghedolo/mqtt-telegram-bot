@@ -135,7 +135,7 @@ also requires DM Registration.
 | Action | Non-user | Viewer | Admin |
 |---|---|---|---|
 | appears in `/get`, `/graph`, `/list`, digest, thresholds | **never — for anybody**, by design | never | never |
-| see it in `/listSignal` | — | ✅ *name only* — `· SM3_IF` | ✅ *name and last value* — `· SM3_IF = 1.7 (3s ago)` |
+| see it in `/listSignal` | — | ✅ *name only* | ✅ *name and last value* |
 
 ### Actions on a Blackout Group
 
