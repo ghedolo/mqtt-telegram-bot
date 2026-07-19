@@ -141,6 +141,7 @@ user and return what was sent. Constants `ADMIN` / `VIEWER` / `OUTSIDER` / `SUPE
 - `test_setalarm_*` / `test_setalarmlow_*` — admin sets high/low threshold; case-insensitive sensor; viewer rejected (not authorized); outsider gets "unknown sensor"; non-numeric rejected; inverted band rejected.
 - `test_clearalarm_*` / `test_clearalarmlow_*` — admin clears; viewer left untouched (not authorized).
 - `test_ackoff_*` — admin silences a device; case-insensitive device key; viewer not authorized; unknown device; no-arg lists active acks (or "no active"); backs `/ackOff`.
+- `test_ackoff_no_args_scoped_to_visible_devices` / `..._viewer_sees_own_device` / `..._superadmin_sees_everything` / `..._outsider_not_authorized` — the no-arg listing is a read: a viewer is enough, a device the caller sees no sensor of is filtered out, a superadmin gets the whole installation, and someone in no access group is refused rather than shown device keys.
 - `test_forgetsensor_*` — superadmin-only; case-insensitive device key.
 - `test_silent_*` — `/silent`: mute for N hours, clamp to 24h, unmute, no-arg list, per-user isolation.
 - `test_digest_*` — `/digest` subscribe on / unsubscribe off, no-arg list (visible only), bad usage.

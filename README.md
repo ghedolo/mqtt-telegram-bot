@@ -264,7 +264,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/setAlarmLow <name> <value>` | Set low alarm threshold (alarm if value <). Rejected if it would not stay strictly below the high threshold |
 | `/clearAlarm <name>` | Clear high alarm threshold |
 | `/clearAlarmLow <name>` | Clear low alarm threshold |
-| `/ackOff [device]` | No arg: list devices with an active offline ack. With `device`: acknowledge its offline alarm (suppresses repeats until it reconnects) |
+| `/ackOff [device]` | No arg: list devices with an active offline ack, limited to those you can see (superadmins see all). With `device`: acknowledge its offline alarm (suppresses repeats until it reconnects) |
 
 ### Superadmin-only commands
 

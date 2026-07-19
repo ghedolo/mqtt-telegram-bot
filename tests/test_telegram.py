@@ -366,6 +366,7 @@ mqtt:
 groups:
   ops: [1, 2]
   watchers: [4]
+  other: [7]
 superadmin: [9]
 """
 
@@ -377,6 +378,11 @@ devices:
     topic: "t/sm1"
     admins: [ops]
     viewers: [watchers]
+    fields:
+      T: {}
+  SM2:
+    topic: "t/sm2"
+    admins: [other]
     fields:
       T: {}
 """
@@ -491,6 +497,38 @@ def test_ackoff_no_args_lists_active(hbot, temp_db):
 def test_ackoff_no_args_empty(hbot, temp_db):
     sent = _run(hbot, hbot._cmd_ackoff, ADMIN)
     assert "no active" in sent[-1][1].lower()
+
+
+def test_ackoff_no_args_scoped_to_visible_devices(hbot, temp_db):
+    # ADMIN is in `ops` (SM1 only). SM2 belongs to `other` and must not appear —
+    # the listing is a read like any other, so it obeys visibility.
+    temp_db.silence_sensor("SM1")
+    temp_db.silence_sensor("SM2")
+    body = _run(hbot, hbot._cmd_ackoff, ADMIN)[-1][1]
+    assert "SM1" in body and "SM2" not in body
+
+
+def test_ackoff_no_args_viewer_sees_own_device(hbot, temp_db):
+    # VIEWER is only a viewer of SM1, never its admin: enough to see the ack.
+    temp_db.silence_sensor("SM1")
+    assert "SM1" in _run(hbot, hbot._cmd_ackoff, VIEWER)[-1][1]
+
+
+def test_ackoff_no_args_superadmin_sees_everything(hbot, temp_db):
+    # SUPER is in no Access Group, so this is the one listing that ignores
+    # visibility — a caretaker view of the whole installation.
+    temp_db.silence_sensor("SM1")
+    temp_db.silence_sensor("SM2")
+    body = _run(hbot, hbot._cmd_ackoff, SUPER)[-1][1]
+    assert "SM1" in body and "SM2" in body
+
+
+def test_ackoff_no_args_outsider_not_authorized(hbot, temp_db):
+    # Anyone can DM the bot and be registered, so the listing must check group
+    # membership itself or it leaks device keys to a passer-by.
+    temp_db.silence_sensor("SM1")
+    body = _run(hbot, hbot._cmd_ackoff, OUTSIDER)[-1][1]
+    assert "authorized" in body.lower() and "SM1" not in body
 
 
 # /forgetSensor

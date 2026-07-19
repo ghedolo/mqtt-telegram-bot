@@ -177,6 +177,19 @@ class AppConfig:
             return False
         return any(user_id in self.admins_of(sc.name) for sc in dev.fields.values())
 
+    def is_any_viewer_of_device(self, user_id: int, device_key: str) -> bool:
+        """Visibility of a Device: one visible Field is enough. A Device the
+        user cannot see any Field of must not surface, not even as a key."""
+        dev = self.devices.get(device_key)
+        if dev is None:
+            return False
+        return any(user_id in self.viewers_of(sc.name) for sc in dev.fields.values())
+
+    def has_any_access(self, user_id: int) -> bool:
+        """True when the user is in at least one Access Group, i.e. can see at
+        least one Sensor. Superadmin alone does not qualify."""
+        return any(user_id in self.viewers_of(s) for s in self.sensors)
+
     def viewers_of_blackout(self, group_id: str) -> set[int]:
         grp = self.blackouts.get(group_id)
         if grp is None:

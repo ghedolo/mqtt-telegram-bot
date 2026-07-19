@@ -82,7 +82,7 @@ authorisation error.
 | `/setAlarmLow <name> <value>` | Set low alarm threshold for a Field (Sensor name); alarm if value < threshold |
 | `/clearAlarm <name>` | Clear the high threshold for a Field |
 | `/clearAlarmLow <name>` | Clear the low threshold for a Field |
-| `/ackOff [device]` | With a Device key: acknowledge its offline Alarm (suppresses repeats until it reconnects). With no argument: list every active AckOff — reachable by any DM-registered User, not only Admins |
+| `/ackOff [device]` | With a Device key: acknowledge its offline Alarm (suppresses repeats until it reconnects) — Admin of the Device. With no argument: list active AckOffs, scoped to Devices the caller Views at least one Field of (Superadmins see all); Users in no Access Group are refused |
 
 ### Superadmin-only commands
 | Command | Description |

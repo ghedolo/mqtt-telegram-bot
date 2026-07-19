@@ -88,7 +88,9 @@ Derived predicates:
 | `is_viewer(u, s)` | `u` may read Sensor `s` |
 | `is_admin(u, s)` | `u` may change Sensor `s` |
 | `is_any_admin(u)` | `u` is admin of **at least one** Sensor — unlocks the 72h export window and the admin section of `/help` |
-| `is_any_admin_of_device(u, dev)` | `u` is admin of at least one Sensor of `dev` — gates `/ackOff` |
+| `is_any_admin_of_device(u, dev)` | `u` is admin of at least one Sensor of `dev` — gates `/ackOff <dev>` |
+| `is_any_viewer_of_device(u, dev)` | `u` can see at least one Sensor of `dev` — scopes the `/ackOff` listing |
+| `has_any_access(u)` | `u` is in at least one Access Group, i.e. sees at least one Sensor. Superadmin alone does not qualify |
 | `is_viewer_of_blackout(u, gid)` | `u` is viewer of at least one Sensor watched by group `gid` |
 | `is_superadmin(u)` | `u` is in the `superadmin:` list |
 
@@ -126,7 +128,7 @@ also requires DM Registration.
 |---|---|---|---|
 | see it in `/list` | — | ✅ *(only its visible Sensors)* | ✅ |
 | acknowledge offline alarm (`/ackOff <dev>`) | — | ❌ | ✅ *(admin of any one Sensor)* |
-| list active acks (`/ackOff`, no arg) | ✅ **any DM-registered user, system-wide** | ✅ | ✅ |
+| list active acks (`/ackOff`, no arg) | ❌ *"Not authorized"* | ✅ *visible Devices only* | ✅ *visible Devices only* |
 | receive offline alarm DM | — | ❌ | ✅ **and** subscribed to that Sensor |
 | wipe to history (`/forgetSensor <dev>`) | — | ❌ | ❌ — superadmin only |
 
@@ -192,10 +194,10 @@ but it is the one place where the two axes brush against each other.
   subscribed. Two of the three are opt-in.
 - **"Non-user" is not "stranger".** Anyone who opens a DM with the bot is
   registered on the spot (`_get_reply_chat` calls `register_dm` when the chat
-  *is* the user), with no group membership required. So the ✅ marks in that
-  column are reachable by any Telegram user who finds the bot: `/sysinfo`,
-  `/last`, and the argument-less `/ackOff` listing. They expose health metrics
-  and device keys, never Readings.
+  *is* the user), with no group membership required. DM registration therefore
+  proves nothing about who you are, which is why the ✅ marks in that column are
+  limited to `/sysinfo`, `/last` and the other entity-less commands: version,
+  uptime, counts. No Sensor, no Device key, no Reading.
 
 ## 4. Gate that runs before everything
 
@@ -251,10 +253,11 @@ The two-step check is deliberate: a non-viewer gets `Unknown sensor.` and a
 viewer-without-admin gets `Not authorized.`, so a user never learns that a
 Sensor exists outside their visibility.
 
-`/ackOff` **without arguments** lists every active offline ack system-wide and
-is reachable by any DM-registered user — the only place where a non-admin sees
-device state beyond their own visibility. Known wart, listed here rather than
-silently tolerated.
+`/ackOff` **without arguments** lists active offline acks instead of setting
+one, and is scoped like any read: Access Group membership is required, and the
+listing shows only Devices the caller can see at least one Sensor of. A
+Superadmin sees the whole installation — the caretaker exception, consistent
+with `/dbStats` and `/usersActivity`.
 
 ### Superadmin
 

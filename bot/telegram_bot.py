@@ -1157,7 +1157,22 @@ class TelegramBot:
         user_id = update.effective_user.id
 
         if not ctx.args:
+            # The listing is scoped like every other read: a Superadmin sees the
+            # whole installation, everyone else only the Devices they can see at
+            # least one Sensor of. Someone in no Access Group sees nothing at
+            # all, so device keys never leak to a passer-by who DM'd the bot.
+            is_su = self._cfg.is_superadmin(user_id)
+            if not is_su and not self._cfg.has_any_access(user_id):
+                await self._app.bot.send_message(
+                    chat_id=reply_chat, text="Not authorized.", **_SILENT
+                )
+                return
             silenced = db.list_silenced()
+            if not is_su:
+                silenced = [
+                    (k, ts) for k, ts in silenced
+                    if self._cfg.is_any_viewer_of_device(user_id, k)
+                ]
             if not silenced:
                 text = "No active offline acks.\nUsage: /ackOff <device>"
             else:
