@@ -46,7 +46,11 @@ run tests.
 - `test_basic_parse_and_derived_names` — `{device}_{field}` names, defaults inherited.
 - `test_defaults_and_new_keys` — `retention_days`, `archive_time` (12:00), `enable_menu` (True), `digest_time`.
 - `test_field_viewers_override_replaces_device` — field-level viewers replace device-level.
-- `test_field_admins_only_drops_inherited_viewers` — the override is all-or-nothing on the pair: a field declaring only `admins:` also discards the device-level `viewers:`, so the device's viewer group loses that one field. Reads like a per-key merge and isn't one.
+- `test_field_declaring_only_admins_warns` / `..._only_viewers_warns` — a field naming one key alone still loads (the bot must not refuse to start over an access nit) but records a config warning, and the assertions confirm the other key really is blanked, so the warning is not cosmetic.
+- `test_clean_config_has_no_warnings` — the warning list stays empty for a well-formed config.
+- `test_field_stating_both_replaces_device_lists` — with both keys stated, the device lists are dropped entirely: the device's admin group loses the field too, a sibling field is untouched.
+- `test_field_with_neither_key_inherits_both` — no keys → both inherited, the common case.
+- `test_empty_access_lists_parse_as_empty_not_missing` — `viewers:` (YAML `None`) and `viewers: []` both mean "no groups", and neither counts as an absent key.
 - `test_access_helpers` — `is_viewer` / `is_superadmin`.
 - `test_duplicate_device_key_across_files` — duplicate device key is a hard error.
 - `test_case_insensitive_name_collision` — sensor names differing only by case rejected.
@@ -126,6 +130,7 @@ parsing, name resolution, and DB side effects are all exercised.
 - `test_build_digest_empty_when_no_subscriptions` — no subscriptions → empty string.
 - `test_listsignal_*` — `/listSignal` rendering: admin sees live signal value, viewer hides it, subscription state flips the hint, outsider sees nothing.
 - `test_render_sysinfo` / `..._no_mqtt` — `/sysinfo` summary text, with and without a last-MQTT timestamp.
+- `test_render_sysinfo_surfaces_config_warnings` — non-fatal config warnings are appended to `/sysinfo`, so they reach a human rather than only a log nobody tails.
 - `test_unknown_command_*` — unknown-command reply only to a registered/addressed user; ignored for other bots and unregistered users.
 
 **Command handlers (end-to-end)**

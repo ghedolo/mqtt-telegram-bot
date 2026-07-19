@@ -35,6 +35,7 @@ devices:
       I:
         decimals: 2
         viewers: [nobody]
+        admins: []
 """
 
 
@@ -88,22 +89,65 @@ def test_field_viewers_override_replaces_device(tmp_path):
     assert cfg.sensors["SM1_I"].viewers == ["nobody"]
 
 
-def test_field_admins_only_drops_inherited_viewers(tmp_path):
-    # The override is all-or-nothing on the pair: declaring `admins:` alone on a
-    # field discards the device-level `viewers:` as well, it does not keep them.
-    # Documented in docs/permissions.md — pinned here because the asymmetric
-    # case reads like a per-key merge and isn't one.
-    defaults = DEFAULTS + """      H:
-        admins: [ops2]
-"""
-    creds = CREDS.replace("  ops: [1, 2]", "  ops: [1, 2]\n  ops2: [4]")
-    cfg = _write_env(tmp_path, defaults=defaults, creds=creds)
+CREDS_OPS2 = CREDS.replace("  ops: [1, 2]", "  ops: [1, 2]\n  ops2: [4]")
+
+
+def _with_field_H(body: str) -> str:
+    return DEFAULTS + "      H:\n" + body
+
+
+def test_field_declaring_only_admins_warns(tmp_path):
+    # The override replaces both keys, so `admins:` alone leaves the field with
+    # no viewers. Load succeeds — a monitoring bot must not refuse to start over
+    # an access nit — but says so, and the blanking is real.
+    cfg = _write_env(tmp_path, defaults=_with_field_H("        admins: [ops2]\n"),
+                     creds=CREDS_OPS2)
+    assert len(cfg.warnings) == 1
+    assert "SM1.H" in cfg.warnings[0]
+    assert "declares 'admins' but not 'viewers'" in cfg.warnings[0]
+    assert cfg.sensors["SM1_H"].viewers == []      # the warning is not cosmetic
+
+
+def test_field_declaring_only_viewers_warns(tmp_path):
+    cfg = _write_env(tmp_path, defaults=_with_field_H("        viewers: [ops2]\n"),
+                     creds=CREDS_OPS2)
+    assert len(cfg.warnings) == 1
+    assert "declares 'viewers' but not 'admins'" in cfg.warnings[0]
+    assert cfg.sensors["SM1_H"].admins == []
+
+
+def test_clean_config_has_no_warnings(tmp_path):
+    assert _write_env(tmp_path).warnings == []
+
+
+def test_field_stating_both_replaces_device_lists(tmp_path):
+    cfg = _write_env(
+        tmp_path,
+        defaults=_with_field_H("        viewers: []\n        admins: [ops2]\n"),
+        creds=CREDS_OPS2,
+    )
     h = cfg.sensors["SM1_H"]
     assert h.admins == ["ops2"]
-    assert h.viewers == []                       # device-level [ops] is gone
+    assert h.viewers == []                       # explicit: nobody beyond the admins
     assert cfg.viewers_of("SM1_H") == {4}        # admin implies viewer, and only 4
     assert cfg.is_viewer(1, "SM1_H") is False    # ops lost the field entirely
     assert cfg.is_viewer(1, "SM1_T") is True     # sibling field unaffected
+
+
+def test_field_with_neither_key_inherits_both(tmp_path):
+    cfg = _write_env(tmp_path, defaults=_with_field_H("        unit: '%'\n"))
+    h = cfg.sensors["SM1_H"]
+    assert h.viewers == ["ops"] and h.admins == []
+
+
+def test_empty_access_lists_parse_as_empty_not_missing(tmp_path):
+    # `viewers:` with nothing after it is None in YAML, not [] — both spellings
+    # must mean "no groups", and neither may count as an absent key.
+    cfg = _write_env(tmp_path,
+                     defaults=_with_field_H("        viewers:\n        admins: []\n"))
+    h = cfg.sensors["SM1_H"]
+    assert h.viewers == [] and h.admins == []
+    assert cfg.viewers_of("SM1_H") == set()      # visible to nobody, fail-closed
 
 
 def test_access_helpers(tmp_path):

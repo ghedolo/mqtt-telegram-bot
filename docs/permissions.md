@@ -35,7 +35,8 @@ credentials.yaml            sensors.d/*.yaml
                                   fields:
                                     T: {}               ← inherits both
                                     H:
-                                      admins: [ops2]    ← REPLACES, does not merge
+                                      viewers: []       ← REPLACES, does not merge
+                                      admins: [ops2]    ← both keys required together
 ```
 
 Resulting access:
@@ -47,12 +48,26 @@ Resulting access:
 
 Resolution rules (`bot/config.py:87-115`, `bot/config.py:312-317`):
 
-- Field-level `viewers`/`admins` **fully replace** the Device-level lists when
-  *either* key is present on the Field. There is no merging. Declaring only
-  `admins:` on `SM1_H` drops the inherited `viewers:` too — `watchers` loses
-  that Field, and so does `ops`, which is no longer named anywhere in its
-  chain. This is the usual way access disappears by accident: to keep the
-  device defaults *and* add someone, restate every group you still want.
+- Field-level `viewers`/`admins` **fully replace** the Device-level lists.
+  There is no merging, and the pair is **all-or-nothing**: a Field states both
+  keys or neither. Declaring only one still loads, with the unstated key
+  blanked as always, but raises a config warning —
+
+  ```
+  ⚠️ config: SM1.H: declares 'admins' but not 'viewers' — the field-level list
+  replaces the device-level one for BOTH keys, so 'viewers' is now empty.
+  Add viewers: [] to confirm, or restate the groups you want.
+  ```
+
+  It is a warning and not a load error on purpose: a monitoring bot that
+  refuses to start leaves *everything* unwatched, which beats any access
+  mistake it might have prevented. Warnings appear in the log, at the bottom of
+  `/sysinfo`, and in the `/reloadConfig` reply — the reload being the moment
+  the author is actually looking.
+
+  So in the sketch `SM1_H` gives up `watchers` *and* `ops`: `viewers: []` says
+  that out loud instead of leaving it to be inferred. To keep the device
+  defaults *and* add someone, restate every group you still want.
 - `viewers_of(sensor) = members(viewers) ∪ members(admins)` — **Admin implies
   Viewer**. You never list a group in both.
 - A Field with no `viewers` and no `admins` anywhere in its chain is visible to

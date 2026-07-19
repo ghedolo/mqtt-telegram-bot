@@ -43,7 +43,7 @@ _Avoid_: silence (reserved for the offline-ack state).
 
 **HMAC Token** — a time-limited (24h TTL) signed token embedded in a Telegram start deep link (`t.me/botname?start=<token>`). Encodes the target chat_id and a timestamp. Verified on `/start` to ensure only the intended User completes DM Registration.
 
-**Sensor Config** — YAML files in the `sensors.d/` directory (read recursively and merged at startup; duplicate Device keys across files are rejected) defining Devices under a `devices:` key. The shared `defaults:` block is allowed only in `00-defaults.yaml`; every other file must contain nothing but `devices:` (any stray top-level key is a hard error). Each Device declares its Topic, interval, info label, optional note, and default `viewers`/`admins` Access Group lists. Fields are nested under `fields:` within each Device. Field-level `viewers`/`admins` fully replace (not merge with) Device-level defaults when present. Devices without any `viewers` or `admins` on any Field are visible to nobody (fail-closed). A Field marked `signal: true` is parsed as a Signal (never stored) and diverted out of the Sensor set, keeping its name/topic in the shared namespace so collisions are still rejected.
+**Sensor Config** — YAML files in the `sensors.d/` directory (read recursively and merged at startup; duplicate Device keys across files are rejected) defining Devices under a `devices:` key. The shared `defaults:` block is allowed only in `00-defaults.yaml`; every other file must contain nothing but `devices:` (any stray top-level key is a hard error). Each Device declares its Topic, interval, info label, optional note, and default `viewers`/`admins` Access Group lists. Fields are nested under `fields:` within each Device. Field-level `viewers`/`admins` fully replace (not merge with) Device-level defaults when present, and are **all-or-nothing**: a Field states both keys or neither. Declaring only one still loads — the unstated key is blanked as always — but emits a **Config Warning**. `[]` is the explicit way to grant no groups. Devices without any `viewers` or `admins` on any Field are visible to nobody (fail-closed). A Field marked `signal: true` is parsed as a Signal (never stored) and diverted out of the Sensor set, keeping its name/topic in the shared namespace so collisions are still rejected.
 
 ## Bot Commands
 
@@ -91,6 +91,15 @@ authorisation error.
 | `/reloadConfig` | Reload Sensor Config and credentials config without restart |
 | `/usersActivity` | List last interaction time per User (User Activity) |
 | `/dbStats` | DB size, per-table row counts, and the time span covered |
+
+**Config Warning** — a non-fatal complaint about Sensor Config collected during
+`config.load` (`AppConfig.warnings`). The config is applied as parsed; the
+warning only reports that the result is probably not what the author meant.
+Deliberately not an error: a monitoring bot that refuses to start leaves every
+Device unwatched, a worse outcome than the mistake being flagged. Surfaced in
+three places so it reaches a human — the log, the tail of `/sysinfo`, and the
+`/reloadConfig` reply. Currently raised for a Field declaring only one of
+`viewers`/`admins`.
 
 **Autocomplete Menu** — the command list registered with Telegram via
 `set_my_commands` at startup (skipped, and any previous list cleared, when

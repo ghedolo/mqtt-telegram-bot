@@ -274,6 +274,14 @@ def test_render_sysinfo_no_mqtt(bot):
     assert "ultimo MQTT: mai" in bot._render_sysinfo()
 
 
+def test_render_sysinfo_surfaces_config_warnings(bot):
+    # A non-fatal config complaint must reach a human somewhere; a log line in a
+    # container nobody tails does not count.
+    assert "⚠️" not in bot._render_sysinfo()
+    bot._cfg.warnings = ["SM1.H: declares 'admins' but not 'viewers' — ..."]
+    assert "⚠️ config: SM1.H" in bot._render_sysinfo()
+
+
 # --- unknown command ---
 
 def _fake_app(sent, photos=None, docs=None):

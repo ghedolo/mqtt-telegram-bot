@@ -1,7 +1,10 @@
+import logging
 import os
 import yaml
 from dataclasses import dataclass, field
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,6 +86,10 @@ class AppConfig:
     enable_menu: bool
     blackouts: dict[str, "BlackoutGroup"] = field(default_factory=dict)
     signals: dict[str, SignalConfig] = field(default_factory=dict)  # signal_name → SignalConfig
+    # Non-fatal config complaints raised at load: surfaced in /sysinfo so they
+    # reach a human, since a monitoring bot must never refuse to start over
+    # something it can interpret.
+    warnings: list[str] = field(default_factory=list)
 
     def _members(self, group_names: list[str]) -> set[int]:
         result: set[int] = set()
@@ -255,6 +262,7 @@ def load(
     defaults = raw.get("defaults", {})
     default_interval = int(defaults.get("interval", 300))
 
+    warnings: list[str] = []
     sensors: dict[str, SensorConfig] = {}
     signals: dict[str, SignalConfig] = {}
     devices: dict[str, DeviceConfig] = {}
@@ -309,9 +317,25 @@ def load(
                     )
                 seen_topics.add(f_topic)
 
-            if "viewers" in fv or "admins" in fv:
-                f_viewers = list(fv.get("viewers", []))
-                f_admins = list(fv.get("admins", []))
+            # Access lists are all-or-nothing: a Field either inherits both from
+            # its Device or states both itself. Declaring one alone silently
+            # blanks the other (`admins:` on its own leaves the Field with no
+            # viewers), so say so — a warning, not an error, because refusing to
+            # start would take the monitoring down over an access nit, which is
+            # the worse outcome. The semantics are unchanged either way.
+            has_viewers, has_admins = "viewers" in fv, "admins" in fv
+            if has_viewers != has_admins:
+                present, missing = ("viewers", "admins") if has_viewers else ("admins", "viewers")
+                warnings.append(
+                    f"{dev_key}.{fk}: declares {present!r} but not {missing!r} — the "
+                    f"field-level list replaces the device-level one for BOTH keys, so "
+                    f"{missing!r} is now empty. Add {missing}: [] to confirm, or restate "
+                    f"the groups you want."
+                )
+            if has_viewers or has_admins:
+                # `viewers:` with nothing after it parses as None, not []
+                f_viewers = list(fv.get("viewers") or [])
+                f_admins = list(fv.get("admins") or [])
             else:
                 f_viewers = dev_viewers[:]
                 f_admins = dev_admins[:]
@@ -415,6 +439,9 @@ def load(
             stale_after=stale_after,
         )
 
+    for w in warnings:
+        log.warning("config: %s", w)
+
     tg = sec["telegram"]
     mq = sec["mqtt"]
     raw_groups = sec.get("groups", {})
@@ -444,4 +471,5 @@ def load(
         enable_menu=bool(int(tg.get("enableMenu", 1))),
         blackouts=blackouts,
         signals=signals,
+        warnings=warnings,
     )

@@ -670,6 +670,10 @@ class TelegramBot:
         ts = self.last_mqtt_fn() if self.last_mqtt_fn else None
         lines.append(f"ultimo MQTT: {_fmt_ago(int(now) - ts) + ' fa' if ts else 'mai'}")
         lines.append(f"device: {len(self._cfg.devices)} · sensori: {len(self._cfg.sensors)}")
+        # Config complaints that were not fatal. A log line nobody tails is not
+        # a warning, so put them where someone actually looks.
+        for w in self._cfg.warnings:
+            lines.append(f"⚠️ config: {w}")
         return "\n".join(lines)
 
     async def _cmd_sysinfo(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1243,6 +1247,7 @@ class TelegramBot:
         self._cfg.alarm_threshold_repeat = new.alarm_threshold_repeat
         self._cfg.alarm_offline_repeat = new.alarm_offline_repeat
         self._cfg.debug = new.debug
+        self._cfg.warnings = new.warnings
 
         self._cfg.sensors.clear()
         self._cfg.sensors.update(new.sensors)
@@ -1261,11 +1266,12 @@ class TelegramBot:
         if self.apply_alarm_config_fn:
             self.apply_alarm_config_fn(new)
 
-        await self._app.bot.send_message(
-            chat_id=reply_chat,
-            text="Config reloaded.\nNote: new/changed MQTT topics (new sensors, topic edits) still require a restart.",
-            **_SILENT,
-        )
+        text = "Config reloaded.\nNote: new/changed MQTT topics (new sensors, topic edits) still require a restart."
+        if new.warnings:
+            # the reload is the moment the author is watching — report here too,
+            # not only in /sysinfo
+            text += "\n\n" + "\n".join(f"⚠️ {w}" for w in new.warnings)
+        await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
 
     async def _cmd_usersactivity(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)

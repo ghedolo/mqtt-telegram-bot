@@ -82,8 +82,10 @@ devices:
         defaultAlarmLow: 10.0      # optional, seeds low threshold on first run
         validMin: -20              # optional, plausible range floor (glitch filter)
         validMax: 80               # optional, plausible range ceiling (glitch filter)
-        viewers: [other_group]     # optional: overrides device-level viewers (replaces, not merges)
-        admins: [other_group]      # optional: overrides device-level admins (replaces, not merges)
+        viewers: [other_group]     # optional, but all-or-nothing with `admins` below:
+        admins: []                 #   state BOTH keys or neither — a field-level list
+                                   #   replaces the device-level one for both, never merges.
+                                   #   `[]` means "no groups", and must be written out.
         signal: true               # optional: a Signal — never stored, feeds only blackout detection (see below)
 
 defaults:
@@ -95,6 +97,12 @@ defaults:
 ```
 
 Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed).
+A field declaring only one of the pair still loads, but warns: the override
+replaces both, so `admins:` on its own leaves the field with no viewers. Write
+the other key explicitly, `[]` included. Config warnings are logged, listed at
+the bottom of `/sysinfo`, and echoed in the `/reloadConfig` reply — the bot
+never refuses to start over them, since unwatched sensors are the worse
+failure.
 
 `decimals` (0-5, default 1) sets how many decimal places each reading is rounded to for storage and shown with everywhere — `/get`, `/list`, alarm messages, `/setAlarm` input, and graph stats. Out-of-range values are rejected at startup.
 
@@ -326,12 +334,13 @@ Once a day at `archive_time` (default 12:00 local) the bot moves readings older 
 
 ## Testing
 
-The pytest suite covers config parsing/validation, the DB layer and
-archive cutoff, alarm logic (thresholds, offline, full blackout state machine),
-MQTT payload parsing (incl. state-enum decoding), chart data prep, wall-clock
-scheduling, the Telegram-bot helpers (sensor resolution, sort, registration-token
-HMAC, digest, `/sysinfo`, unknown-command), and the reading-ingest path
-end-to-end. They run on the dev machine against throwaway SQLite/YAML — never the
+The pytest suite covers config parsing/validation (including the access-list
+override rules and the warnings they raise), the DB layer and archive cutoff,
+alarm logic (thresholds, offline, full blackout state machine), MQTT payload
+parsing (incl. state-enum decoding), chart data prep, wall-clock scheduling, the
+Telegram-bot helpers (sensor resolution, sort, registration-token HMAC, digest,
+`/sysinfo`, unknown-command), the user-level/privileged split of the autocomplete
+menu, and the reading-ingest path end-to-end. They run on the dev machine against throwaway SQLite/YAML — never the
 production container. Run `pytest` for the current list and count; see
 [docs/TESTING.md](docs/TESTING.md) for a curated overview.
 
@@ -367,18 +376,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-07-19
-- **Sessions:** 12 — 5570 messages (1984 user + 3586 assistant)
-- **Active conversation time:** ~1208 min (~20h 8m)
+- **Sessions:** 13 — 5937 messages (2134 user + 3803 assistant)
+- **Active conversation time:** ~1280 min (~21h 20m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 459,806 |
-| Output | 2,970,306 |
-| Cache write | 10,393,010 |
-| Cache read | 583,877,371 |
-| **Total** | **~597 M** |
+| Input (non-cache) | 460,220 |
+| Output | 3,070,260 |
+| Cache write | 10,754,337 |
+| Cache read | 602,807,598 |
+| **Total** | **~617 M** |
 
-The assistant averaged **828 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **807 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->
