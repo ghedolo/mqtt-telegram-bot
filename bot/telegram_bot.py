@@ -726,7 +726,7 @@ class TelegramBot:
                 "/setAlarmLow <name> <value> — set low alarm threshold (alarm if value <)\n"
                 "/clearAlarm <name> — clear high threshold\n"
                 "/clearAlarmLow <name> — clear low threshold\n"
-                "/ackOff <name> — acknowledge offline alarm (auto-clears when sensor reconnects)"
+                "/ackOff [name] — no arg: list active acks; with name: acknowledge offline alarm (auto-clears when sensor reconnects)"
             )
         if self._cfg.is_superadmin(user_id):
             text += (
@@ -1153,12 +1153,20 @@ class TelegramBot:
         user_id = update.effective_user.id
 
         if not ctx.args:
+            silenced = db.list_silenced()
+            if not silenced:
+                text = "No active offline acks.\nUsage: /ackOff <device>"
+            else:
+                lines = ["Active offline acks:"]
+                for key, ts in silenced:
+                    lines.append(f"• {key} — since {_fmt_ts(ts)}")
+                text = "\n".join(lines)
             await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /ackOff <device>", **_SILENT
+                chat_id=reply_chat, text=text, **_SILENT
             )
             return
 
-        device_key = ctx.args[0]
+        device_key = self._cfg.resolve_device(ctx.args[0])
         if device_key not in self._cfg.devices:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Unknown device.", **_SILENT
@@ -1189,7 +1197,7 @@ class TelegramBot:
             )
             return
 
-        device_key = ctx.args[0]
+        device_key = self._cfg.resolve_device(ctx.args[0])
         if not self._cfg.is_superadmin(user_id):
             await self._app.bot.send_message(
                 chat_id=reply_chat, text="Not authorized.", **_SILENT

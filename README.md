@@ -256,7 +256,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/setAlarmLow <name> <value>` | Set low alarm threshold (alarm if value <). Rejected if it would not stay strictly below the high threshold |
 | `/clearAlarm <name>` | Clear high alarm threshold |
 | `/clearAlarmLow <name>` | Clear low alarm threshold |
-| `/ackOff <device>` | Acknowledge offline alarm for a device (suppresses repeats until it reconnects) |
+| `/ackOff [device]` | No arg: list devices with an active offline ack. With `device`: acknowledge its offline alarm (suppresses repeats until it reconnects) |
 
 ### Superadmin-only commands
 
@@ -364,19 +364,19 @@ This project was built entirely through a conversation with Claude Code, across
 multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
-- **Last message:** 2026-07-18
-- **Sessions:** 11 — 5210 messages (1852 user + 3358 assistant)
-- **Active conversation time:** ~1160 min (~19h 20m)
+- **Last message:** 2026-07-19
+- **Sessions:** 12 — 5570 messages (1984 user + 3586 assistant)
+- **Active conversation time:** ~1208 min (~20h 8m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 459,381 |
-| Output | 2,848,771 |
-| Cache write | 10,158,551 |
-| Cache read | 565,930,983 |
-| **Total** | **~579 M** |
+| Input (non-cache) | 459,806 |
+| Output | 2,970,306 |
+| Cache write | 10,393,010 |
+| Cache read | 583,877,371 |
+| **Total** | **~597 M** |
 
-The assistant averaged **848 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **828 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

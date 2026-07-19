@@ -60,6 +60,20 @@ def test_basic_parse_and_derived_names(tmp_path):
     assert cfg.sensors["SM1_I"].decimals == 2
 
 
+def test_resolve_device_is_case_insensitive_and_canonical(tmp_path):
+    cfg = _write_env(tmp_path)
+    assert cfg.resolve_device("SM1") == "SM1"      # exact
+    assert cfg.resolve_device("sm1") == "SM1"      # lowercased
+    assert cfg.resolve_device("Sm1") == "SM1"      # mixed
+    assert cfg.resolve_device("nope") == "nope"    # unknown passes through
+
+
+def test_resolve_sensor_is_case_insensitive(tmp_path):
+    cfg = _write_env(tmp_path)
+    assert cfg.resolve_sensor("sm1_t") == "SM1_T"
+    assert cfg.resolve_sensor("SM1_T") == "SM1_T"
+
+
 def test_defaults_and_new_keys(tmp_path):
     cfg = _write_env(tmp_path)
     assert cfg.retention_days == 30

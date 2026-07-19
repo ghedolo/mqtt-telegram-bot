@@ -276,10 +276,27 @@ def test_render_sysinfo_no_mqtt(bot):
 
 # --- unknown command ---
 
-def _fake_app(sent):
+def _fake_app(sent, photos=None, docs=None):
     async def send_message(chat_id, text, **kw):
         sent.append((chat_id, text))
-    return SimpleNamespace(bot=SimpleNamespace(send_message=send_message))
+
+    async def send_photo(chat_id, photo, caption=None, **kw):
+        if photos is not None:
+            photos.append((chat_id, caption))
+
+    async def send_document(chat_id, document, filename=None, **kw):
+        if docs is not None:
+            docs.append((chat_id, filename))
+
+    async def delete_message(chat_id, message_id, **kw):
+        pass
+
+    return SimpleNamespace(bot=SimpleNamespace(
+        send_message=send_message,
+        send_photo=send_photo,
+        send_document=send_document,
+        delete_message=delete_message,
+    ))
 
 
 def _cmd_update(text, user_id):
@@ -323,3 +340,527 @@ def test_unknown_command_ignores_unregistered(bot, temp_db):
     bot._bot_username = "lortebot"
     asyncio.run(bot._cmd_unknown(_cmd_update("/foobar", 5), None))   # 5 not registered
     assert sent == []
+
+
+# --- command handlers end-to-end (auth, arg parsing, DB side effects) ---
+#
+# These exercise the actual /setAlarm, /clearAlarm, /ackOff, /forgetSensor
+# handlers — not just the pure helpers — because that is where the auth
+# checks, case-insensitive name resolution, and DB writes live.
+
+HCREDS = """
+telegram:
+  token: "123:ABC"
+  group_id: -100
+mqtt:
+  host: "broker"
+  port: 1883
+groups:
+  ops: [1, 2]
+  watchers: [4]
+superadmin: [9]
+"""
+
+HDEFAULTS = """
+defaults:
+  interval: 300
+devices:
+  SM1:
+    topic: "t/sm1"
+    admins: [ops]
+    viewers: [watchers]
+    fields:
+      T: {}
+"""
+
+
+@pytest.fixture
+def hbot(tmp_path, temp_db):
+    sd = tmp_path / "sensors.d"
+    sd.mkdir()
+    (sd / "00-defaults.yaml").write_text(HDEFAULTS)
+    cf = tmp_path / "credentials.yaml"
+    cf.write_text(HCREDS)
+    b = tb.TelegramBot(config.load(str(sd), str(cf)))
+    return b
+
+
+def _ctx(*args):
+    return SimpleNamespace(args=list(args))
+
+
+ADMIN, VIEWER, OUTSIDER, SUPER = 1, 4, 99, 9   # per ops/watchers/superadmin above
+
+
+def _run(bot, handler, user_id, *args):
+    sent = []
+    bot._app = _fake_app(sent)
+    asyncio.run(handler(_cmd_update("/x", user_id), _ctx(*args)))
+    return sent
+
+
+# /setAlarm
+
+def test_setalarm_admin_sets_threshold(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_setalarm, ADMIN, "SM1_T", "30")
+    assert temp_db.get_threshold("SM1_T") == 30.0
+    assert "updated" in sent[-1][1].lower()
+
+
+def test_setalarm_case_insensitive_sensor(hbot, temp_db):
+    _run(hbot, hbot._cmd_setalarm, ADMIN, "sm1_t", "30")
+    assert temp_db.get_threshold("SM1_T") == 30.0
+
+
+def test_setalarm_viewer_not_authorized(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_setalarm, VIEWER, "SM1_T", "30")
+    assert temp_db.get_threshold("SM1_T") is None
+    assert "authorized" in sent[-1][1].lower()
+
+
+def test_setalarm_outsider_unknown_sensor(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_setalarm, OUTSIDER, "SM1_T", "30")
+    assert "unknown" in sent[-1][1].lower()
+
+
+def test_setalarm_non_numeric_rejected(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_setalarm, ADMIN, "SM1_T", "abc")
+    assert temp_db.get_threshold("SM1_T") is None
+    assert "number" in sent[-1][1].lower()
+
+
+def test_setalarm_rejects_inverted_band(hbot, temp_db):
+    temp_db.set_threshold_low("SM1_T", 50.0)
+    sent = _run(hbot, hbot._cmd_setalarm, ADMIN, "SM1_T", "10")   # high < low
+    assert temp_db.get_threshold("SM1_T") is None
+    assert sent  # an error was sent
+
+
+# /clearAlarm
+
+def test_clearalarm_admin_clears(hbot, temp_db):
+    temp_db.set_threshold("SM1_T", 30.0)
+    _run(hbot, hbot._cmd_clearalarm, ADMIN, "SM1_T")
+    assert temp_db.get_threshold("SM1_T") is None
+
+
+def test_clearalarm_viewer_not_authorized(hbot, temp_db):
+    temp_db.set_threshold("SM1_T", 30.0)
+    _run(hbot, hbot._cmd_clearalarm, VIEWER, "SM1_T")
+    assert temp_db.get_threshold("SM1_T") == 30.0   # untouched
+
+
+# /ackOff
+
+def test_ackoff_admin_silences(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_ackoff, ADMIN, "SM1")
+    assert temp_db.is_silenced("SM1") is True
+    assert "acknowledged" in sent[-1][1].lower()
+
+
+def test_ackoff_case_insensitive_device(hbot, temp_db):
+    _run(hbot, hbot._cmd_ackoff, ADMIN, "sm1")
+    assert temp_db.is_silenced("SM1") is True
+
+
+def test_ackoff_viewer_not_authorized(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_ackoff, VIEWER, "SM1")
+    assert temp_db.is_silenced("SM1") is False
+    assert "authorized" in sent[-1][1].lower()
+
+
+def test_ackoff_unknown_device(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_ackoff, ADMIN, "NOPE")
+    assert "unknown" in sent[-1][1].lower()
+
+
+def test_ackoff_no_args_lists_active(hbot, temp_db):
+    temp_db.silence_sensor("SM1")
+    sent = _run(hbot, hbot._cmd_ackoff, ADMIN)
+    assert "SM1" in sent[-1][1] and "active" in sent[-1][1].lower()
+
+
+def test_ackoff_no_args_empty(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_ackoff, ADMIN)
+    assert "no active" in sent[-1][1].lower()
+
+
+# /forgetSensor
+
+def test_forgetsensor_requires_superadmin(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_forgetsensor, ADMIN, "SM1")   # admin, not superadmin
+    assert "authorized" in sent[-1][1].lower()
+
+
+def test_forgetsensor_superadmin_case_insensitive(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_forgetsensor, SUPER, "sm1")
+    assert "archived" in sent[-1][1].lower()
+
+
+# /setAlarmLow
+
+def test_setalarmlow_admin_sets(hbot, temp_db):
+    _run(hbot, hbot._cmd_setalarmlow, ADMIN, "SM1_T", "10")
+    assert temp_db.get_threshold_low("SM1_T") == 10.0
+
+
+def test_setalarmlow_viewer_not_authorized(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_setalarmlow, VIEWER, "SM1_T", "10")
+    assert temp_db.get_threshold_low("SM1_T") is None
+    assert "authorized" in sent[-1][1].lower()
+
+
+def test_setalarmlow_rejects_inverted_band(hbot, temp_db):
+    temp_db.set_threshold("SM1_T", 20.0)
+    sent = _run(hbot, hbot._cmd_setalarmlow, ADMIN, "SM1_T", "50")   # low > high
+    assert temp_db.get_threshold_low("SM1_T") is None
+    assert sent
+
+
+# /clearAlarmLow
+
+def test_clearalarmlow_admin_clears(hbot, temp_db):
+    temp_db.set_threshold_low("SM1_T", 10.0)
+    _run(hbot, hbot._cmd_clearalarmlow, ADMIN, "SM1_T")
+    assert temp_db.get_threshold_low("SM1_T") is None
+
+
+def test_clearalarmlow_viewer_not_authorized(hbot, temp_db):
+    temp_db.set_threshold_low("SM1_T", 10.0)
+    _run(hbot, hbot._cmd_clearalarmlow, VIEWER, "SM1_T")
+    assert temp_db.get_threshold_low("SM1_T") == 10.0
+
+
+# /silent (per-user mutes)
+
+def test_silent_mutes_for_hours(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_silent, ADMIN, "SM1_T", "3h")
+    assert temp_db.is_muted(ADMIN, "SM1_T") is True
+    assert "3h" in sent[-1][1]
+
+
+def test_silent_hours_clamped_to_24(hbot, temp_db):
+    now = int(time.time())
+    _run(hbot, hbot._cmd_silent, ADMIN, "SM1_T", "99h")
+    rows = temp_db.get_active_mutes(ADMIN)
+    assert rows and rows[0]["until_ts"] - now <= 24 * 3600 + 5
+
+
+def test_silent_unmute(hbot, temp_db):
+    temp_db.mute_sensor(ADMIN, "SM1_T", int(time.time()) + 3600)
+    _run(hbot, hbot._cmd_silent, ADMIN, "SM1_T")   # no Nh -> unmute
+    assert temp_db.is_muted(ADMIN, "SM1_T") is False
+
+
+def test_silent_no_args_lists(hbot, temp_db):
+    temp_db.mute_sensor(ADMIN, "SM1_T", int(time.time()) + 3600)
+    sent = _run(hbot, hbot._cmd_silent, ADMIN)
+    assert "SM1_T" in sent[-1][1] and "left" in sent[-1][1].lower()
+
+
+def test_silent_is_per_user(hbot, temp_db):
+    _run(hbot, hbot._cmd_silent, ADMIN, "SM1_T", "3h")
+    assert temp_db.is_muted(VIEWER, "SM1_T") is False   # other user unaffected
+
+
+# /graph, /csv, /xlsx — export handlers (files)
+
+def _run_files(bot, handler, user_id, *args):
+    sent, photos, docs = [], [], []
+    bot._app = _fake_app(sent, photos, docs)
+    asyncio.run(handler(_cmd_update("/x", user_id), _ctx(*args)))
+    return sent, photos, docs
+
+
+def test_graph_sends_photo(hbot, temp_db):
+    for i in range(3):
+        temp_db.insert_reading("SM1_T", 20.0 + i, int(time.time()) - i * 60)
+    sent, photos, docs = _run_files(hbot, hbot._cmd_graph, ADMIN, "SM1_T")
+    assert len(photos) == 1
+
+
+def test_graph_hours_admin_clamped_to_72(hbot, temp_db):
+    # admin gets 72h ceiling; a bogus 999h must not raise, just clamp
+    temp_db.insert_reading("SM1_T", 20.0)
+    sent, photos, docs = _run_files(hbot, hbot._cmd_graph, ADMIN, "SM1_T", "999h")
+    assert len(photos) == 1
+
+
+def test_csv_sends_document(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 21.0)
+    sent, photos, docs = _run_files(hbot, hbot._cmd_csv, ADMIN, "SM1_T")
+    assert len(docs) == 1 and docs[0][1].endswith(".csv")
+
+
+def test_csv_no_data_reports(hbot, temp_db):
+    sent, photos, docs = _run_files(hbot, hbot._cmd_csv, ADMIN, "SM1_T")
+    assert docs == [] and "no data" in sent[-1][1].lower()
+
+
+def test_xlsx_sends_document(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 21.0)
+    sent, photos, docs = _run_files(hbot, hbot._cmd_xlsx, ADMIN, "SM1_T")
+    assert len(docs) == 1 and docs[0][1].endswith(".xlsx")
+
+
+def test_export_no_matching_sensor(hbot, temp_db):
+    sent, photos, docs = _run_files(hbot, hbot._cmd_csv, ADMIN, "NOPE")
+    assert docs == [] and "no matching" in sent[-1][1].lower()
+
+
+# /digest (per-user subscriptions)
+
+def test_digest_subscribe_on(hbot, temp_db):
+    _run(hbot, hbot._cmd_digest, ADMIN, "SM1_T", "on")
+    assert "SM1_T" in temp_db.get_digest_subscriptions(ADMIN)
+
+
+def test_digest_unsubscribe_off(hbot, temp_db):
+    temp_db.subscribe_digest(ADMIN, "SM1_T")
+    _run(hbot, hbot._cmd_digest, ADMIN, "SM1_T", "off")
+    assert "SM1_T" not in temp_db.get_digest_subscriptions(ADMIN)
+
+
+def test_digest_no_args_lists_visible_only(hbot, temp_db):
+    temp_db.subscribe_digest(ADMIN, "SM1_T")
+    sent = _run(hbot, hbot._cmd_digest, ADMIN)
+    assert "SM1_T" in sent[-1][1]
+
+
+def test_digest_bad_usage(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_digest, ADMIN, "SM1_T")   # missing on|off
+    assert "usage" in sent[-1][1].lower()
+
+
+# /list, /get
+
+def test_list_shows_device_reading(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 22.5)
+    sent = _run(hbot, hbot._cmd_list, ADMIN)
+    assert "SM1" in sent[-1][1]
+
+
+def test_list_empty_when_no_visible(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_list, OUTSIDER)   # sees nothing
+    assert "no sensors" in sent[-1][1].lower()
+
+
+def test_get_named_sensor(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 22.5)
+    sent = _run(hbot, hbot._cmd_get, ADMIN, "SM1_T")
+    assert "SM1_T" in sent[-1][1]
+
+
+def test_get_unknown_sensor(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_get, ADMIN, "NOPE")
+    assert "no matching" in sent[-1][1].lower()
+
+
+# /getAlarm
+
+def test_getalarm_named_shows_band(hbot, temp_db):
+    temp_db.set_threshold("SM1_T", 30.0)
+    temp_db.set_threshold_low("SM1_T", 10.0)
+    sent = _run(hbot, hbot._cmd_getalarm, ADMIN, "SM1_T")
+    assert "SM1_T" in sent[-1][1] and "10" in sent[-1][1] and "30" in sent[-1][1]
+
+
+def test_getalarm_unknown_sensor(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_getalarm, ADMIN, "NOPE")
+    assert "unknown" in sent[-1][1].lower()
+
+
+# /lastAlarms, /last5Alarm
+
+def test_lastalarms_reports_recent(hbot, temp_db):
+    temp_db.insert_alarm("SM1_T", "ALARM", "SM1_T: hot")
+    sent = _run(hbot, hbot._cmd_lastalarms, ADMIN, "SM1_T")
+    assert "hot" in sent[-1][1]
+
+
+def test_lastalarms_none(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_lastalarms, ADMIN, "SM1_T")
+    assert "no alarms" in sent[-1][1].lower()
+
+
+def test_lastalarms_hours_out_of_range(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_lastalarms, ADMIN, "SM1_T", "99h")
+    assert "between 1 and 24" in sent[-1][1]
+
+
+def test_last5alarm_named(hbot, temp_db):
+    temp_db.insert_alarm("SM1_T", "ALARM", "SM1_T: hot")
+    sent = _run(hbot, hbot._cmd_last5alarm, ADMIN, "SM1_T")
+    assert "hot" in sent[-1][1]
+
+
+def test_last5alarm_unknown_sensor(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_last5alarm, ADMIN, "NOPE")
+    assert "unknown" in sent[-1][1].lower()
+
+
+# /usersActivity, /dbStats — superadmin only
+
+def test_usersactivity_requires_superadmin(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_usersactivity, ADMIN)
+    assert "authorized" in sent[-1][1].lower()
+
+
+def test_usersactivity_lists(hbot, temp_db):
+    temp_db.record_activity(2, "bob", "Bob")
+    sent = _run(hbot, hbot._cmd_usersactivity, SUPER)
+    assert "Bob" in sent[-1][1]
+
+
+def test_dbstats_requires_superadmin(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_dbstats, ADMIN)
+    assert "authorized" in sent[-1][1].lower()
+
+
+def test_dbstats_renders(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_dbstats, SUPER)
+    assert "DB stats" in sent[-1][1]
+
+
+# /reloadConfig — superadmin only
+
+def test_reloadconfig_requires_superadmin(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_reloadconfig, ADMIN)
+    assert "authorized" in sent[-1][1].lower()
+
+
+def test_reloadconfig_not_configured(hbot, temp_db):
+    hbot._reload_fn = None
+    sent = _run(hbot, hbot._cmd_reloadconfig, SUPER)
+    assert "not configured" in sent[-1][1].lower()
+
+
+def test_reloadconfig_success(hbot, temp_db):
+    hbot._reload_fn = lambda: hbot._cfg   # reload returns a valid config
+    sent = _run(hbot, hbot._cmd_reloadconfig, SUPER)
+    assert "reloaded" in sent[-1][1].lower()
+
+
+# /start — DM registration + token gating
+
+def _start_update(user_id, args_chat_sent):
+    async def send_message(text, **kw):
+        args_chat_sent.append(text)
+    return SimpleNamespace(
+        effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=user_id, send_message=send_message),
+    )
+
+
+def test_start_no_args_registers(hbot, temp_db):
+    hbot._app = _fake_app([])
+    chat_sent = []
+    asyncio.run(hbot._cmd_start(_start_update(7, chat_sent), _ctx()))
+    assert temp_db.is_dm_registered(7) is True
+    assert "activated" in chat_sent[-1].lower()
+
+
+def test_start_valid_token_registers(hbot, temp_db):
+    token = hbot._make_token(7)
+    chat_sent = []
+    asyncio.run(hbot._cmd_start(_start_update(7, chat_sent), _ctx(token)))
+    assert temp_db.is_dm_registered(7) is True
+    assert "registration complete" in chat_sent[-1].lower()
+
+
+def test_start_wrong_token_does_not_register(hbot, temp_db):
+    token = hbot._make_token(7)
+    chat_sent = []
+    asyncio.run(hbot._cmd_start(_start_update(8, chat_sent), _ctx(token)))  # sender != 7
+    assert temp_db.is_dm_registered(8) is False
+    assert chat_sent == []
+
+
+# _on_arg_reply — ForceReply follow-up routing (browser path via _pending)
+
+def _reply_update(user_id, text):
+    return SimpleNamespace(
+        message=SimpleNamespace(text=text, reply_to_message=None),
+        effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=user_id),
+    )
+
+
+def test_on_arg_reply_routes_pending_to_csv(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 21.0)
+    sent, docs = [], []
+    hbot._app = _fake_app(sent, None, docs)
+    hbot._pending[ADMIN] = ("csv", time.time(), 111)
+    ctx = SimpleNamespace(args=[])
+    asyncio.run(hbot._on_arg_reply(_reply_update(ADMIN, "SM1_T"), ctx))
+    assert len(docs) == 1
+
+
+def test_on_arg_reply_ignores_expired_pending(hbot, temp_db):
+    sent, docs = [], []
+    hbot._app = _fake_app(sent, None, docs)
+    hbot._pending[ADMIN] = ("csv", time.time() - 999, 111)   # stale
+    ctx = SimpleNamespace(args=[])
+    asyncio.run(hbot._on_arg_reply(_reply_update(ADMIN, "SM1_T"), ctx))
+    assert docs == [] and sent == []
+
+
+# notify_* — DM gating (registration / mute / subscription)
+
+def test_notify_sensor_gated_by_registration_and_mute(hbot, temp_db):
+    sent = []
+    hbot._app = _fake_app(sent)
+    # ADMIN(1) viewer of SM1_T; register only ADMIN
+    temp_db.register_dm(ADMIN)
+    asyncio.run(hbot.notify_sensor("SM1_T", "hot"))
+    assert [c for c, _ in sent] == [ADMIN]
+
+    sent.clear()
+    temp_db.mute_sensor(ADMIN, "SM1_T", int(time.time()) + 3600)
+    asyncio.run(hbot.notify_sensor("SM1_T", "hot"))
+    assert sent == []   # muted -> suppressed
+
+
+def test_notify_device_requires_subscription(hbot, temp_db):
+    sent = []
+    hbot._app = _fake_app(sent)
+    temp_db.register_dm(ADMIN)
+    asyncio.run(hbot.notify_device("SM1", "offline"))
+    assert sent == []                       # registered but not subscribed
+
+    temp_db.subscribe_digest(ADMIN, "SM1_T")
+    asyncio.run(hbot.notify_device("SM1", "offline"))
+    assert [c for c, _ in sent] == [ADMIN]
+
+
+# /help — sections gated by role
+
+def test_help_viewer_has_no_admin_section(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_help, VIEWER)
+    body = sent[-1][1]
+    assert "Admin commands" not in body and "Superadmin commands" not in body
+
+
+def test_help_admin_sees_admin_section(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_help, ADMIN)
+    body = sent[-1][1]
+    assert "Admin commands" in body and "Superadmin commands" not in body
+
+
+def test_help_superadmin_sees_superadmin_section(hbot, temp_db):
+    # SUPER(9) is superadmin but not in any admin group, so only the
+    # superadmin section is appended (admin section is gated on is_any_admin).
+    sent = _run(hbot, hbot._cmd_help, SUPER)
+    assert "Superadmin commands" in sent[-1][1]
+
+
+# /exprSyntax, /listSignal — thin wrappers, smoke
+
+def test_exprsyntax_replies(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_exprsyntax, ADMIN)
+    assert sent and sent[-1][1]
+
+
+def test_listsignal_replies(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_listsignal, ADMIN)
+    assert sent and sent[-1][1]

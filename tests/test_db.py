@@ -131,6 +131,18 @@ def test_silence_is_per_key(temp_db):
     assert temp_db.is_silenced("SM2") is False   # unrelated key unaffected
 
 
+def test_list_silenced_reports_keys_and_ts_oldest_first(temp_db, monkeypatch):
+    import bot.db as dbm
+    assert temp_db.list_silenced() == []
+    monkeypatch.setattr(dbm.time, "time", lambda: 100)
+    temp_db.silence_sensor("SM2")
+    monkeypatch.setattr(dbm.time, "time", lambda: 200)
+    temp_db.silence_sensor("SM1")
+    assert temp_db.list_silenced() == [("SM2", 100), ("SM1", 200)]
+    temp_db.unsilence_sensor("SM2")
+    assert temp_db.list_silenced() == [("SM1", 200)]
+
+
 # --- alarm history (behind /lastAlarm, /last5Alarm, /lastAlarms) ---
 
 def test_get_last_alarms_order_and_sensor_filter(temp_db, monkeypatch):

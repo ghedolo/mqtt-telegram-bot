@@ -241,6 +241,16 @@ def is_silenced(sensor: str) -> bool:
         return row is not None
 
 
+def list_silenced() -> list[tuple[str, int]]:
+    """All currently silenced (acked-offline) keys with their silenced_at ts,
+    oldest first."""
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT sensor, silenced_at FROM silenced ORDER BY silenced_at"
+        ).fetchall()
+        return [(r["sensor"], r["silenced_at"]) for r in rows]
+
+
 def mute_sensor(chat_id: int, sensor: str, until_ts: int):
     with _conn() as con:
         con.execute(

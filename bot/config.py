@@ -154,6 +154,16 @@ class AppConfig:
                 return n
         return name
 
+    def resolve_device(self, key: str) -> str:
+        """Map a user-supplied device key to its canonical key (case-insensitive)."""
+        if key in self.devices:
+            return key
+        low = key.lower()
+        for k in self.devices:
+            if k.lower() == low:
+                return k
+        return key
+
     def is_any_admin_of_device(self, user_id: int, device_key: str) -> bool:
         dev = self.devices.get(device_key)
         if dev is None:

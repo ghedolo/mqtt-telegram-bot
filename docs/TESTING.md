@@ -37,6 +37,7 @@ run tests.
 - `test_forget_device_archives_and_clears` — readings archived, threshold cleared.
 - `test_digest_subscriptions_roundtrip` — subscribe (idempotent) / unsubscribe.
 - `test_silence_roundtrip` / `test_silence_is_per_key` — the offline-ack (silence) flag set/clear, keyed independently (behind `/ackOff` and auto-clear on reconnect).
+- `test_list_silenced_reports_keys_and_ts_oldest_first` — lists every silenced key with its `silenced_at`, oldest first, dropping cleared keys (backs `/ackOff` with no argument).
 - `test_get_last_alarms_order_and_sensor_filter` — alarm history newest-first, limited, optionally filtered to one sensor.
 - `test_get_alarms_since_filters_by_sensor_and_time` — alarms since a timestamp, filtered by sensor list (empty list → no rows).
 - `test_record_activity_upserts_and_orders` — user-activity upsert (one row per user) ordered by last-seen (behind `/usersActivity`).
@@ -60,6 +61,8 @@ run tests.
 - `test_mqtt_tls_inferred_from_port_8883` / `test_mqtt_tls_off_on_plain_port` — TLS inferred from port.
 - `test_poll_interval_clamped` — clamped to 1–10.
 - `test_group_ids_coerced_to_int` — group/superadmin ids coerced to int.
+- `test_resolve_device_is_case_insensitive_and_canonical` — a device key resolves to its canonical form regardless of case; unknown keys pass through unchanged (names are case-preserving but case-insensitive).
+- `test_resolve_sensor_is_case_insensitive` — same for sensor names.
 
 ### `tests/test_alarm.py` — alarm logic (`bot/alarm_manager.py`)
 - `test_threshold_raise_gate_repeat_recover` — 🔴 on first cross, no repeat within `threshold_repeat`, repeats after it, single 🟢 on recovery.
@@ -67,6 +70,8 @@ run tests.
 - `test_threshold_none_set_no_alarm` — no threshold configured → silent.
 - `test_offline_then_recovery` — OFFLINE after `3×interval` of silence, ONLINE when data returns.
 - `test_offline_suppressed_during_startup_grace` — no offline alarm during the initial grace window.
+- `test_ackoff_suppresses_repeats_then_auto_clears_on_reconnect` — after `/ackOff`, offline repeats are suppressed while silenced, then the silence flag auto-clears when the device reconnects. Regression: the old `is_silenced` early-return short-circuited the reconnect branch, so silence never cleared.
+- `test_ackoff_while_online_does_not_mute_future_offline` — acking a device with no live outage drops the stale silence flag so it can't swallow the next genuine offline alarm.
 - `test_blackout_not_raised_until_sustained` — all-dark but below `for_seconds` → no alarm.
 - `test_blackout_lifecycle_raise_hold_end` — raise on sustained all-dark; **hold** (no false recovery) when one meter goes stale mid-outage; END only on a confirmed LIT reading; recovery resets the sustain timer.
 - `test_blackout_for_seconds_zero_raises_immediately` — `for_seconds: 0` raises on the first dark reading.
@@ -100,8 +105,13 @@ notifiers are stubbed) and drives one full flow.
 - `test_prepare_series_no_gap_when_within_threshold` — small gap → no break.
 - `test_build_renders_png` / `test_build_handles_no_data` / `test_build_multi_sensor_with_glitch` — `build()` returns a valid PNG for normal, empty, and glitchy multi-sensor inputs.
 
-### `tests/test_telegram.py` — bot helpers (`bot/telegram_bot.py`)
-Pure helpers only; the PTB Application builds offline and never starts polling.
+### `tests/test_telegram.py` — bot helpers & command handlers (`bot/telegram_bot.py`)
+The PTB Application builds offline and never starts polling. Two layers:
+pure helpers, and command handlers driven end-to-end with a fake `bot` app
+(`_fake_app` records sent messages/photos/documents) so auth checks, argument
+parsing, name resolution, and DB side effects are all exercised.
+
+**Pure helpers**
 - `test_fmt_ago` / `test_fmt_bytes` — human-readable duration/size formatting.
 - `test_threshold_order_ok_when_high_above_low` / `..._ignores_missing_thresholds` / `..._rejects_inverted_band` / `..._rejects_equal_band` — the alarm-band ordering guard: a high threshold must stay strictly above the low one, missing sides never conflict, and inverted or equal bands are rejected (blocks `/setAlarm`/`/setAlarmLow` from creating an incoherent band).
 - `test_resolve_sensors_wildcard_respects_visibility` — `*` resolves only to sensors the user may view.
@@ -113,6 +123,32 @@ Pure helpers only; the PTB Application builds offline and never starts polling.
 - `test_token_roundtrip` / `..._wrong_sender` / `..._tampered_signature` / `..._malformed` / `..._expired` — registration-token HMAC accepts a valid token and rejects wrong sender, tampering, garbage, and >24h-old tokens.
 - `test_build_digest_only_subscribed_and_visible` — digest lists only sensors both subscribed and visible.
 - `test_build_digest_empty_when_no_subscriptions` — no subscriptions → empty string.
+- `test_listsignal_*` — `/listSignal` rendering: admin sees live signal value, viewer hides it, subscription state flips the hint, outsider sees nothing.
+- `test_render_sysinfo` / `..._no_mqtt` — `/sysinfo` summary text, with and without a last-MQTT timestamp.
+- `test_unknown_command_*` — unknown-command reply only to a registered/addressed user; ignored for other bots and unregistered users.
+
+**Command handlers (end-to-end)**
+
+The `hbot` fixture builds a bot whose config has an admin group, a viewer-only
+group, and a superadmin; helpers `_run`/`_run_files` drive a handler as a given
+user and return what was sent. Constants `ADMIN` / `VIEWER` / `OUTSIDER` / `SUPER`.
+- `test_setalarm_*` / `test_setalarmlow_*` — admin sets high/low threshold; case-insensitive sensor; viewer rejected (not authorized); outsider gets "unknown sensor"; non-numeric rejected; inverted band rejected.
+- `test_clearalarm_*` / `test_clearalarmlow_*` — admin clears; viewer left untouched (not authorized).
+- `test_ackoff_*` — admin silences a device; case-insensitive device key; viewer not authorized; unknown device; no-arg lists active acks (or "no active"); backs `/ackOff`.
+- `test_forgetsensor_*` — superadmin-only; case-insensitive device key.
+- `test_silent_*` — `/silent`: mute for N hours, clamp to 24h, unmute, no-arg list, per-user isolation.
+- `test_digest_*` — `/digest` subscribe on / unsubscribe off, no-arg list (visible only), bad usage.
+- `test_list_*` / `test_get_*` — `/list` shows a device reading and is empty for an outsider; `/get` renders a named sensor and reports "no matching" for an unknown one.
+- `test_getalarm_*` — `/getAlarm` renders the low/high band; unknown sensor rejected.
+- `test_lastalarms_*` / `test_last5alarm_*` — recent alarms for a sensor, "no alarms" when none, hours out of range rejected; last-5 named + unknown sensor.
+- `test_usersactivity_*` / `test_dbstats_*` — superadmin-gated; render activity list / DB stats.
+- `test_reloadconfig_*` — superadmin-gated; "not configured" when no reload hook; success path swaps config.
+- `test_graph_*` / `test_csv_*` / `test_xlsx_*` — export handlers send a photo/document, clamp admin hours to 72h, and report "no data" / "no matching" appropriately.
+- `test_start_*` — `/start` registers the DM with no args, registers on a valid token, and refuses a token minted for a different sender.
+- `test_on_arg_reply_*` — the ForceReply follow-up routes a pending command's typed argument to its handler, and ignores an expired pending entry.
+- `test_notify_sensor_gated_by_registration_and_mute` / `test_notify_device_requires_subscription` — DM fan-out honours registration, per-user mutes, and digest subscriptions.
+- `test_help_*` — `/help` appends the admin section only for admins and the superadmin section only for superadmins.
+- `test_exprsyntax_replies` / `test_listsignal_replies` — thin wrappers reply with non-empty text.
 
 ### `tests/test_schedule.py` — wall-clock scheduling (`bot/schedule.py`)
 - `test_next_occurrence_later_today` — target still ahead today.
