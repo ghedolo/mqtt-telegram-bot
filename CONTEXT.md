@@ -47,17 +47,24 @@ _Avoid_: silence (reserved for the offline-ack state).
 
 ## Bot Commands
 
+Exact gate per command, plus notification fan-out and the add-a-user
+checklist: [docs/permissions.md](docs/permissions.md).
+
 ### User commands
 | Command | Description |
 |---|---|
-| `/list` | List all visible Devices, one line per Device with all Fields |
-| `/get [expr]` | Get Fields matching expr (Sensor name, glob, comma-separated); no arg = digest subscriptions |
-| `/getAlarm [name]` | Show alarm threshold(s) for a Field |
-| `/graph <name>` | Chart last 8h for a Field (Sensor name) |
+| `/start [token]` | Complete DM Registration; the HMAC Token must have been minted for the sender |
+| `/list` | List all visible Devices, one line per Device with all Fields, then visible Blackout Groups |
+| `/get [expr] [-s\|-f]` | Get Fields matching expr (Sensor name, glob, comma-separated); no arg = digest subscriptions; `-f` sorts by quantity (default), `-s` by name |
+| `/exprSyntax` | Help for the expr syntax accepted by `/get`, `/graph`, `/csv`, `/xlsx`, `/lastAlarms`, `/digest`, `/silent` |
+| `/getAlarm [name]` | Show alarm threshold(s) for a Field; no arg = all visible Fields |
+| `/graph <expr> [Nh]` | Chart the last N hours for matching Fields (default 8h, max 24h; 72h for Admins) |
+| `/csv <expr> [Nh]` | Download matching Readings as CSV (default 8h, max 24h; 72h for Admins) |
+| `/xlsx <expr> [Nh]` | Download matching Readings as Excel, one sheet per Sensor (default 8h, max 24h; 72h for Admins) |
 | `/last` | Timestamp of the last message received from MQTT, any Topic (no content) |
-| `/lastAlarm [name]` | Last alarm event (all or specific Sensor/Device) |
+| `/lastAlarms [expr] [Nh]` | Alarm events in the last N hours (default 8h); no expr = digest subscriptions |
 | `/last5Alarm <name>` | Last 5 alarm events for a Sensor or Device |
-| `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions |
+| `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions (Blackout Group ids are valid targets) |
 | `/listSignal` | List visible Blackout Groups (subscribable), the Signals feeding each (live value for Admins), and your subscription state |
 | `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute; expr + `Nh` (1–24, clamped) = Mute for N hours |
 | `/sysinfo` | Bot version, uptime, memory (RSS/limit), DB size, last-MQTT freshness, device/sensor counts — a non-sensitive health summary for any User |
@@ -65,18 +72,32 @@ _Avoid_: silence (reserved for the offline-ack state).
 | `/help` | Show command list (admin-aware) |
 
 ### Admin-only commands
+Gated on Admin of the *affected* Field (`/ackOff`: of any Field of the Device).
+A non-Viewer is told the Sensor is unknown, so a Field never leaks by way of an
+authorisation error.
+
 | Command | Description |
 |---|---|
 | `/setAlarm <name> <value>` | Set high alarm threshold for a Field (Sensor name); alarm if value > threshold |
 | `/setAlarmLow <name> <value>` | Set low alarm threshold for a Field (Sensor name); alarm if value < threshold |
-| `/ackOff <device>` | Acknowledge offline alarm for a Device (suppresses repeats until Device reconnects) |
-| `/forgetSensor <device>` | Archive all readings for a Device to history; clear alarms, threshold, offline-ack state |
+| `/clearAlarm <name>` | Clear the high threshold for a Field |
+| `/clearAlarmLow <name>` | Clear the low threshold for a Field |
+| `/ackOff [device]` | With a Device key: acknowledge its offline Alarm (suppresses repeats until it reconnects). With no argument: list every active AckOff — reachable by any DM-registered User, not only Admins |
 
 ### Superadmin-only commands
 | Command | Description |
 |---|---|
+| `/forgetSensor <device>` | Archive all readings for a Device to history; clear alarms, threshold, offline-ack state |
 | `/reloadConfig` | Reload Sensor Config and credentials config without restart |
 | `/usersActivity` | List last interaction time per User (User Activity) |
+| `/dbStats` | DB size, per-table row counts, and the time span covered |
+
+**Autocomplete Menu** — the command list registered with Telegram via
+`set_my_commands` at startup (skipped, and any previous list cleared, when
+`enable_menu` is false). It advertises **User commands only**: Admin and
+Superadmin commands stay out of autocomplete but their handlers still run when
+typed, so the menu is a discoverability surface, never an access control. The
+split is pinned by tests (`MENU_EXEMPT` in `tests/test_telegram.py`).
 
 **Daily Digest** — a scheduled silent message sent once per day at a configurable time (`digest_time` in credentials config, default `15:00`). Per-user: only Fields the User has subscribed to via `/digest` and can see. Format: `🟢 live since 3d 4h` on first line, then one line per Device as `info: F1=v1 F2=v2 ...` with trailing ` *` if a threshold Alarm occurred on any subscribed Field in the last 24h. Offline Fields show `--` as value.
 

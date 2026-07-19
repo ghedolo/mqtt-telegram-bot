@@ -297,6 +297,8 @@ Users with no group assignment see no sensors.
 
 **DM registration** is required before the bot can send private replies. When a user sends a command from the Telegram Group and has not yet activated DM, the bot sends a registration prompt with a signed button. Users can also send `/start` directly to the bot in DM.
 
+The full permission matrix — how a group name becomes a role on a field, the exact gate on every command, notification fan-out, and the checklist for adding a user — is in [docs/permissions.md](docs/permissions.md).
+
 For a non-technical, step-by-step onboarding walkthrough to hand to end users: [docs/USER-GUIDE.md](docs/USER-GUIDE.md) (English) · [docs/GUIDA-UTENTE.md](docs/GUIDA-UTENTE.md) (Italiano).
 
 ## Data management
