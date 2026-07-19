@@ -219,7 +219,10 @@ typed in: `/start`, `/myid`, `/help`.
 check passes. "Visible Sensors" means `visible_sensors(user)` — silently empty
 for a user in no Access Group.
 
-### Open to any DM-registered user
+### Not gated on Admin
+
+The `none` rows are the genuinely open ones; the rest need Viewer and answer
+within the caller's visibility, which for a user in no Access Group is empty.
 
 | Command | Role needed | Visibility scope |
 |---|---|---|

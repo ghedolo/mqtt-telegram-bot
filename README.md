@@ -293,15 +293,19 @@ Sort (only `/get`): default groups by field (all `_T`, then `_H`, …). `-s` sor
 
 ## Access control
 
-Three roles, all defined in `credentials.yaml`:
+Access groups are listed in `credentials.yaml`; which group gets which role on
+which sensor is set in `sensors.d/`. Superadmin is the exception — a flat list
+of ids in `credentials.yaml`, and nothing else.
 
 | Role | Definition | Permissions |
 |---|---|---|
 | **Viewer** | member of a group listed in a field's `viewers` | read-only commands on that sensor |
-| **Admin** | member of a group listed in a field's `admins` | `/setAlarm`, `/ackOff` on that field/device; implies viewer |
-| **Superadmin** | `superadmin:` flat list of `chat_id`s | `/forgetSensor`, `/reloadConfig` (global) |
+| **Admin** | member of a group listed in a field's `admins` | thresholds (`/setAlarm`, `/setAlarmLow`, `/clearAlarm`, `/clearAlarmLow`) and `/ackOff` on that field/device; implies viewer |
+| **Superadmin** | `superadmin:` flat list of `chat_id`s | `/forgetSensor`, `/reloadConfig`, `/usersActivity`, `/dbStats` — caretaker commands only |
 
-Users with no group assignment see no sensors.
+Users with no group assignment see no sensors. **Superadmin is not a higher
+rank**: it grants no read access at all, so a superadmin in no group also sees
+nothing — the two are separate axes.
 
 **DM registration** is required before the bot can send private replies. When a user sends a command from the Telegram Group and has not yet activated DM, the bot sends a registration prompt with a signed button. Users can also send `/start` directly to the bot in DM.
 
@@ -376,18 +380,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-07-19
-- **Sessions:** 13 — 5937 messages (2134 user + 3803 assistant)
-- **Active conversation time:** ~1280 min (~21h 20m)
+- **Sessions:** 13 — 6084 messages (2199 user + 3885 assistant)
+- **Active conversation time:** ~1326 min (~22h 6m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 460,220 |
-| Output | 3,070,260 |
-| Cache write | 10,754,337 |
-| Cache read | 602,807,598 |
-| **Total** | **~617 M** |
+| Input (non-cache) | 460,377 |
+| Output | 3,112,453 |
+| Cache write | 10,826,095 |
+| Cache read | 616,291,634 |
+| **Total** | **~630 M** |
 
-The assistant averaged **807 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **801 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->
