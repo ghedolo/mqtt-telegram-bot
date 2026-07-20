@@ -291,8 +291,11 @@ def load(
         dev_interval = int(dv.get("interval", default_interval))
         dev_info = dv.get("info", dev_key)
         dev_note = dv.get("note", "")
-        dev_viewers = list(dv.get("viewers", []))
-        dev_admins = list(dv.get("admins", []))
+        # `or []` and not a `.get` default: a bare `viewers:` is None in YAML,
+        # not [], and the default only covers an absent key. Same spelling as
+        # the field-level read below, so both levels behave alike.
+        dev_viewers = list(dv.get("viewers") or [])
+        dev_admins = list(dv.get("admins") or [])
 
         if dev_topic:
             if dev_topic in seen_topics:

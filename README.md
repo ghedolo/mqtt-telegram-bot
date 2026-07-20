@@ -99,7 +99,10 @@ defaults:
 Devices/fields without `viewers` or `admins` are visible to nobody (fail-closed).
 A field declaring only one of the pair still loads, but warns: the override
 replaces both, so `admins:` on its own leaves the field with no viewers. Write
-the other key explicitly, `[]` included. Config warnings are logged, listed at
+the other key explicitly, `[]` included. An empty list may also be written as a
+bare `viewers:` with nothing after it — same meaning at both device and field
+level — but `[]` reads as a deliberate "no groups" rather than an unfinished
+line. Config warnings are logged, listed at
 the bottom of `/sysinfo`, and echoed in the `/reloadConfig` reply — the bot
 never refuses to start over them, since unwatched sensors are the worse
 failure.

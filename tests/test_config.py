@@ -150,6 +150,17 @@ def test_empty_access_lists_parse_as_empty_not_missing(tmp_path):
     assert cfg.viewers_of("SM1_H") == set()      # visible to nobody, fail-closed
 
 
+def test_device_empty_access_lists_parse_as_empty_not_missing(tmp_path):
+    # Same rule one level up: a bare `viewers:` on the device must read as "no
+    # groups" and be inherited as such, not blow up on list(None).
+    cfg = _write_env(tmp_path, defaults=DEFAULTS.replace("    viewers: [ops]\n",
+                                                         "    viewers:\n    admins:\n"))
+    t = cfg.sensors["SM1_T"]                     # inherits both from the device
+    assert t.viewers == [] and t.admins == []
+    assert cfg.viewers_of("SM1_T") == set()      # visible to nobody, fail-closed
+    assert cfg.warnings == []                    # device level raises no warning
+
+
 def test_access_helpers(tmp_path):
     cfg = _write_env(tmp_path)
     assert cfg.is_viewer(1, "SM1_T") is True

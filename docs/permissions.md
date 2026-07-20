@@ -74,6 +74,12 @@ Resolution rules (`bot/config.py:87-115`, `bot/config.py:312-317`):
   So in the sketch `SM1_H` gives up `watchers` *and* `ops`: `viewers: []` says
   that out loud instead of leaving it to be inferred. To keep the device
   defaults *and* add someone, restate every group you still want.
+- An **empty list** may be spelled `viewers: []` or as a bare `viewers:` with
+  nothing after it — YAML reads the latter as `None`, and both levels normalise
+  it to `[]`. What separates "empty" from "absent" is the *key*, not the value:
+  the all-or-nothing warning tests key presence, so a bare `viewers:` counts as
+  stated and silences it. Prefer `[]` anyway — it reads as a decision rather
+  than as a line someone forgot to finish.
 - `viewers_of(sensor) = members(viewers) ∪ members(admins)` — **Admin implies
   Viewer**. You never list a group in both.
 - A Field with no `viewers` and no `admins` anywhere in its chain is visible to

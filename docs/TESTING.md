@@ -51,6 +51,7 @@ run tests.
 - `test_field_stating_both_replaces_device_lists` — with both keys stated, the device lists are dropped entirely: the device's admin group loses the field too, a sibling field is untouched.
 - `test_field_with_neither_key_inherits_both` — no keys → both inherited, the common case.
 - `test_empty_access_lists_parse_as_empty_not_missing` — `viewers:` (YAML `None`) and `viewers: []` both mean "no groups", and neither counts as an absent key.
+- `test_device_empty_access_lists_parse_as_empty_not_missing` — the same at device level, where a bare `viewers:` used to hit `list(None)` and abort the load instead of being inherited as empty.
 - `test_access_helpers` — `is_viewer` / `is_superadmin`.
 - `test_duplicate_device_key_across_files` — duplicate device key is a hard error.
 - `test_case_insensitive_name_collision` — sensor names differing only by case rejected.
