@@ -108,6 +108,8 @@ Superadmin commands stay out of autocomplete but their handlers still run when
 typed, so the menu is a discoverability surface, never an access control. The
 split is pinned by tests (`MENU_EXEMPT` in `tests/test_telegram.py`).
 
+**Command Trace** — an optional access-log of command dispatch, enabled with `traceCmd` in credentials config (off by default). Each handled command books an in/out pair — sender id/username, the command text, and the outcome (`ok` + elapsed, or `FAILED` + exception) — to a dedicated `bot.cmdtrace` logger written to its own file (`traceCmdFile`, default `cmdtrace.log`) with `propagate=False`, so it never touches the main log. Deliberately orthogonal to `debug` (which is a linear severity level): command flow is a category, wanted at any verbosity. It records the command and its fate, not the reply body — replies leave through ~85 direct `bot.send_message` calls and ExtBot is slotted, so there is no single seam to tap the sent text. Wired in the `_traced` wrapper (`bot/telegram_bot.py`), which returns the handler untouched when the trace is off.
+
 **Daily Digest** — a scheduled silent message sent once per day at a configurable time (`digest_time` in credentials config, default `15:00`). Per-user: only Fields the User has subscribed to via `/digest` and can see. Format: `🟢 live since 3d 4h` on first line, then one line per Device as `info: F1=v1 F2=v2 ...` with trailing ` *` if a threshold Alarm occurred on any subscribed Field in the last 24h. Offline Fields show `--` as value.
 
 ## Notification behaviour

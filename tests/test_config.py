@@ -81,6 +81,18 @@ def test_defaults_and_new_keys(tmp_path):
     assert cfg.archive_time == "12:00"   # default when absent
     assert cfg.enable_menu is True       # default when absent
     assert cfg.digest_time == "15:00"
+    assert cfg.trace_cmd is False        # command trace off unless asked
+    assert cfg.trace_cmd_file == "cmdtrace.log"
+
+
+def test_trace_cmd_opts_parse(tmp_path):
+    creds = CREDS.replace(
+        '  group_id: -100',
+        '  group_id: -100\n  traceCmd: 1\n  traceCmdFile: "/var/log/lorte/cmd.log"',
+    )
+    cfg = _write_env(tmp_path, creds=creds)
+    assert cfg.trace_cmd is True
+    assert cfg.trace_cmd_file == "/var/log/lorte/cmd.log"
 
 
 def test_field_viewers_override_replaces_device(tmp_path):

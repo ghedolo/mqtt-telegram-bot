@@ -84,6 +84,12 @@ class AppConfig:
     digest_time: str
     archive_time: str
     enable_menu: bool
+    # Command tracing: an access-log of who ran which command and how it ended,
+    # written to its own file (`trace_cmd_file`) so it never muddies the main
+    # log. Orthogonal to `debug` on purpose — command flow is a category, not a
+    # severity, so you want it on at any verbosity. Off by default.
+    trace_cmd: bool = False
+    trace_cmd_file: str = "cmdtrace.log"
     blackouts: dict[str, "BlackoutGroup"] = field(default_factory=dict)
     signals: dict[str, SignalConfig] = field(default_factory=dict)  # signal_name → SignalConfig
     # Non-fatal config complaints raised at load: surfaced in /sysinfo so they
@@ -485,6 +491,8 @@ def load(
         digest_time=str(tg.get("digest_time", "15:00")),
         archive_time=str(defaults.get("archive_time", "12:00")),
         enable_menu=bool(int(tg.get("enableMenu", 1))),
+        trace_cmd=bool(int(tg.get("traceCmd", 0))),
+        trace_cmd_file=str(tg.get("traceCmdFile", "cmdtrace.log")),
         blackouts=blackouts,
         signals=signals,
         warnings=warnings,

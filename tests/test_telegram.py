@@ -4,6 +4,7 @@ and the small formatting helpers. No network: the PTB Application builds
 offline and we never start polling.
 """
 import asyncio
+import logging
 import time
 from types import SimpleNamespace
 
@@ -1036,3 +1037,54 @@ def test_edited_plain_text_is_not_taken_as_an_argument(bot):
     assert _fires(bot, fresh, "message")
     edited = _real_update(bot, "SM1_T", edited=True, command=False)
     assert _fires(bot, edited, "message") == []
+
+
+# --- command trace (traceCmd) ---
+
+def _trace_update(text, user_id, username="mario"):
+    return SimpleNamespace(
+        effective_message=SimpleNamespace(text=text),
+        effective_user=SimpleNamespace(id=user_id, username=username),
+        effective_chat=SimpleNamespace(id=user_id),
+    )
+
+
+def test_trace_off_returns_handler_untouched(bot):
+    # trace_cmd defaults off in the fixture -> zero wrapping, zero overhead.
+    async def cb(u, c):
+        pass
+    assert bot._traced(cb) is cb
+
+
+def test_trace_logs_in_and_out(bot, caplog):
+    bot._cfg.trace_cmd = True
+    ran = []
+
+    async def cb(u, c):
+        ran.append(1)
+
+    wrapped = bot._traced(cb)
+    assert wrapped is not cb                       # now actually wrapped
+    with caplog.at_level(logging.INFO, logger="bot.cmdtrace"):
+        asyncio.run(wrapped(_trace_update("/get T", 7), None))
+
+    assert ran == [1]                              # the real handler still ran
+    msgs = [r.message for r in caplog.records if r.name == "bot.cmdtrace"]
+    assert any(m.startswith("→") and "/get T" in m and "@mario" in m for m in msgs)
+    assert any(m.startswith("←") and "ok" in m for m in msgs)
+
+
+def test_trace_logs_failure_and_reraises(bot, caplog):
+    bot._cfg.trace_cmd = True
+
+    async def cb(u, c):
+        raise KeyError("boom")
+
+    wrapped = bot._traced(cb)
+    with caplog.at_level(logging.INFO, logger="bot.cmdtrace"):
+        with pytest.raises(KeyError):              # the exception must propagate
+            asyncio.run(wrapped(_trace_update("/get T", 7), None))
+
+    msgs = [r.message for r in caplog.records if r.name == "bot.cmdtrace"]
+    assert any("FAILED" in m and "KeyError" in m for m in msgs)
+    assert not any("ok" in m for m in msgs)        # a failure is not an ok

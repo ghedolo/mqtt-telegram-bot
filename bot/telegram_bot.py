@@ -33,6 +33,11 @@ from . import db, graph
 
 log = logging.getLogger(__name__)
 
+# Dedicated command-trace logger. main.py attaches a FileHandler and turns off
+# propagation when `trace_cmd` is set, so its records land only in the trace
+# file. Left with no handler otherwise, its emits are near-free no-ops.
+cmdtrace = logging.getLogger("bot.cmdtrace")
+
 _SILENT = {"disable_notification": True}
 
 
@@ -132,7 +137,7 @@ class TelegramBot:
         new_msg = filters.UpdateType.MESSAGE
 
         def command(name: str, cb) -> None:
-            self._app.add_handler(CommandHandler(name, cb, filters=new_msg))
+            self._app.add_handler(CommandHandler(name, self._traced(cb), filters=new_msg))
 
         command("start", self._cmd_start)
         command("digest", self._cmd_digest)
@@ -162,12 +167,12 @@ class TelegramBot:
         command("dbStats", self._cmd_dbstats)
         # catch-all for any command with no handler above (same group, so a
         # matched CommandHandler stops the group before this runs) -> "unknown".
-        self._app.add_handler(MessageHandler(new_msg & filters.COMMAND, self._cmd_unknown))
+        self._app.add_handler(MessageHandler(new_msg & filters.COMMAND, self._traced(self._cmd_unknown)))
         # captures the argument for menu commands that Telegram sends
         # immediately. Catches both replies to the ForceReply prompt (phone)
         # and a plain follow-up message (browser ignores ForceReply focus).
         self._app.add_handler(
-            MessageHandler(new_msg & filters.TEXT & ~filters.COMMAND, self._on_arg_reply)
+            MessageHandler(new_msg & filters.TEXT & ~filters.COMMAND, self._traced(self._on_arg_reply))
         )
         # runs first on every update: record last interaction per user
         self._app.add_handler(TypeHandler(Update, self._record_activity), group=-1)
@@ -177,6 +182,41 @@ class TelegramBot:
         # user_id -> (command key, prompt timestamp); fallback when the client
         # does not reply to the prompt (e.g. Telegram Web). 30s window.
         self._pending: dict[int, tuple[str, float]] = {}
+
+    # ── command trace ────────────────────────────────────────────────────────────
+
+    def _traced(self, cb):
+        """Wrap a handler so each invocation books an in/out pair to the command
+        trace: who sent what, and how the handler ended. When `trace_cmd` is off
+        the handler is returned untouched — no wrapper, no overhead.
+
+        What lands is the inbound command text and the *outcome* (ok + elapsed,
+        or the exception), not the reply body: replies go out through 85 direct
+        `bot.send_message` calls and ExtBot is slotted, so there is no single
+        seam to tap the sent text without either a transport-level hook or a
+        reply-funnel refactor. The command and its fate are what a trace is for."""
+        if not self._cfg.trace_cmd:
+            return cb
+
+        async def wrapped(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+            u = update.effective_user
+            msg = update.effective_message
+            who = "?"
+            if u is not None:
+                who = f"{u.id}" + (f" @{u.username}" if u.username else "")
+            text = (msg.text if msg and msg.text else "").replace("\n", " ")
+            t0 = time.monotonic()
+            cmdtrace.info("→ %s | %s", who, text)
+            try:
+                await cb(update, ctx)
+            except Exception as e:
+                cmdtrace.info("← %s | %s | FAILED %r (%dms)",
+                              who, text, e, (time.monotonic() - t0) * 1000)
+                raise
+            cmdtrace.info("← %s | %s | ok (%dms)",
+                          who, text, (time.monotonic() - t0) * 1000)
+
+        return wrapped
 
     # ── token helpers ──────────────────────────────────────────────────────────
 

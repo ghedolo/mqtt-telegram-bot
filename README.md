@@ -185,6 +185,12 @@ Access Groups are defined at the top level of `credentials.yaml` and referenced 
 
 `superadmin` is a flat list of Telegram `chat_id`s with access to `/forgetSensor` and `/reloadConfig`. Independent of sensor-level groups.
 
+#### Logging and the command trace
+
+`debug` sets the main log's severity (`0` critical only → `3` verbose); it's a single linear level, mapped straight onto Python's logging.
+
+`traceCmd` is separate and orthogonal — it's a *category*, not a severity, so it stays on at any `debug` level. Set `traceCmd: 1` to record an access-log line for every command: who ran it, the exact command text, and how it ended (`ok` with elapsed time, or `FAILED` with the exception). It goes to its own file (`traceCmdFile`, default `cmdtrace.log`, relative to the working dir) and **not** to the main log, so the two never mix. What it captures is the command and its outcome, not the reply text the bot sent back — replies leave through many separate calls with no single seam to tap.
+
 ### Backing up the config
 
 `sensors.d/` and `credentials.yaml` are gitignored and live only on the host — losing the host loses them. [docs/backup-config.md](docs/backup-config.md) sets up a **separate, private, git-crypt-encrypted repo** for them, operated only from production (the dev machine never holds the secrets): `credentials.yaml` is encrypted at rest, `sensors.d/` stays plaintext.
@@ -222,7 +228,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | Add / remove a **blackout group** | **Reload** | New group active at once. Removing one leaves its old alarm history and `/digest` subscriptions in the DB (harmless, just ignored). |
 | Add / remove a **current field** in a group (`fields:`) | **Reload** *(existing sensor)* / **Restart** *(brand-new sensor)* | All listed fields must be near-zero *at the same time* to trigger, so adding one tightens the condition and removing one loosens it. A field that is a brand-new sensor needs a restart first (it has no readings until MQTT subscribes). |
 | Rename a **blackout group id** (`R2` → `R2b`) | **Reload** *(+ re-subscribe)* | The new id works after reload, but the id is the key for `/digest` subscriptions and past alarm rows: users subscribed to the old id are silently dropped and **must re-subscribe** (`/digest R2b on`). To preserve them, migrate the old id to the new one in the `digest_subscriptions` (and `alarms`) tables. |
-| MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug`, `enableMenu` | **Restart** | Read only at startup. |
+| MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug`, `enableMenu`, `traceCmd`, `traceCmdFile` | **Restart** | Read only at startup. |
 | Renaming a **device key** (`SM_UTA1` → `SM1_UTA1`) | **Restart + DB migration** | Changes every derived sensor name. Use `rename_device.py` (config + DB); see [RENAME_SENSOR.md](RENAME_SENSOR.md). Without migration, history/thresholds/subscriptions/mutes for the old name are orphaned and the new name starts empty. |
 | Renaming a **field key** (`T` → `Temp`) | **Restart + DB migration** | Same orphaning — the sensor name (`device_field`) changes. No dedicated script; migrate the DB by hand or accept the history loss. |
 

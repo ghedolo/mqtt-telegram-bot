@@ -32,6 +32,16 @@ async def main():
     # token in cleartext. Pin it to WARNING regardless of debug level so the
     # token never lands in the logs (even at debug 3).
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    if cfg.trace_cmd:
+        # Send the command trace to its own file only: propagate=False keeps it
+        # out of the root log (and thus stderr), independent of `debug`.
+        handler = logging.FileHandler(cfg.trace_cmd_file)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        trace_log = logging.getLogger("bot.cmdtrace")
+        trace_log.addHandler(handler)
+        trace_log.setLevel(logging.INFO)
+        trace_log.propagate = False
+        log.info("Command trace enabled -> %s", cfg.trace_cmd_file)
     db.init()
 
     for sc in cfg.sensors.values():
