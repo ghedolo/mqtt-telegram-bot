@@ -121,40 +121,53 @@ class TelegramBot:
         self.signal_snapshot_fn: Optional[Callable[[], dict]] = None
         self._started_at = time.time()
         self._app = Application.builder().token(cfg.telegram_token).build()
-        self._app.add_handler(CommandHandler("start", self._cmd_start))
-        self._app.add_handler(CommandHandler("digest", self._cmd_digest))
-        self._app.add_handler(CommandHandler("listSignal", self._cmd_listsignal))
-        self._app.add_handler(CommandHandler("silent", self._cmd_silent))
-        self._app.add_handler(CommandHandler("list", self._cmd_list))
-        self._app.add_handler(CommandHandler("get", self._cmd_get))
-        self._app.add_handler(CommandHandler("setAlarm", self._cmd_setalarm))
-        self._app.add_handler(CommandHandler("setAlarmLow", self._cmd_setalarmlow))
-        self._app.add_handler(CommandHandler("clearAlarm", self._cmd_clearalarm))
-        self._app.add_handler(CommandHandler("clearAlarmLow", self._cmd_clearalarmlow))
-        self._app.add_handler(CommandHandler("getAlarm", self._cmd_getalarm))
-        self._app.add_handler(CommandHandler("graph", self._cmd_graph))
-        self._app.add_handler(CommandHandler("ackOff", self._cmd_ackoff))
-        self._app.add_handler(CommandHandler("help", self._cmd_help))
-        self._app.add_handler(CommandHandler("myid", self._cmd_myid))
-        self._app.add_handler(CommandHandler("sysinfo", self._cmd_sysinfo))
-        self._app.add_handler(CommandHandler("last", self._cmd_last))
-        self._app.add_handler(CommandHandler("lastAlarms", self._cmd_lastalarms))
-        self._app.add_handler(CommandHandler("last5Alarm", self._cmd_last5alarm))
-        self._app.add_handler(CommandHandler("forgetSensor", self._cmd_forgetsensor))
-        self._app.add_handler(CommandHandler("reloadConfig", self._cmd_reloadconfig))
-        self._app.add_handler(CommandHandler("exprSyntax", self._cmd_exprsyntax))
-        self._app.add_handler(CommandHandler("csv", self._cmd_csv))
-        self._app.add_handler(CommandHandler("xlsx", self._cmd_xlsx))
-        self._app.add_handler(CommandHandler("usersActivity", self._cmd_usersactivity))
-        self._app.add_handler(CommandHandler("dbStats", self._cmd_dbstats))
+        # Every handler below is pinned to *new* messages. Telegram lets a user
+        # edit a message already sent (↑ in the desktop client), and PTB routes
+        # the edit like any other update: both handler types key off
+        # `update.effective_message`, which resolves to `edited_message` too.
+        # Unpinned, rewriting `/get T` into `/get P` would run the command a
+        # second time, and editing any old text message could be swallowed as
+        # the argument for a pending prompt. A command is an event, not a
+        # document — rewriting the past must not re-fire it.
+        new_msg = filters.UpdateType.MESSAGE
+
+        def command(name: str, cb) -> None:
+            self._app.add_handler(CommandHandler(name, cb, filters=new_msg))
+
+        command("start", self._cmd_start)
+        command("digest", self._cmd_digest)
+        command("listSignal", self._cmd_listsignal)
+        command("silent", self._cmd_silent)
+        command("list", self._cmd_list)
+        command("get", self._cmd_get)
+        command("setAlarm", self._cmd_setalarm)
+        command("setAlarmLow", self._cmd_setalarmlow)
+        command("clearAlarm", self._cmd_clearalarm)
+        command("clearAlarmLow", self._cmd_clearalarmlow)
+        command("getAlarm", self._cmd_getalarm)
+        command("graph", self._cmd_graph)
+        command("ackOff", self._cmd_ackoff)
+        command("help", self._cmd_help)
+        command("myid", self._cmd_myid)
+        command("sysinfo", self._cmd_sysinfo)
+        command("last", self._cmd_last)
+        command("lastAlarms", self._cmd_lastalarms)
+        command("last5Alarm", self._cmd_last5alarm)
+        command("forgetSensor", self._cmd_forgetsensor)
+        command("reloadConfig", self._cmd_reloadconfig)
+        command("exprSyntax", self._cmd_exprsyntax)
+        command("csv", self._cmd_csv)
+        command("xlsx", self._cmd_xlsx)
+        command("usersActivity", self._cmd_usersactivity)
+        command("dbStats", self._cmd_dbstats)
         # catch-all for any command with no handler above (same group, so a
         # matched CommandHandler stops the group before this runs) -> "unknown".
-        self._app.add_handler(MessageHandler(filters.COMMAND, self._cmd_unknown))
+        self._app.add_handler(MessageHandler(new_msg & filters.COMMAND, self._cmd_unknown))
         # captures the argument for menu commands that Telegram sends
         # immediately. Catches both replies to the ForceReply prompt (phone)
         # and a plain follow-up message (browser ignores ForceReply focus).
         self._app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_arg_reply)
+            MessageHandler(new_msg & filters.TEXT & ~filters.COMMAND, self._on_arg_reply)
         )
         # runs first on every update: record last interaction per user
         self._app.add_handler(TypeHandler(Update, self._record_activity), group=-1)

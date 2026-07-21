@@ -157,6 +157,7 @@ user and return what was sent. Constants `ADMIN` / `VIEWER` / `OUTSIDER` / `SUPE
 - `test_notify_sensor_gated_by_registration_and_mute` / `test_notify_device_requires_subscription` — DM fan-out honours registration, per-user mutes, and digest subscriptions.
 - `test_help_*` — `/help` appends the admin section only for admins and the superadmin section only for superadmins.
 - `test_exprsyntax_replies` / `test_listsignal_replies` — thin wrappers reply with non-empty text.
+- `test_edited_*` — an edited message (↑-recall in the desktop client) is an `edited_message` update, which PTB would otherwise route like a new one. All handlers are pinned to `UpdateType.MESSAGE`, so editing `/get T` into `/get P` does not re-run the command, an edited unknown command stays silent, and editing an old text message is not consumed as a pending prompt's argument. These drive the handlers' real `check_update`, so they guard the registration itself, not a copy of the filter.
 
 **Autocomplete menu**
 

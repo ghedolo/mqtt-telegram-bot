@@ -983,3 +983,56 @@ def test_menu_contains_no_privileged_command(bot):
 
 def test_listsignal_is_in_the_menu(bot):
     assert "listsignal" in {c.command for c in _menu_commands(bot)}
+
+
+# --- edited messages must not re-fire handlers ---
+
+def _real_update(bot, text, *, edited: bool, command: bool = True):
+    """A genuine telegram.Update (not a SimpleNamespace) so the handlers'
+    own check_update runs — that is the code under test here."""
+    import datetime as dt
+    from telegram import Update, Message, Chat, User, MessageEntity
+
+    ents = [MessageEntity(type="bot_command", offset=0, length=len(text.split()[0]))]
+    m = Message(message_id=1, date=dt.datetime.now(dt.timezone.utc),
+                chat=Chat(id=1, type="private"),
+                from_user=User(id=1, first_name="a", is_bot=False),
+                text=text, entities=ents if command else [])
+    # CommandHandler reads bot.username to resolve `/cmd@name`; the real ExtBot
+    # refuses that uninitialised, and initialising it would mean network.
+    m.set_bot(SimpleNamespace(username="lortebot"))
+    return Update(update_id=1, **({"edited_message": m} if edited else {"message": m}))
+
+
+def _handlers(bot):
+    return [h for group in bot._app.handlers.values() for h in group]
+
+
+def _fires(bot, update, kind):
+    from telegram.ext import CommandHandler, MessageHandler
+    want = CommandHandler if kind == "command" else MessageHandler
+    return [h for h in _handlers(bot)
+            if isinstance(h, want) and h.check_update(update)]
+
+
+def test_edited_command_does_not_re_fire(bot):
+    # Editing a sent message (↑ in the desktop client) arrives as an
+    # `edited_message` update, and PTB resolves `effective_message` to it. A
+    # command must not run again because its text was rewritten after the fact.
+    assert _fires(bot, _real_update(bot, "/get T", edited=False), "command")
+    assert _fires(bot, _real_update(bot, "/get T", edited=True), "command") == []
+
+
+def test_edited_unknown_command_stays_silent(bot):
+    fresh = _real_update(bot, "/nosuch", edited=False)
+    assert [h for h in _fires(bot, fresh, "message")]      # catch-all takes it
+    assert _fires(bot, _real_update(bot, "/nosuch", edited=True), "message") == []
+
+
+def test_edited_plain_text_is_not_taken_as_an_argument(bot):
+    # The nastier half: `_on_arg_reply` captures loose text, so an edit to any
+    # old message could be consumed as the argument for a pending prompt.
+    fresh = _real_update(bot, "SM1_T", edited=False, command=False)
+    assert _fires(bot, fresh, "message")
+    edited = _real_update(bot, "SM1_T", edited=True, command=False)
+    assert _fires(bot, edited, "message") == []
