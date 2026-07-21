@@ -89,7 +89,9 @@ class AppConfig:
     # log. Orthogonal to `debug` on purpose — command flow is a category, not a
     # severity, so you want it on at any verbosity. Off by default.
     trace_cmd: bool = False
-    trace_cmd_file: str = "cmdtrace.log"
+    # Default into data/ — the only writable mount in the container (/app itself
+    # is read-only), the same place the DB lives, and reachable from the host.
+    trace_cmd_file: str = "data/cmdtrace.log"
     blackouts: dict[str, "BlackoutGroup"] = field(default_factory=dict)
     signals: dict[str, SignalConfig] = field(default_factory=dict)  # signal_name → SignalConfig
     # Non-fatal config complaints raised at load: surfaced in /sysinfo so they
@@ -492,7 +494,7 @@ def load(
         archive_time=str(defaults.get("archive_time", "12:00")),
         enable_menu=bool(int(tg.get("enableMenu", 1))),
         trace_cmd=bool(int(tg.get("traceCmd", 0))),
-        trace_cmd_file=str(tg.get("traceCmdFile", "cmdtrace.log")),
+        trace_cmd_file=str(tg.get("traceCmdFile", "data/cmdtrace.log")),
         blackouts=blackouts,
         signals=signals,
         warnings=warnings,

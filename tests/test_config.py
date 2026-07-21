@@ -82,7 +82,7 @@ def test_defaults_and_new_keys(tmp_path):
     assert cfg.enable_menu is True       # default when absent
     assert cfg.digest_time == "15:00"
     assert cfg.trace_cmd is False        # command trace off unless asked
-    assert cfg.trace_cmd_file == "cmdtrace.log"
+    assert cfg.trace_cmd_file == "data/cmdtrace.log"   # writable mount, not read-only /app
 
 
 def test_trace_cmd_opts_parse(tmp_path):
