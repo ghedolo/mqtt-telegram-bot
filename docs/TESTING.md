@@ -178,3 +178,8 @@ cannot silently miss the menu (how `/listSignal` was lost).
 - `test_next_occurrence_exactly_now_rolls_tomorrow` — exact-now rolls to tomorrow.
 - `test_seconds_until_parses_hhmm` — `HH:MM` → seconds.
 - `test_seconds_until_rolls_over_midnight` — correct span across midnight. Guards the `sleep(86400)` archive bug.
+
+### `tests/test_main.py` — startup wiring (`bot/main.py`)
+- `test_trace_off_attaches_nothing` — `_setup_cmd_trace` is a no-op when `traceCmd` is off.
+- `test_trace_creates_parent_and_writes` — when on, it creates a missing parent dir and the `bot.cmdtrace` logger actually writes to the file.
+- `test_trace_failopen_does_not_raise` — a path that can't be opened (parent is a regular file) warns and returns without attaching a handler, never raising. Guards the read-only-`/app` startup crash: a monitoring bot must not refuse to start over a diagnostic file.

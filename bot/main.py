@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import signal
 
 from .config import load
@@ -24,6 +25,35 @@ _DEBUG_LEVELS = {
 }
 
 
+def _setup_cmd_trace(cfg) -> bool:
+    """Attach the command-trace FileHandler to the `bot.cmdtrace` logger, sending
+    it to its own file only (`propagate=False`), independent of `debug`.
+
+    Never raises. The container mounts `/app` read-only and only `data/` (the
+    default location) is writable, but a misconfigured `trace_cmd_file` — a
+    read-only or missing path — must not take the whole bot down over a
+    diagnostic aid. The parent dir is created if absent; if the file still can't
+    be opened, we log a warning and run with the trace off. Returns whether it
+    was enabled."""
+    if not cfg.trace_cmd:
+        return False
+    try:
+        parent = os.path.dirname(cfg.trace_cmd_file)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        handler = logging.FileHandler(cfg.trace_cmd_file)
+    except OSError as e:
+        log.warning("Command trace disabled: cannot open %s (%s)", cfg.trace_cmd_file, e)
+        return False
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    trace_log = logging.getLogger("bot.cmdtrace")
+    trace_log.addHandler(handler)
+    trace_log.setLevel(logging.INFO)
+    trace_log.propagate = False
+    log.info("Command trace enabled -> %s", cfg.trace_cmd_file)
+    return True
+
+
 async def main():
     cfg = load("sensors.d", "credentials.yaml")
     level = _DEBUG_LEVELS.get(cfg.debug, logging.INFO)
@@ -32,16 +62,7 @@ async def main():
     # token in cleartext. Pin it to WARNING regardless of debug level so the
     # token never lands in the logs (even at debug 3).
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    if cfg.trace_cmd:
-        # Send the command trace to its own file only: propagate=False keeps it
-        # out of the root log (and thus stderr), independent of `debug`.
-        handler = logging.FileHandler(cfg.trace_cmd_file)
-        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-        trace_log = logging.getLogger("bot.cmdtrace")
-        trace_log.addHandler(handler)
-        trace_log.setLevel(logging.INFO)
-        trace_log.propagate = False
-        log.info("Command trace enabled -> %s", cfg.trace_cmd_file)
+    _setup_cmd_trace(cfg)
     db.init()
 
     for sc in cfg.sensors.values():
