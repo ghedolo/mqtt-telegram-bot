@@ -27,14 +27,14 @@
     },
     "b56e1c7f-1094-4d7b-bae1-7a753bc8ad92": {
       "first": "2026-07-15T15:56:39.696Z",
-      "last": "2026-07-18T08:50:44.809Z",
-      "active_secs": 20034,
-      "user": 442,
-      "asst": 896,
-      "input": 1660,
-      "output": 1368366,
-      "cache_read": 294828253,
-      "cache_write": 3557789
+      "last": "2026-07-18T09:46:53.050Z",
+      "active_secs": 22129,
+      "user": 477,
+      "asst": 976,
+      "input": 1811,
+      "output": 1476809,
+      "cache_read": 351696128,
+      "cache_write": 3688997
     },
     "8151ff4d-1b51-45d4-b9f3-4f63a4842e9e": {
       "first": "2026-07-19T08:35:03.499Z",
@@ -57,6 +57,17 @@
       "output": 135721,
       "cache_read": 32705000,
       "cache_write": 421299
+    },
+    "91babc33-6f56-42a9-9f78-0b597983146c": {
+      "first": "2026-07-20T16:25:18.944Z",
+      "last": "2026-07-21T12:27:55.959Z",
+      "active_secs": 4856,
+      "user": 198,
+      "asst": 313,
+      "input": 704,
+      "output": 187969,
+      "cache_read": 27035224,
+      "cache_write": 561276
     }
   }
 }
