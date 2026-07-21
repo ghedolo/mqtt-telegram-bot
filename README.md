@@ -238,6 +238,8 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 
 > Tapping a command in Telegram's `/` menu sends it immediately, before you can type an argument (fixed client behaviour). For commands that need an argument (`/graph`, `/csv`, `/xlsx`, `/last5Alarm`), sending them bare replies with a `ForceReply` prompt — reply with the argument and the command runs. Telegram Web ignores ForceReply focus, so there you can just send the argument as a normal message within 30s of the prompt. The prompt message is deleted once you answer, so its reply box clears on all your devices.
 
+> **Editing a message does not re-run it.** Recalling a sent message (↑ in the desktop client) and hitting enter edits it in place rather than sending a new one; the bot ignores such edits, so rewriting `/get T` into `/get P` runs nothing. Send a fresh message to issue the command again. (Re-submitting an *unchanged* message this way is refused by Telegram itself with a "Message not modified" toast, before it ever reaches the bot.)
+
 ### User commands
 
 | Command | Description |
