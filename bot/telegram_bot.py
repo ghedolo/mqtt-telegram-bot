@@ -1,4 +1,5 @@
 import base64
+import contextvars
 import csv
 import fnmatch
 import hashlib
@@ -37,6 +38,15 @@ log = logging.getLogger(__name__)
 # propagation when `trace_cmd` is set, so its records land only in the trace
 # file. Left with no handler otherwise, its emits are near-free no-ops.
 cmdtrace = logging.getLogger("bot.cmdtrace")
+
+# Per-invocation trace outcome. `_traced` seeds it and reads it back for the
+# out-line; a handler that replies "nothing matched" or "bad arguments" marks it
+# through the `_reply_*` helpers, so the trace tells apart a command that
+# produced a result (`ok`) from one that ran but did nothing useful. A ContextVar
+# (not an attribute on self) isolates concurrent updates from each other.
+_trace_outcome: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "cmd_trace_outcome", default=None
+)
 
 _SILENT = {"disable_notification": True}
 
@@ -126,18 +136,16 @@ class TelegramBot:
         self.signal_snapshot_fn: Optional[Callable[[], dict]] = None
         self._started_at = time.time()
         self._app = Application.builder().token(cfg.telegram_token).build()
-        # Every handler below is pinned to *new* messages. Telegram lets a user
-        # edit a message already sent (↑ in the desktop client), and PTB routes
-        # the edit like any other update: both handler types key off
-        # `update.effective_message`, which resolves to `edited_message` too.
-        # Unpinned, rewriting `/get T` into `/get P` would run the command a
-        # second time, and editing any old text message could be swallowed as
-        # the argument for a pending prompt. A command is an event, not a
-        # document — rewriting the past must not re-fire it.
-        new_msg = filters.UpdateType.MESSAGE
-
+        # Handlers intentionally process edited messages too (PTB keys off
+        # `update.effective_message`, which resolves an `edited_message` as
+        # readily as a new one). Telegram Web reissues a command by *editing*
+        # the previous bubble rather than sending a new message, so filtering
+        # edits out — as an earlier version did — silently dropped every command
+        # sent from the browser. Editing `/help` into `/get` must run `/get`.
+        # (Re-sending the *identical* command still fails client-side with
+        # "Message not modified" before it ever reaches us — nothing to do here.)
         def command(name: str, cb) -> None:
-            self._app.add_handler(CommandHandler(name, self._traced(cb), filters=new_msg))
+            self._app.add_handler(CommandHandler(name, self._traced(cb)))
 
         command("start", self._cmd_start)
         command("digest", self._cmd_digest)
@@ -167,12 +175,12 @@ class TelegramBot:
         command("dbStats", self._cmd_dbstats)
         # catch-all for any command with no handler above (same group, so a
         # matched CommandHandler stops the group before this runs) -> "unknown".
-        self._app.add_handler(MessageHandler(new_msg & filters.COMMAND, self._traced(self._cmd_unknown)))
+        self._app.add_handler(MessageHandler(filters.COMMAND, self._traced(self._cmd_unknown, ok_label="unknown")))
         # captures the argument for menu commands that Telegram sends
         # immediately. Catches both replies to the ForceReply prompt (phone)
         # and a plain follow-up message (browser ignores ForceReply focus).
         self._app.add_handler(
-            MessageHandler(new_msg & filters.TEXT & ~filters.COMMAND, self._traced(self._on_arg_reply))
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self._traced(self._on_arg_reply))
         )
         # runs first on every update: record last interaction per user
         self._app.add_handler(TypeHandler(Update, self._record_activity), group=-1)
@@ -185,16 +193,22 @@ class TelegramBot:
 
     # ── command trace ────────────────────────────────────────────────────────────
 
-    def _traced(self, cb):
+    def _traced(self, cb, ok_label: str = "ok"):
         """Wrap a handler so each invocation books an in/out pair to the command
         trace: who sent what, and how the handler ended. When `trace_cmd` is off
         the handler is returned untouched — no wrapper, no overhead.
 
-        What lands is the inbound command text and the *outcome* (ok + elapsed,
-        or the exception), not the reply body: replies go out through 85 direct
-        `bot.send_message` calls and ExtBot is slotted, so there is no single
-        seam to tap the sent text without either a transport-level hook or a
-        reply-funnel refactor. The command and its fate are what a trace is for."""
+        `ok_label` is the word logged on clean completion when the handler
+        didn't mark a more specific outcome. The unknown-command catch-all passes
+        `unknown`; a handler that replies "nothing matched" / "bad arguments"
+        overrides it to `no-result` / `bad-input` via the `_reply_*` helpers.
+        Without this, all of them complete without raising and would read `ok`.
+
+        What lands is the inbound command text and the *outcome* (the label +
+        elapsed, or the exception), not the reply body: replies go out through 85
+        direct `bot.send_message` calls and ExtBot is slotted, so there is no
+        single seam to tap the sent text without either a transport-level hook or
+        a reply-funnel refactor. The command and its fate are what a trace is for."""
         if not self._cfg.trace_cmd:
             return cb
 
@@ -207,14 +221,19 @@ class TelegramBot:
             text = (msg.text if msg and msg.text else "").replace("\n", " ")
             t0 = time.monotonic()
             cmdtrace.info("→ %s | %s", who, text)
+            token = _trace_outcome.set(None)
             try:
                 await cb(update, ctx)
             except Exception as e:
                 cmdtrace.info("← %s | %s | FAILED %r (%dms)",
                               who, text, e, (time.monotonic() - t0) * 1000)
                 raise
-            cmdtrace.info("← %s | %s | ok (%dms)",
-                          who, text, (time.monotonic() - t0) * 1000)
+            else:
+                outcome = _trace_outcome.get() or ok_label
+                cmdtrace.info("← %s | %s | %s (%dms)",
+                              who, text, outcome, (time.monotonic() - t0) * 1000)
+            finally:
+                _trace_outcome.reset(token)
 
         return wrapped
 
@@ -309,7 +328,11 @@ class TelegramBot:
         self._pending[reply_chat] = (cmd_key, time.time(), msg.message_id)
 
     async def _on_arg_reply(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        msg = update.message
+        # effective_message, not message: on Telegram Web the argument may arrive
+        # as an edit of a prior bubble, which lands in `edited_message`. The
+        # `_pending` window still gates it, so a stray old edit with no pending
+        # prompt is ignored below.
+        msg = update.effective_message
         if msg is None or not msg.text:
             return
         user_id = update.effective_user.id
@@ -374,6 +397,35 @@ class TelegramBot:
             text=text,
             disable_notification=silent,
             parse_mode=parse_mode,
+        )
+
+    # ── outcome-marking replies (feed the command trace) ─────────────────────────
+    # These send the usual error/empty reply AND tag the trace outcome, so a
+    # command that matched nothing or got bad arguments reads as `no-result` /
+    # `bad-input` instead of `ok`. Marking is a no-op when the trace is off.
+
+    async def _reply_no_match(self, reply_chat: int):
+        _trace_outcome.set("no-result")
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text="No matching sensors.", **_SILENT
+        )
+
+    async def _reply_no_data(self, reply_chat: int, hours: int):
+        _trace_outcome.set("no-result")
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text=f"No data in last {hours}h.", **_SILENT
+        )
+
+    async def _reply_bad_input(self, reply_chat: int, text: str):
+        _trace_outcome.set("bad-input")
+        await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
+
+    async def _reply_denied(self, reply_chat: int):
+        # A well-formed request the caller lacks the right to perform — distinct
+        # from bad-input (which is a malformed request). Trace reads `denied`.
+        _trace_outcome.set("denied")
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text="Not authorized.", **_SILENT
         )
 
     async def notify_sensor(self, sensor: str, text: str):
@@ -519,9 +571,7 @@ class TelegramBot:
     async def _show_sensors(self, reply_chat: int, names: list[str]):
         text = self._render_sensors_text(names) if names else None
         if text is None:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
+            await self._reply_no_match(reply_chat)
             return
         await self._app.bot.send_message(
             chat_id=reply_chat,
@@ -563,18 +613,14 @@ class TelegramBot:
             return
 
         if len(ctx.args) < 2 or ctx.args[-1].lower() not in ("on", "off"):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /digest <expr> on|off", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /digest <expr> on|off")
             return
 
         action = ctx.args[-1].lower()
         patterns = ctx.args[:-1]
         targets = self._resolve_sensors(patterns, user_id) + self._resolve_blackouts(patterns, user_id)
         if not targets:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
+            await self._reply_no_match(reply_chat)
             return
 
         for name in targets:
@@ -660,9 +706,7 @@ class TelegramBot:
             hours = min(24, max(1, int(m.group(1))))
             names = self._resolve_sensors(ctx.args[:-1], user_id)
             if not names:
-                await self._app.bot.send_message(
-                    chat_id=reply_chat, text="No matching sensors.", **_SILENT
-                )
+                await self._reply_no_match(reply_chat)
                 return
             until = int(time.time()) + hours * 3600
             for name in names:
@@ -677,9 +721,7 @@ class TelegramBot:
         # unmute
         names = self._resolve_sensors(ctx.args, user_id)
         if not names:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
+            await self._reply_no_match(reply_chat)
             return
         for name in names:
             db.unmute_sensor(user_id, name)
@@ -894,36 +936,26 @@ class TelegramBot:
         user_id = update.effective_user.id
 
         if len(ctx.args) != 2:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /setAlarm <sensor> <value>", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /setAlarm <sensor> <value>")
             return
 
         name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
 
         try:
             value = round(float(ctx.args[1]), self._cfg.decimals_of(name))
         except ValueError:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Value must be a number.", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Value must be a number.")
             return
 
         err = _threshold_order_error(high=value, low=db.get_threshold_low(name))
         if err:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text=err, **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, err)
             return
 
         db.set_threshold(name, value)
@@ -940,36 +972,26 @@ class TelegramBot:
         user_id = update.effective_user.id
 
         if len(ctx.args) != 2:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /setAlarmLow <sensor> <value>", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /setAlarmLow <sensor> <value>")
             return
 
         name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
 
         try:
             value = round(float(ctx.args[1]), self._cfg.decimals_of(name))
         except ValueError:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Value must be a number.", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Value must be a number.")
             return
 
         err = _threshold_order_error(high=db.get_threshold(name), low=value)
         if err:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text=err, **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, err)
             return
 
         db.set_threshold_low(name, value)
@@ -985,20 +1007,14 @@ class TelegramBot:
             return
         user_id = update.effective_user.id
         if not ctx.args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /clearAlarm <sensor>", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /clearAlarm <sensor>")
             return
         name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
         db.clear_threshold(name)
         if self.reset_alarm_fn:
@@ -1013,20 +1029,14 @@ class TelegramBot:
             return
         user_id = update.effective_user.id
         if not ctx.args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /clearAlarmLow <sensor>", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /clearAlarmLow <sensor>")
             return
         name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
         db.clear_threshold_low(name)
         if self.reset_alarm_fn:
@@ -1053,9 +1063,7 @@ class TelegramBot:
         else:
             name = self._cfg.resolve_sensor(ctx.args[0])
             if not self._cfg.is_viewer(user_id, name):
-                await self._app.bot.send_message(
-                    chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-                )
+                await self._reply_bad_input(reply_chat, "Unknown sensor.")
                 return
             names = [name]
 
@@ -1097,16 +1105,12 @@ class TelegramBot:
             hours = max(1, min(max_hours, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /graph <expr> [Nh]", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /graph <expr> [Nh]")
             return
 
         names = self._resolve_sensors(args, update.effective_user.id)
         if not names:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
+            await self._reply_no_match(reply_chat)
             return
 
         sensor_list = [
@@ -1150,10 +1154,8 @@ class TelegramBot:
         if args and re.fullmatch(r"\d+[hH]", args[-1]):
             n = int(args[-1][:-1])
             if not 1 <= n <= 24:
-                await self._app.bot.send_message(
-                    chat_id=reply_chat,
-                    text="Hours must be between 1 and 24 (e.g. 6h).",
-                    **_SILENT,
+                await self._reply_bad_input(
+                    reply_chat, "Hours must be between 1 and 24 (e.g. 6h)."
                 )
                 return
             hours = n
@@ -1167,9 +1169,7 @@ class TelegramBot:
             names = self._resolve_sensors(args, user_id)
 
         if not names:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
+            await self._reply_no_match(reply_chat)
             return
 
         since = int(time.time()) - hours * 3600
@@ -1194,9 +1194,7 @@ class TelegramBot:
             return
         name = self._cfg.resolve_sensor(ctx.args[0])
         if not self._cfg.is_viewer(user_id, name):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown sensor.", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         rows = db.get_last_alarms(sensor=name, n=5)
         await self._app.bot.send_message(
@@ -1216,9 +1214,7 @@ class TelegramBot:
             # all, so device keys never leak to a passer-by who DM'd the bot.
             is_su = self._cfg.is_superadmin(user_id)
             if not is_su and not self._cfg.has_any_access(user_id):
-                await self._app.bot.send_message(
-                    chat_id=reply_chat, text="Not authorized.", **_SILENT
-                )
+                await self._reply_denied(reply_chat)
                 return
             silenced = db.list_silenced()
             if not is_su:
@@ -1245,9 +1241,7 @@ class TelegramBot:
             )
             return
         if not self._cfg.is_any_admin_of_device(user_id, device_key):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
 
         db.silence_sensor(device_key)
@@ -1264,16 +1258,12 @@ class TelegramBot:
         user_id = update.effective_user.id
 
         if not ctx.args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /forgetSensor <device>", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /forgetSensor <device>")
             return
 
         device_key = self._cfg.resolve_device(ctx.args[0])
         if not self._cfg.is_superadmin(user_id):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
         if device_key not in self._cfg.devices:
             await self._app.bot.send_message(
@@ -1292,9 +1282,7 @@ class TelegramBot:
         if reply_chat is None:
             return
         if not self._cfg.is_superadmin(update.effective_user.id):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
         if self._reload_fn is None:
             await self._app.bot.send_message(
@@ -1346,9 +1334,7 @@ class TelegramBot:
         if reply_chat is None:
             return
         if not self._cfg.is_superadmin(update.effective_user.id):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
         rows = db.get_all_activity()
         if not rows:
@@ -1373,9 +1359,7 @@ class TelegramBot:
         if reply_chat is None:
             return
         if not self._cfg.is_superadmin(update.effective_user.id):
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Not authorized.", **_SILENT
-            )
+            await self._reply_denied(reply_chat)
             return
         s = db.get_db_stats()
 
@@ -1416,16 +1400,12 @@ class TelegramBot:
             hours = max(1, min(max_hours, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /csv <expr> [Nh]", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /csv <expr> [Nh]")
             return
 
         names = self._resolve_sensors(args, update.effective_user.id)
         if not names:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
+            await self._reply_no_match(reply_chat)
             return
 
         buf = io.StringIO()
@@ -1439,9 +1419,7 @@ class TelegramBot:
                 total += 1
 
         if total == 0:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text=f"No data in last {hours}h.", **_SILENT
-            )
+            await self._reply_no_data(reply_chat, hours)
             return
 
         data = buf.getvalue().encode()
@@ -1480,16 +1458,12 @@ class TelegramBot:
             hours = max(1, min(max_hours, int(args[-1].lower()[:-1])))
             args = args[:-1]
         if not args:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Usage: /xlsx <expr> [Nh]", **_SILENT
-            )
+            await self._reply_bad_input(reply_chat, "Usage: /xlsx <expr> [Nh]")
             return
 
         names = self._resolve_sensors(args, update.effective_user.id)
         if not names:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="No matching sensors.", **_SILENT
-            )
+            await self._reply_no_match(reply_chat)
             return
 
         try:
@@ -1506,9 +1480,7 @@ class TelegramBot:
                     total += 1
 
             if total == 0:
-                await self._app.bot.send_message(
-                    chat_id=reply_chat, text=f"No data in last {hours}h.", **_SILENT
-                )
+                await self._reply_no_data(reply_chat, hours)
                 return
 
             buf = io.BytesIO()

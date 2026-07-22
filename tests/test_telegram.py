@@ -826,8 +826,9 @@ def test_start_wrong_token_does_not_register(hbot, temp_db):
 # _on_arg_reply — ForceReply follow-up routing (browser path via _pending)
 
 def _reply_update(user_id, text):
+    # _on_arg_reply reads update.effective_message (resolves edited_message too).
     return SimpleNamespace(
-        message=SimpleNamespace(text=text, reply_to_message=None),
+        effective_message=SimpleNamespace(text=text, reply_to_message=None),
         effective_user=SimpleNamespace(id=user_id),
         effective_chat=SimpleNamespace(id=user_id),
     )
@@ -850,6 +851,20 @@ def test_on_arg_reply_ignores_expired_pending(hbot, temp_db):
     ctx = SimpleNamespace(args=[])
     asyncio.run(hbot._on_arg_reply(_reply_update(ADMIN, "SM1_T"), ctx))
     assert docs == [] and sent == []
+
+
+def test_on_arg_reply_consumes_edited_argument(hbot, temp_db):
+    # effective_message, not message: on Telegram Web the ForceReply argument can
+    # arrive as an edit (edited_message). It must still dispatch the pending
+    # command — with the old `update.message` read it silently did nothing.
+    temp_db.insert_reading("SM1_T", 21.0)
+    sent, docs = [], []
+    hbot._app = _fake_app(sent, None, docs)
+    hbot._pending[ADMIN] = ("csv", time.time(), 111)          # ADMIN == _real_update's user id
+    ctx = SimpleNamespace(args=[])
+    edited = _real_update(hbot, "SM1_T", edited=True, command=False)
+    asyncio.run(hbot._on_arg_reply(edited, ctx))
+    assert len(docs) == 1
 
 
 # notify_* — DM gating (registration / mute / subscription)
@@ -986,7 +1001,7 @@ def test_listsignal_is_in_the_menu(bot):
     assert "listsignal" in {c.command for c in _menu_commands(bot)}
 
 
-# --- edited messages must not re-fire handlers ---
+# --- edited messages are processed like new ones (Telegram Web reissue) ---
 
 def _real_update(bot, text, *, edited: bool, command: bool = True):
     """A genuine telegram.Update (not a SimpleNamespace) so the handlers'
@@ -1016,27 +1031,27 @@ def _fires(bot, update, kind):
             if isinstance(h, want) and h.check_update(update)]
 
 
-def test_edited_command_does_not_re_fire(bot):
-    # Editing a sent message (↑ in the desktop client) arrives as an
-    # `edited_message` update, and PTB resolves `effective_message` to it. A
-    # command must not run again because its text was rewritten after the fact.
+def test_edited_command_re_fires(bot):
+    # Telegram Web reissues a command by editing the previous bubble, which
+    # arrives as an `edited_message` (PTB resolves `effective_message` to it).
+    # The command must run, exactly like a new message — editing `/help` into
+    # `/get` has to run `/get`, not be dropped.
     assert _fires(bot, _real_update(bot, "/get T", edited=False), "command")
-    assert _fires(bot, _real_update(bot, "/get T", edited=True), "command") == []
+    assert _fires(bot, _real_update(bot, "/get T", edited=True), "command")
 
 
-def test_edited_unknown_command_stays_silent(bot):
-    fresh = _real_update(bot, "/nosuch", edited=False)
-    assert [h for h in _fires(bot, fresh, "message")]      # catch-all takes it
-    assert _fires(bot, _real_update(bot, "/nosuch", edited=True), "message") == []
+def test_edited_unknown_command_fires(bot):
+    # Same for the unknown catch-all: an edited unknown command still replies.
+    for edited in (False, True):
+        assert _fires(bot, _real_update(bot, "/nosuch", edited=edited), "message")
 
 
-def test_edited_plain_text_is_not_taken_as_an_argument(bot):
-    # The nastier half: `_on_arg_reply` captures loose text, so an edit to any
-    # old message could be consumed as the argument for a pending prompt.
-    fresh = _real_update(bot, "SM1_T", edited=False, command=False)
-    assert _fires(bot, fresh, "message")
-    edited = _real_update(bot, "SM1_T", edited=True, command=False)
-    assert _fires(bot, edited, "message") == []
+def test_edited_plain_text_routes_to_arg_handler(bot):
+    # A plain-text edit must reach `_on_arg_reply` too: on Web the argument to a
+    # ForceReply prompt can arrive as an edit. The `_pending` window gates actual
+    # consumption (see test_on_arg_reply_consumes_edited_argument).
+    for edited in (False, True):
+        assert _fires(bot, _real_update(bot, "SM1_T", edited=edited, command=False), "message")
 
 
 # --- command trace (traceCmd) ---
@@ -1088,3 +1103,74 @@ def test_trace_logs_failure_and_reraises(bot, caplog):
     msgs = [r.message for r in caplog.records if r.name == "bot.cmdtrace"]
     assert any("FAILED" in m and "KeyError" in m for m in msgs)
     assert not any("ok" in m for m in msgs)        # a failure is not an ok
+
+
+def test_trace_labels_unknown_command(bot, caplog):
+    # The catch-all is wrapped with ok_label="unknown", so a non-existent
+    # command reads as `unknown`, not `ok` — an unknown command completes
+    # cleanly (it replies "Unknown command"), so without the label it would be
+    # indistinguishable from a real command that ran.
+    bot._cfg.trace_cmd = True
+
+    async def cb(u, c):
+        pass
+
+    wrapped = bot._traced(cb, ok_label="unknown")
+    with caplog.at_level(logging.INFO, logger="bot.cmdtrace"):
+        asyncio.run(wrapped(_trace_update("/hhh", 7), None))
+
+    msgs = [r.message for r in caplog.records if r.name == "bot.cmdtrace"]
+    assert any(m.startswith("←") and "/hhh" in m and "unknown" in m for m in msgs)
+    assert not any(m.startswith("←") and " ok " in m for m in msgs)
+
+
+def test_trace_marks_no_result_via_helper(bot, caplog):
+    # `_reply_no_match` sets the outcome; `_traced` reads it back. End-to-end
+    # through the wrapper so the ContextVar stays in one task (its set inside a
+    # separately-run coroutine would land in a copied context and not propagate).
+    bot._cfg.trace_cmd = True
+    bot._app = _fake_app([])
+
+    async def cb(u, c):
+        await bot._reply_no_match(7)
+
+    with caplog.at_level(logging.INFO, logger="bot.cmdtrace"):
+        asyncio.run(bot._traced(cb)(_trace_update("/get dddd", 7), None))
+
+    msgs = [r.message for r in caplog.records if r.name == "bot.cmdtrace"]
+    assert any(m.startswith("←") and "no-result" in m for m in msgs)
+    assert not any(m.startswith("←") and " ok " in m for m in msgs)
+
+
+def test_trace_marks_bad_input_via_helper(bot, caplog):
+    bot._cfg.trace_cmd = True
+    sent = []
+    bot._app = _fake_app(sent)
+
+    async def cb(u, c):
+        await bot._reply_bad_input(7, "Usage: /setAlarm <sensor> <value>")
+
+    with caplog.at_level(logging.INFO, logger="bot.cmdtrace"):
+        asyncio.run(bot._traced(cb)(_trace_update("/setAlarm x", 7), None))
+
+    msgs = [r.message for r in caplog.records if r.name == "bot.cmdtrace"]
+    assert any(m.startswith("←") and "bad-input" in m for m in msgs)
+    assert sent and sent[-1][1].startswith("Usage")   # the reply still went out
+
+
+def test_trace_marks_denied_via_helper(bot, caplog):
+    # A permission denial ("Not authorized.") is `denied`, not `ok` — the
+    # request was well-formed, the caller just lacked the right.
+    bot._cfg.trace_cmd = True
+    sent = []
+    bot._app = _fake_app(sent)
+
+    async def cb(u, c):
+        await bot._reply_denied(7)
+
+    with caplog.at_level(logging.INFO, logger="bot.cmdtrace"):
+        asyncio.run(bot._traced(cb)(_trace_update("/setAlarm SM1_T 30", 7), None))
+
+    msgs = [r.message for r in caplog.records if r.name == "bot.cmdtrace"]
+    assert any(m.startswith("←") and "denied" in m for m in msgs)
+    assert sent and sent[-1][1] == "Not authorized."
