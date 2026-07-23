@@ -9,6 +9,13 @@ from .config import DeviceConfig
 
 log = logging.getLogger(__name__)
 
+# Startup grace for the availability path. z2m publishes availability as retained
+# messages, so on connect the bot immediately learns each device's real state —
+# without a grace, every restart would re-announce OFFLINE for devices z2m already
+# knows are down. Short, since availability (unlike the data-cadence heuristic)
+# needs no warm-up window to fill.
+AVAIL_GRACE = 120
+
 
 @dataclass
 class AlarmState:
@@ -40,6 +47,10 @@ class AlarmManager:
         self._states: dict[str, AlarmState] = {}
         self._started_at = int(time.time())
         self._last_topic_ts: dict[str, int] = {}
+        # device_key → last-known zigbee2mqtt availability (True=online). Fed live
+        # by the MQTT availability callback; read by check_offline for devices
+        # that declare an availability topic.
+        self._availability: dict[str, bool] = {}
         # Latest value of each Signal (never stored in the DB). check_blackout
         # reads this in preference to db.get_latest for signal-backed fields.
         self._signal_latest: dict[str, dict] = {}
@@ -52,6 +63,10 @@ class AlarmManager:
 
     def record_topic_message(self, topic: str):
         self._last_topic_ts[topic] = int(time.time())
+
+    def record_availability(self, device_key: str, online: bool):
+        """Store a device's zigbee2mqtt availability (online/offline)."""
+        self._availability[device_key] = online
 
     def record_signal(self, name: str, value: float):
         """Store a Signal's latest value in memory only (not the DB)."""
@@ -141,22 +156,33 @@ class AlarmManager:
         return max(tss) if tss else 0
 
     async def check_offline(self, device: DeviceConfig):
-        offline_after = device.interval * 3
-        if (int(time.time()) - self._started_at) < offline_after:
-            return
-
-        state = self._state(device.key, "offline")
         now = int(time.time())
 
-        last_ts = self._device_last_ts(device)
-        if last_ts == 0:
-            # no in-memory record yet — fall back to DB
-            for sc in device.fields.values():
-                row = db.get_latest(sc.name)
-                if row and row["ts"] > last_ts:
-                    last_ts = row["ts"]
+        if device.availability_topic and device.key in self._availability:
+            # Trust zigbee2mqtt: it already knows a battery sensor going quiet for
+            # hours is normal, so its online/offline is authoritative here and the
+            # data-cadence heuristic is skipped entirely.
+            if (now - self._started_at) < AVAIL_GRACE:
+                return
+            offline = not self._availability[device.key]
+            first_msg = f"OFFLINE {device.key}: unreachable (zigbee2mqtt)"
+        else:
+            offline_after = device.interval * 3
+            if (now - self._started_at) < offline_after:
+                return
+            last_ts = self._device_last_ts(device)
+            if last_ts == 0:
+                # no in-memory record yet — fall back to DB
+                for sc in device.fields.values():
+                    row = db.get_latest(sc.name)
+                    if row and row["ts"] > last_ts:
+                        last_ts = row["ts"]
+            offline = last_ts == 0 or (now - last_ts) > offline_after
+            first_msg = f"OFFLINE {device.key}: no data for >{offline_after}s"
 
-        if last_ts == 0 or (now - last_ts) > offline_after:
+        state = self._state(device.key, "offline")
+
+        if offline:
             if db.is_silenced(device.key):
                 # ackOff active: suppress notifications, but keep tracking the
                 # active state so a later reconnect still auto-clears the silence.
@@ -165,9 +191,8 @@ class AlarmManager:
             if not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"OFFLINE {device.key}: no data for >{offline_after}s"
-                db.insert_alarm(device.key, "OFFLINE", msg)
-                await self._notify_device(device.key, msg)
+                db.insert_alarm(device.key, "OFFLINE", first_msg)
+                await self._notify_device(device.key, first_msg)
             elif (now - state.last_notified) >= self._offline_repeat:
                 state.last_notified = now
                 msg = f"OFFLINE {device.key}: still no data"

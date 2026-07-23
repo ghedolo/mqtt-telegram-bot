@@ -67,6 +67,10 @@ devices:
     info: "Human-readable label"   # shown in /list
     note: "Optional free text"     # not shown in bot, annotation only
     interval: 300                  # expected publish interval in seconds (default 300)
+    availability: true             # optional: trust zigbee2mqtt's online/offline
+                                   #   for this device instead of the 3×interval
+                                   #   heuristic. `true` uses `<topic>/availability`;
+                                   #   a string sets a custom availability topic.
     viewers: [group_name]          # default viewer groups for all fields
     admins: [ops]                  # default admin groups for all fields (implies viewer)
     fields:
@@ -116,6 +120,8 @@ failure.
 A field marked **`signal: true`** is a **Signal**: its readings are *never stored*. It is diverted out of the sensor set, so it never appears in `/get`, `/graph`, `/list`, the digest, thresholds, or the per-device offline check — its latest value is kept only in memory and used as an input to blackout detection. This lets a fast current meter (e.g. a 3 s `IF` alongside the slow 60 s `I`) drive detection without the storage cost of persisting every fast sample; see _Blackout detection_ below.
 
 Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently.
+
+A device that sets **`availability`** opts out of that heuristic: the bot subscribes to its zigbee2mqtt availability topic (`<topic>/availability` for `availability: true`, or a custom topic given as a string) and takes z2m's own `online`/`offline` as the truth. zigbee2mqtt already distinguishes mains-powered devices (pinged, ~10 min timeout) from battery end-devices (much longer timeout), so a sensor like a Sonoff SNZB-06P that legitimately stays quiet for hours no longer trips a false `OFFLINE`. Both the JSON (`{"state":"online"}`) and legacy plain-string payloads are understood. Adding or changing `availability` requires a **restart** (MQTT subscribes only at startup, like `topic`).
 
 Threshold alarms are evaluated on every incoming reading. When a value first crosses a field's high threshold (`/setAlarm`) or low threshold (`/setAlarmLow`), a `🔴` alarm is sent. While the value stays out of range the alarm repeats, but no more often than `alarm_threshold_repeat` seconds (default 720). The repeat is not a fixed timer: it is checked only when a new reading arrives, so it fires on the first reading after that interval has elapsed — a rarely-reporting sensor repeats later than the nominal period. When the value returns within range a single `🟢` recovery message is sent and the alarm resets. Offline alarms repeat the same way, gated by `alarm_offline_repeat` (default 3600), and auto-clear when the device reports again.
 
@@ -220,6 +226,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | `archive_time` | **Restart** | Read only at startup by the archive loop. |
 | Renaming a **config file** (e.g. `SM1.yaml` → `foo.yaml`) | **Reload** | Files are merged by *content*, not filename — no effect. Exception: renaming **to/from `00-defaults.yaml`** changes which file may carry `defaults:`/`blackouts:`. |
 | `topic` (same sensor name) | **Restart** | MQTT re-subscribes only at startup. |
+| `availability` (add / change / remove) | **Restart** | The availability topic is subscribed only at startup, like `topic`. |
 | Adding a new device / field / sensor | **Restart** | Reload makes it visible in commands, but no data flows until MQTT subscribes at restart. |
 | Adding / removing a **Signal** (`signal: true`) | **Restart** | Like any field its MQTT subscription is set at startup; point a blackout group's `fields` at it with a **reload**. |
 | Removing a device / field | **Restart** | Reload hides it; the old MQTT subscription lingers until restart (harmless). Old DB rows remain — archive them with `/forgetSensor`. |

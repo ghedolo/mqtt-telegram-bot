@@ -35,21 +35,51 @@ def _coerce(sc, raw):
         raise
 
 
+def _parse_availability(raw: bytes) -> Optional[bool]:
+    """Parse a zigbee2mqtt availability payload to True (online)/False (offline).
+    Handles both formats z2m emits: JSON `{"state":"online"}` and the legacy
+    plain string `online`/`offline`. Returns None for anything unrecognised."""
+    try:
+        text = raw.decode().strip()
+    except Exception:
+        return None
+    if text.startswith("{"):
+        try:
+            text = str(json.loads(text).get("state", "")).strip()
+        except Exception:
+            return None
+    low = text.lower()
+    if low == "online":
+        return True
+    if low == "offline":
+        return False
+    return None
+
+
 class MqttClient:
     def __init__(
         self,
         cfg: AppConfig,
         on_reading: Callable[[str, float], Awaitable[None]],
         on_topic_message: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_availability: Optional[Callable[[str, bool], Awaitable[None]]] = None,
     ):
         self._cfg = cfg
         self._on_reading = on_reading
         self._on_topic_message = on_topic_message
+        self._on_availability = on_availability
         # Signals share the dispatch path with sensors — both expose .name and
         # .json_path — but are subscribed here too so their topic is received.
         self._topic_map: dict[str, list] = {}
         for sc in (*cfg.sensors.values(), *cfg.signals.values()):
             self._topic_map.setdefault(sc.topic, []).append(sc)
+        # zigbee2mqtt availability topics → device key. Kept separate from the
+        # sensor topic map: these carry an online/offline state, not a reading.
+        self._availability_map: dict[str, str] = {
+            d.availability_topic: d.key
+            for d in cfg.devices.values()
+            if d.availability_topic
+        }
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         if cfg.mqtt_username:
@@ -63,13 +93,25 @@ class MqttClient:
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:
             log.info("MQTT connected")
-            for topic in self._topic_map:
+            for topic in (*self._topic_map, *self._availability_map):
                 client.subscribe(topic)
                 log.info("Subscribed to %s", topic)
         else:
             log.error("MQTT connect failed: %s", reason_code)
 
     def _on_message(self, client, userdata, msg):
+        device_key = self._availability_map.get(msg.topic)
+        if device_key is not None:
+            # An availability topic: it carries a device online/offline state,
+            # not a reading. Route it out here (never through _on_topic_message,
+            # so it can't feed the data-cadence offline heuristic) and stop.
+            online = _parse_availability(msg.payload)
+            if online is not None and self._loop and self._on_availability:
+                asyncio.run_coroutine_threadsafe(
+                    self._on_availability(device_key, online), self._loop
+                ).add_done_callback(_log_future_exc)
+            return
+
         sensors = self._topic_map.get(msg.topic)
         if not sensors:
             return

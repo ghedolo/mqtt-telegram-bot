@@ -116,8 +116,15 @@ async def main():
     async def on_topic_message(topic: str):
         alarms.record_topic_message(topic)
 
+    async def on_availability(device_key: str, online: bool):
+        alarms.record_availability(device_key, online)
+
     loop = asyncio.get_running_loop()
-    mqtt = MqttClient(cfg, on_reading, on_topic_message=on_topic_message)
+    mqtt = MqttClient(
+        cfg, on_reading,
+        on_topic_message=on_topic_message,
+        on_availability=on_availability,
+    )
     mqtt.start(loop)
 
     await tg.run()

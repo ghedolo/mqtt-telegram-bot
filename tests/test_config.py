@@ -493,3 +493,40 @@ superadmin: ["9"]
     assert cfg.groups["ops"] == [1, 2]
     assert cfg.superadmin == [9]
     assert cfg.telegram_group_id == -100
+
+
+# --- availability ---
+
+def test_availability_absent_is_none(tmp_path):
+    assert _write_env(tmp_path).devices["SM1"].availability_topic is None
+
+
+def test_availability_true_derives_topic(tmp_path):
+    defaults = DEFAULTS.replace(
+        '    topic: "t/sm1"\n', '    topic: "t/sm1"\n    availability: true\n'
+    )
+    cfg = _write_env(tmp_path, defaults=defaults)
+    assert cfg.devices["SM1"].availability_topic == "t/sm1/availability"
+
+
+def test_availability_string_used_verbatim(tmp_path):
+    defaults = DEFAULTS.replace(
+        '    topic: "t/sm1"\n',
+        '    topic: "t/sm1"\n    availability: "custom/avail"\n',
+    )
+    cfg = _write_env(tmp_path, defaults=defaults)
+    assert cfg.devices["SM1"].availability_topic == "custom/avail"
+
+
+def test_availability_true_without_device_topic_errors(tmp_path):
+    defaults = """
+devices:
+  PF:
+    availability: true
+    viewers: [ops]
+    fields:
+      T:
+        topic: "t/pf/t"
+"""
+    with pytest.raises(ValueError, match="availability: true needs a device-level"):
+        _write_env(tmp_path, defaults=defaults)

@@ -157,6 +157,73 @@ def test_offline_suppressed_during_startup_grace(temp_db, clock):
     assert recdev.msgs == []
 
 
+# --- offline via zigbee2mqtt availability ---
+
+def make_avail_device(key="D", topic="t/d", interval=10):
+    dev = make_device(key=key, topic=topic, interval=interval)
+    dev.availability_topic = f"{topic}/availability"
+    return dev
+
+
+def test_availability_offline_then_online(temp_db, clock):
+    recdev = Rec()
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am._started_at = clock["t"] - am_mod.AVAIL_GRACE - 1   # past the availability grace
+    dev = make_avail_device()
+
+    am.record_availability(dev.key, False)     # z2m says offline
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 1
+    assert "OFFLINE" in recdev.msgs[0][1] and "zigbee2mqtt" in recdev.msgs[0][1]
+
+    # still offline within the repeat window -> no new alarm
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 1
+
+    am.record_availability(dev.key, True)      # z2m says online again
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 2
+    assert "ONLINE" in recdev.msgs[1][1]
+
+
+def test_availability_silence_does_not_trip_offline(temp_db, clock):
+    """The SNZB-06P case: no data for far longer than 3×interval, but z2m still
+    reports the device online -> no false OFFLINE."""
+    recdev = Rec()
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am._started_at = clock["t"] - am_mod.AVAIL_GRACE - 1
+    dev = make_avail_device(interval=10)       # heuristic would fire after 30s
+
+    am.record_availability(dev.key, True)
+    clock["t"] += 10_000                        # hours of data silence
+    asyncio.run(am.check_offline(dev))
+    assert recdev.msgs == []
+
+
+def test_availability_startup_grace(temp_db, clock):
+    recdev = Rec()
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am._started_at = clock["t"]                  # just started
+    dev = make_avail_device()
+
+    am.record_availability(dev.key, False)      # retained offline arrives at connect
+    asyncio.run(am.check_offline(dev))
+    assert recdev.msgs == []                     # suppressed during AVAIL_GRACE
+
+
+def test_availability_absent_state_falls_back_to_heuristic(temp_db, clock):
+    """Availability topic configured but no state received yet -> the data-cadence
+    heuristic still governs, so a never-seen device is reported offline."""
+    recdev = Rec()
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am._started_at = clock["t"] - 1000
+    dev = make_avail_device(interval=10)        # offline_after = 30s
+
+    asyncio.run(am.check_offline(dev))          # no availability, no data
+    assert len(recdev.msgs) == 1
+    assert "no data for" in recdev.msgs[0][1]
+
+
 # --- blackout state machine ---
 
 def _group():

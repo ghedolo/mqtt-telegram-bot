@@ -49,6 +49,11 @@ class DeviceConfig:
     info: str
     note: str
     fields: dict[str, "SensorConfig"]   # field_key → SensorConfig
+    # zigbee2mqtt availability topic (e.g. `zigbee2mqtt/MM2/availability`). When
+    # set, check_offline trusts z2m's online/offline here instead of inferring
+    # offline from data silence — z2m already treats a battery sensor going quiet
+    # for hours as normal. None = fall back to the `3 × interval` heuristic.
+    availability_topic: Optional[str] = None
 
 
 @dataclass
@@ -297,6 +302,21 @@ def load(
 
         dev_topic: Optional[str] = dv.get("topic")
         dev_interval = int(dv.get("interval", default_interval))
+
+        # Optional zigbee2mqtt availability. `true` derives the topic from the
+        # device topic (`<topic>/availability`); a string is used verbatim (for
+        # a custom topic or a per-field-topic device with no shared `topic`).
+        avail_raw = dv.get("availability")
+        availability_topic: Optional[str] = None
+        if isinstance(avail_raw, str):
+            availability_topic = avail_raw
+        elif avail_raw:
+            if not dev_topic:
+                raise ValueError(
+                    f"Device {dev_key!r}: availability: true needs a device-level "
+                    f"topic to derive from; give the availability topic as a string instead"
+                )
+            availability_topic = f"{dev_topic}/availability"
         dev_info = dv.get("info", dev_key)
         dev_note = dv.get("note", "")
         # `or []` and not a `.get` default: a bare `viewers:` is None in YAML,
@@ -426,6 +446,7 @@ def load(
             info=dev_info,
             note=dev_note,
             fields=device_fields,
+            availability_topic=availability_topic,
         )
 
     default_repeat = int(defaults.get("alarm_offline_repeat", 3600))

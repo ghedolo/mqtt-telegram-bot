@@ -45,6 +45,12 @@ devices:
       LUX:
         json_path: illumination
         states: {0: dim, 1: bright}
+  AV:
+    topic: "t/av"
+    availability: true
+    viewers: [ops]
+    fields:
+      T: {}
 """
 
 
@@ -63,7 +69,8 @@ class Recorder:
         self.calls.append((name, value))
 
 
-def _build_client(tmp_path, monkeypatch, recorder):
+def _build_client(tmp_path, monkeypatch, recorder,
+                  on_topic_message=None, on_availability=None):
     sd = tmp_path / "sensors.d"
     sd.mkdir()
     (sd / "00-defaults.yaml").write_text(DEFAULTS)
@@ -71,7 +78,9 @@ def _build_client(tmp_path, monkeypatch, recorder):
     cf.write_text(CREDS)
     cfg = config.load(str(sd), str(cf))
 
-    mc = mqtt_mod.MqttClient(cfg, recorder)
+    mc = mqtt_mod.MqttClient(cfg, recorder,
+                             on_topic_message=on_topic_message,
+                             on_availability=on_availability)
     mc._loop = object()  # truthy so dispatch fires
 
     def fake_run(coro, loop):
@@ -166,3 +175,60 @@ def test_oversized_payload_dropped(tmp_path, monkeypatch):
     big = b"0" * (64 * 1024 + 1)
     mc._on_message(None, None, Msg("t/plain", big))
     assert rec.calls == []
+
+
+# --- availability parsing & dispatch ---
+
+class AvailRecorder:
+    def __init__(self):
+        self.calls = []
+
+    async def __call__(self, device_key, online):
+        self.calls.append((device_key, online))
+
+
+class TopicRecorder:
+    def __init__(self):
+        self.calls = []
+
+    async def __call__(self, topic):
+        self.calls.append(topic)
+
+
+def test_parse_availability_formats():
+    p = mqtt_mod._parse_availability
+    assert p(b'{"state":"online"}') is True
+    assert p(b'{"state":"offline"}') is False
+    assert p(b"online") is True
+    assert p(b"offline") is False
+    assert p(b" OFFLINE ") is False          # whitespace + case tolerant
+    assert p(b'{"state":"weird"}') is None
+    assert p(b"maybe") is None
+    assert p(b"not json{") is None
+
+
+def test_availability_message_dispatched(tmp_path, monkeypatch):
+    av = AvailRecorder()
+    mc = _build_client(tmp_path, monkeypatch, Recorder(), on_availability=av)
+    mc._on_message(None, None, Msg("t/av/availability", b'{"state":"offline"}'))
+    mc._on_message(None, None, Msg("t/av/availability", b"online"))
+    assert av.calls == [("AV", False), ("AV", True)]
+
+
+def test_availability_unknown_payload_no_call(tmp_path, monkeypatch):
+    av = AvailRecorder()
+    mc = _build_client(tmp_path, monkeypatch, Recorder(), on_availability=av)
+    mc._on_message(None, None, Msg("t/av/availability", b"garbage"))
+    assert av.calls == []
+
+
+def test_availability_topic_not_routed_as_reading_or_topic_message(tmp_path, monkeypatch):
+    rec = Recorder()
+    tr = TopicRecorder()
+    av = AvailRecorder()
+    mc = _build_client(tmp_path, monkeypatch, rec,
+                       on_topic_message=tr, on_availability=av)
+    mc._on_message(None, None, Msg("t/av/availability", b"offline"))
+    assert rec.calls == []      # not parsed as a reading
+    assert tr.calls == []       # must not feed the data-cadence heuristic
+    assert av.calls == [("AV", False)]
