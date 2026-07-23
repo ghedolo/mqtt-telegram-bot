@@ -2,6 +2,6 @@ python-telegram-bot==22.7
 paho-mqtt==2.1.0
 pyyaml==6.0.3
 matplotlib==3.10.9
-pillow==12.2.0
+pillow==12.3.0
 apscheduler==3.11.2
 openpyxl==3.1.5
