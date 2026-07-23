@@ -501,32 +501,56 @@ def test_availability_absent_is_none(tmp_path):
     assert _write_env(tmp_path).devices["SM1"].availability_topic is None
 
 
-def test_availability_true_derives_topic(tmp_path):
+def test_availability_flag_derives_topic(tmp_path):
     defaults = DEFAULTS.replace(
-        '    topic: "t/sm1"\n', '    topic: "t/sm1"\n    availability: true\n'
+        '    topic: "t/sm1"\n', '    topic: "t/sm1"\n    hasZigbeeAvailability: true\n'
     )
     cfg = _write_env(tmp_path, defaults=defaults)
     assert cfg.devices["SM1"].availability_topic == "t/sm1/availability"
 
 
-def test_availability_string_used_verbatim(tmp_path):
+def test_availability_topic_used_verbatim(tmp_path):
     defaults = DEFAULTS.replace(
         '    topic: "t/sm1"\n',
-        '    topic: "t/sm1"\n    availability: "custom/avail"\n',
+        '    topic: "t/sm1"\n    availabilityTopic: "custom/avail"\n',
     )
     cfg = _write_env(tmp_path, defaults=defaults)
     assert cfg.devices["SM1"].availability_topic == "custom/avail"
 
 
-def test_availability_true_without_device_topic_errors(tmp_path):
+def test_availability_topic_wins_over_flag(tmp_path):
+    defaults = DEFAULTS.replace(
+        '    topic: "t/sm1"\n',
+        '    topic: "t/sm1"\n    hasZigbeeAvailability: true\n    availabilityTopic: "custom/avail"\n',
+    )
+    cfg = _write_env(tmp_path, defaults=defaults)
+    assert cfg.devices["SM1"].availability_topic == "custom/avail"
+
+
+def test_availability_topic_enables_without_device_topic(tmp_path):
+    # per-field-topic device: no shared topic, but an explicit availabilityTopic works
     defaults = """
 devices:
   PF:
-    availability: true
+    availabilityTopic: "t/pf/availability"
     viewers: [ops]
     fields:
       T:
         topic: "t/pf/t"
 """
-    with pytest.raises(ValueError, match="availability: true needs a device-level"):
+    cfg = _write_env(tmp_path, defaults=defaults)
+    assert cfg.devices["PF"].availability_topic == "t/pf/availability"
+
+
+def test_availability_flag_without_device_topic_errors(tmp_path):
+    defaults = """
+devices:
+  PF:
+    hasZigbeeAvailability: true
+    viewers: [ops]
+    fields:
+      T:
+        topic: "t/pf/t"
+"""
+    with pytest.raises(ValueError, match="hasZigbeeAvailability needs a device-level"):
         _write_env(tmp_path, defaults=defaults)

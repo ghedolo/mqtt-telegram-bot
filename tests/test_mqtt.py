@@ -47,7 +47,7 @@ devices:
         states: {0: dim, 1: bright}
   AV:
     topic: "t/av"
-    availability: true
+    hasZigbeeAvailability: true
     viewers: [ops]
     fields:
       T: {}

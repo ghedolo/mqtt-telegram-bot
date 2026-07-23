@@ -303,18 +303,16 @@ def load(
         dev_topic: Optional[str] = dv.get("topic")
         dev_interval = int(dv.get("interval", default_interval))
 
-        # Optional zigbee2mqtt availability. `true` derives the topic from the
-        # device topic (`<topic>/availability`); a string is used verbatim (for
-        # a custom topic or a per-field-topic device with no shared `topic`).
-        avail_raw = dv.get("availability")
-        availability_topic: Optional[str] = None
-        if isinstance(avail_raw, str):
-            availability_topic = avail_raw
-        elif avail_raw:
+        # Optional zigbee2mqtt availability. `availabilityTopic` names the topic
+        # explicitly (wins if given, and is the way to enable it for a device
+        # with only per-field topics); otherwise `hasZigbeeAvailability: true`
+        # derives it from the device topic as `<topic>/availability`.
+        availability_topic: Optional[str] = dv.get("availabilityTopic")
+        if availability_topic is None and dv.get("hasZigbeeAvailability"):
             if not dev_topic:
                 raise ValueError(
-                    f"Device {dev_key!r}: availability: true needs a device-level "
-                    f"topic to derive from; give the availability topic as a string instead"
+                    f"Device {dev_key!r}: hasZigbeeAvailability needs a device-level "
+                    f"topic to derive from; set availabilityTopic explicitly instead"
                 )
             availability_topic = f"{dev_topic}/availability"
         dev_info = dv.get("info", dev_key)
