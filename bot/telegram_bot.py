@@ -134,6 +134,7 @@ class TelegramBot:
         self.reset_alarm_fn: Optional[Callable[[str], None]] = None
         self.apply_alarm_config_fn: Optional[Callable[["AppConfig"], None]] = None
         self.signal_snapshot_fn: Optional[Callable[[], dict]] = None
+        self.availability_snapshot_fn: Optional[Callable[[], dict]] = None
         self._started_at = time.time()
         self._app = Application.builder().token(cfg.telegram_token).build()
         # Handlers intentionally process edited messages too (PTB keys off
@@ -540,10 +541,25 @@ class TelegramBot:
         # under "T" (all temperatures together), regardless of device structure.
         return sorted(names, key=lambda n: (n.rsplit("_", 1)[-1].lower(), n.lower()))
 
+    def _is_stale(self, sc, age: int, avail: dict) -> bool:
+        """Whether a sensor counts as silent, by the same rule `check_offline`
+        applies: trust zigbee2mqtt's availability when the device publishes one,
+        otherwise allow 3 × the expected publish interval.
+
+        This used to be a flat 6h cutoff for every sensor, which contradicted
+        the offline alarm in both directions — a device publishing hourly read
+        as alive for 6h, one publishing every minute stayed "fresh" long after
+        its offline alarm had fired."""
+        dev = self._cfg.devices.get(sc.device_key)
+        if dev is not None and dev.availability_topic and sc.device_key in avail:
+            return not avail[sc.device_key]
+        return age > sc.interval * 3
+
     def _render_sensors_text(self, names: list[str]) -> Optional[str]:
         """Build the monospace sensor table shared by /get and the digest.
         Returns a Markdown code block, or None if no sensors resolve."""
         rows_map = {r["sensor"]: r for r in db.get_all_latest()}
+        avail = self.availability_snapshot_fn() if self.availability_snapshot_fn else {}
         now = int(time.time())
         entries = []  # (name, value, ago)
         for name in names:
@@ -553,8 +569,8 @@ class TelegramBot:
             r = rows_map.get(name)
             if r:
                 val = self._cfg.fmt(name, r['value'])
-                mins = (now - r["ts"]) // 60
-                ago = "∞" if mins > 360 else str(mins)
+                age = now - r["ts"]
+                ago = "∞" if self._is_stale(sc, age, avail) else str(age // 60)
             else:
                 val = "-"
                 ago = "∞"

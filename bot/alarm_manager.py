@@ -76,6 +76,12 @@ class AlarmManager:
         """Read-only view of the in-memory Signal cache (for /listSignal)."""
         return dict(self._signal_latest)
 
+    def availability_snapshot(self) -> dict[str, bool]:
+        """Read-only view of the last zigbee2mqtt availability per device key
+        (for /get, which marks a Sensor stale the same way check_offline does).
+        Only devices that publish an availability topic ever appear here."""
+        return dict(self._availability)
+
     def last_mqtt_ts(self) -> int | None:
         return max(self._last_topic_ts.values(), default=None)
 

@@ -55,7 +55,7 @@ checklist: [docs/permissions.md](docs/permissions.md).
 |---|---|
 | `/start [token]` | Complete DM Registration; the HMAC Token must have been minted for the sender |
 | `/list` | List all visible Devices, one line per Device with all Fields, then visible Blackout Groups |
-| `/get [expr] [-s\|-f]` | Get Fields matching expr (Sensor name, glob, comma-separated); no arg = digest subscriptions; `-f` sorts by quantity (default), `-s` by name |
+| `/get [expr] [-s\|-f]` | Get Fields matching expr (Sensor name, glob, comma-separated); no arg = digest subscriptions; `-f` sorts by quantity (default), `-s` by name. `min ago` reads `∞` once the Sensor is silent by the offline rule (`3 × interval`, or zigbee2mqtt availability) |
 | `/exprSyntax` | Help for the expr syntax accepted by `/get`, `/graph`, `/csv`, `/xlsx`, `/lastAlarms`, `/digest`, `/silent` |
 | `/getAlarm [name]` | Show alarm threshold(s) for a Field; no arg = all visible Fields |
 | `/graph <expr> [Nh]` | Chart the last N hours for matching Fields (default 8h, max 24h; 72h for Admins) |

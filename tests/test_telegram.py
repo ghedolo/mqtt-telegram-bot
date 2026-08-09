@@ -224,6 +224,80 @@ def test_build_digest_empty_when_no_subscriptions(bot):
     assert bot.build_digest(1) == ""
 
 
+# --- staleness of the "min ago" column (same rule as the offline alarm) ---
+
+AVAIL_DEFAULTS = """
+defaults:
+  interval: 300
+devices:
+  FAST:
+    topic: "t/fast"
+    interval: 60
+    viewers: [ops]
+    fields:
+      T: {}
+  SLOW:
+    topic: "t/slow"
+    interval: 3600
+    viewers: [ops]
+    fields:
+      T: {}
+  ZB:
+    topic: "t/zb"
+    interval: 60
+    availabilityTopic: "zigbee2mqtt/ZB/availability"
+    viewers: [ops]
+    fields:
+      T: {}
+"""
+
+
+@pytest.fixture
+def abot(tmp_path, temp_db):
+    sd = tmp_path / "sensors.d"
+    sd.mkdir()
+    (sd / "00-defaults.yaml").write_text(AVAIL_DEFAULTS)
+    cf = tmp_path / "credentials.yaml"
+    cf.write_text(CREDS)
+    return tb.TelegramBot(config.load(str(sd), str(cf)))
+
+
+def test_stale_threshold_follows_each_sensor_interval(abot, temp_db):
+    # 2h old: past 3×60s for FAST, well inside 3×3600s for SLOW
+    old = int(time.time()) - 7200
+    temp_db.insert_reading("FAST_T", 20.0, ts=old)
+    temp_db.insert_reading("SLOW_T", 21.0, ts=old)
+    out = abot._render_sensors_text(["FAST_T", "SLOW_T"])
+    fast, slow = [ln for ln in out.splitlines() if ln.startswith(("FAST_T", "SLOW_T"))]
+    assert fast.endswith("∞")
+    assert slow.endswith("120")
+
+
+def test_zigbee_availability_wins_over_data_cadence(abot, temp_db):
+    # reading far older than 3×interval, but z2m says the device is online
+    temp_db.insert_reading("ZB_T", 20.0, ts=int(time.time()) - 86400)
+    abot.availability_snapshot_fn = lambda: {"ZB": True}
+    assert "∞" not in abot._render_sensors_text(["ZB_T"])
+    # and offline marks it silent even with a reading seconds old
+    temp_db.insert_reading("ZB_T", 20.0)
+    abot.availability_snapshot_fn = lambda: {"ZB": False}
+    assert "∞" in abot._render_sensors_text(["ZB_T"])
+
+
+def test_availability_ignored_for_device_without_topic(abot, temp_db):
+    # a stray availability entry must not override the cadence rule for a
+    # device that publishes no availability topic
+    temp_db.insert_reading("FAST_T", 20.0, ts=int(time.time()) - 7200)
+    abot.availability_snapshot_fn = lambda: {"FAST": True}
+    assert "∞" in abot._render_sensors_text(["FAST_T"])
+
+
+def test_stale_column_without_availability_hook(abot, temp_db):
+    # no hook wired (e.g. tests, or before main.py binds it) -> cadence only
+    temp_db.insert_reading("ZB_T", 20.0, ts=int(time.time()) - 7200)
+    assert "∞" in abot._render_sensors_text(["ZB_T"])
+
+
 # --- /listSignal rendering (pure) ---
 
 def test_listsignal_admin_sees_live_signal_value(bot):

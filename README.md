@@ -121,7 +121,7 @@ failure.
 
 A field marked **`signal: true`** is a **Signal**: its readings are *never stored*. It is diverted out of the sensor set, so it never appears in `/get`, `/graph`, `/list`, the digest, thresholds, or the per-device offline check — its latest value is kept only in memory and used as an input to blackout detection. This lets a fast current meter (e.g. a 3 s `IF` alongside the slow 60 s `I`) drive detection without the storage cost of persisting every fast sample; see _Blackout detection_ below.
 
-Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently.
+Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently. The same rule (including the zigbee2mqtt availability override below) decides when `/get` and the digest print `∞` instead of a `min ago` count, so the table never disagrees with the alarms.
 
 A device that sets **`hasZigbeeAvailability: true`** opts out of that heuristic: the bot subscribes to its zigbee2mqtt availability topic (`<topic>/availability`, or the explicit **`availabilityTopic`** if given) and takes z2m's own `online`/`offline` as the truth. zigbee2mqtt already distinguishes mains-powered devices (pinged, ~10 min timeout) from battery end-devices (much longer timeout), so a sensor like a Sonoff SNZB-06P that legitimately stays quiet for hours no longer trips a false `OFFLINE`. Both the JSON (`{"state":"online"}`) and legacy plain-string payloads are understood. Adding or changing these keys requires a **restart** — a `/reloadConfig` is **not** enough: MQTT subscriptions (including the `.../availability` topic) are wired up only at startup, exactly like `topic`, so a reload alone would never subscribe to availability and the device would stay on the old heuristic.
 
@@ -260,13 +260,13 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | Command | Description |
 |---|---|
 | `/list` | All devices — one line per device with all visible fields and thresholds; also lists subscribable blackout groups with your subscription state (🔔/🔕) |
-| `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-f` groups by measured quantity (default — all temperatures together, by the sensor name's last `_`-segment), `-s` by full name (keeps a device's fields together) |
+| `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-f` groups by measured quantity (default — all temperatures together, by the sensor name's last `_`-segment), `-s` by full name (keeps a device's fields together). The `min ago` column shows `∞` once the sensor counts as silent — by the same rule the offline alarm uses: `3 × interval`, or zigbee2mqtt availability where the device publishes it |
 | `/getAlarm [name]` | Show alarm threshold(s) |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h; 72h for admins) |
 | `/csv <expr> [Nh]` | Download readings as CSV (default 8h, max 24h; 72h for admins) |
 | `/xlsx <expr> [Nh]` | Download readings as Excel, one sheet per sensor (default 8h, max 24h; 72h for admins) |
 | `/last` | Last time any message arrived from MQTT (no content shown) |
-| `/lastSeen [expr] [-s\|-f]` | Last stored reading per sensor: value, absolute timestamp, age. No arg = all visible sensors. Unlike `/get`'s `min ago` column (which saturates at `∞` past 6h) this dates a sensor that has been silent for days; `never` = no reading ever stored |
+| `/lastSeen [expr] [-s\|-f]` | Last stored reading per sensor: value, absolute timestamp, age. No arg = all visible sensors. Unlike `/get`'s `min ago` column (which shows `∞` once a sensor counts as silent) this dates a sensor that has been quiet for days; `never` = no reading ever stored |
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
@@ -350,7 +350,7 @@ Once a day at `archive_time` (default 12:00 local) the bot moves readings older 
 - **Threshold alarms** — sent via DM to admins of the affected field (sensor).
 - **Offline alarms** — one alarm per device, sent via DM to admins of fields for which the user has an active `/digest` subscription.
 - **Blackout alarms** — one alarm per blackout group when all its current fields read near-zero for a sustained duration; sent via DM to viewers of a watched field who subscribed to the group id via `/digest`. Auto-clears with an end-of-blackout message. See _Blackout detection_ above.
-- **Daily digest** — sent via DM to each user, showing only their subscribed sensors as the same monospace `Sensor | value | min ago` table as `/get` with no args. Subscriptions start empty; manage with `/digest`. No daily message is posted to the group — the digest is per-user DM only.
+- **Daily digest** — sent via DM to each user, showing only their subscribed sensors as the same monospace `Sensor | value | min ago` table as `/get` with no args (same `∞` rule for a silent sensor). Subscriptions start empty; manage with `/digest`. No daily message is posted to the group — the digest is per-user DM only.
 - **Command replies** — sent via DM, silently (`disable_notification=True`).
 - **Unknown commands** — reply `❓ Unknown command` via DM, but only to a DM-registered user; a command addressed to another bot in a shared group (`/x@otherbot`) and any command from a non-registered sender are ignored (no reply, no registration prompt).
 - Bot replies never quote or echo user input.
@@ -401,18 +401,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-09
-- **Sessions:** 16 — 7623 messages (2775 user + 4848 assistant)
-- **Active conversation time:** ~1596 min (~26h 36m)
+- **Sessions:** 16 — 7716 messages (2813 user + 4903 assistant)
+- **Active conversation time:** ~1612 min (~26h 52m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 462,361 |
-| Output | 3,888,634 |
-| Cache write | 14,312,597 |
-| Cache read | 784,251,640 |
-| **Total** | **~802 M** |
+| Input (non-cache) | 462,467 |
+| Output | 3,907,221 |
+| Cache write | 14,356,619 |
+| Cache read | 788,888,258 |
+| **Total** | **~807 M** |
 
-The assistant averaged **802 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **797 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

@@ -129,6 +129,7 @@ parsing, name resolution, and DB side effects are all exercised.
 - `test_token_roundtrip` / `..._wrong_sender` / `..._tampered_signature` / `..._malformed` / `..._expired` — registration-token HMAC accepts a valid token and rejects wrong sender, tampering, garbage, and >24h-old tokens.
 - `test_build_digest_only_subscribed_and_visible` — digest lists only sensors both subscribed and visible.
 - `test_build_digest_empty_when_no_subscriptions` — no subscriptions → empty string.
+- `test_stale_threshold_follows_each_sensor_interval` / `test_zigbee_availability_wins_over_data_cadence` / `test_availability_ignored_for_device_without_topic` / `test_stale_column_without_availability_hook` — the `∞` in `/get`'s `min ago` column follows the same rule as the offline alarm: `3 × interval` per sensor (so a 1-minute sensor goes `∞` where an hourly one still prints minutes), overridden by zigbee2mqtt availability only for devices that publish an availability topic, and falling back to cadence when no availability hook is wired.
 - `test_listsignal_*` — `/listSignal` rendering: admin sees live signal value, viewer hides it, subscription state flips the hint, outsider sees nothing.
 - `test_render_sysinfo` / `..._no_mqtt` — `/sysinfo` summary text, with and without a last-MQTT timestamp.
 - `test_render_sysinfo_surfaces_config_warnings` — non-fatal config warnings are appended to `/sysinfo`, so they reach a human rather than only a log nobody tails.
