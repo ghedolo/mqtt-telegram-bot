@@ -115,6 +115,8 @@ failure.
 
 `decimals` (0-5, default 1) sets how many decimal places each reading is rounded to for storage and shown with everywhere — `/get`, `/list`, alarm messages, `/setAlarm` input, and graph stats. Out-of-range values are rejected at startup.
 
+**What the loader refuses to start on**, because the alternative is a bot that looks configured and quietly monitors nothing: an `interval` of zero or less (the offline heuristic is `3 × interval`); a `validMin` above its `validMax` (every real reading would be discarded as a glitch); two device keys differing only by case, like two sensor names, since both resolve case-insensitively; a blackout group id equal to a sensor name, a signal name **or** a device key (all four share one alarm-history namespace); `digest_time` / `archive_time` that is not a valid `HH:MM`; and an `mqtt.tls` that is neither a boolean nor an obvious yes/no spelling — a quoted `"false"` used to read as *true*. A **group name that does not exist** in `credentials.yaml` is not fatal: it is fail-closed anyway, so it becomes a config warning (visible at the bottom of `/sysinfo` and in the `/reloadConfig` reply) rather than a refusal to start.
+
 `states` turns a numeric field into a **discrete state field** — the value is still stored as a number, but displayed as a label. It maps values to names (keys accept `false`/`true`, `0`/`1`, or `"0"`/`"1"` — all normalised to `0.0`/`1.0`), so a Zigbee2MQTT door contact (`contact: false`/`true`) shows as `Aperta`/`Chiusa` in `/get`, `/list` and the digest instead of `0.0`/`1.0`. It also changes how the field is **graphed**: a state field is drawn as a **step line** (holds its value between readings, jumps at each change) with the y-axis labelled by the state names, rather than an interpolated line with a numeric axis. A threshold set on the raw number (e.g. `/setAlarmLow contact 0.5`) still fires an edge alarm on the transition. Unmapped values (like the `0.5` threshold itself) fall back to the number.
 
 `states` is also used **in reverse at ingestion**: when a payload is a discrete **string** an enum that `float()` can't parse — e.g. a Zigbee2MQTT occupancy sensor's `illumination: "dim"`/`"bright"` — the label is looked up in `states` and stored as its numeric code. So a string-enum field is declared as `states: {0: dim, 1: bright}` and is then stored, thresholded, graphed and rendered exactly like a boolean field. (A boolean payload like `occupancy: false` needs no reverse lookup — `float(false)` already yields `0.0` — but still uses `states` for its labels.)
@@ -345,7 +347,7 @@ Readings are stored in SQLite in two tables:
 
 Once a day at `archive_time` (default 12:00 local) the bot moves readings older than `retention_days` from `readings` to `readings_archive`. No data is ever deleted automatically. The archive fires at a fixed wall-clock time rather than on a rolling 24 h timer, so it still runs on hosts that are powered off overnight (a plain 24 h sleep would never elapse on <24 h of daily uptime).
 
-`/forgetSensor <name>` moves all current readings for that sensor to the archive, deletes its alarm history and silence state, and preserves the alarm threshold.
+`/forgetSensor <device>` moves all current readings for every field of that device to the archive and clears what belonged to them: alarm history, thresholds (high and low), and the device's offline-ack state. A `defaultAlarmHigh` / `defaultAlarmLow` in the config re-seeds the threshold on the next reload or restart, since seeding only applies when no threshold is set.
 
 ## Notifications
 
@@ -403,18 +405,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-09
-- **Sessions:** 16 — 8076 messages (2962 user + 5114 assistant)
-- **Active conversation time:** ~1667 min (~27h 47m)
+- **Sessions:** 16 — 8204 messages (3018 user + 5186 assistant)
+- **Active conversation time:** ~1694 min (~28h 14m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 462,868 |
-| Output | 4,029,642 |
-| Cache write | 14,554,734 |
-| Cache read | 824,620,079 |
-| **Total** | **~843 M** |
+| Input (non-cache) | 463,004 |
+| Output | 4,061,144 |
+| Cache write | 14,623,284 |
+| Cache read | 842,865,965 |
+| **Total** | **~862 M** |
 
-The assistant averaged **788 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **783 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

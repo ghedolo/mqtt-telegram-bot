@@ -17,6 +17,7 @@ mqtt:
   port: 1883
 groups:
   ops: [1, 2]
+  nobody: []          # declared-but-empty: the "no one" idiom used by SM1_I below
 superadmin: [9]
 """
 
@@ -205,6 +206,98 @@ devices:
 """
     with pytest.raises(ValueError, match="differ only by case"):
         _write_env(tmp_path, defaults=defaults)
+
+
+def test_device_keys_differing_only_by_case_rejected(tmp_path):
+    # resolve_device matches case-insensitively, so two such keys would leave
+    # every command naming a third spelling resolving by dict order
+    defaults = """
+devices:
+  SM1:
+    topic: "t/a"
+    fields:
+      T: {}
+  sm1:
+    topic: "t/b"
+    fields:
+      H: {}
+"""
+    with pytest.raises(ValueError, match="differ only by case"):
+        _write_env(tmp_path, defaults=defaults)
+
+
+def test_interval_must_be_positive(tmp_path):
+    # 3 × 0 = 0: the offline heuristic would declare the device dead forever
+    defaults = """
+devices:
+  A:
+    topic: "t/a"
+    interval: 0
+    fields:
+      T: {}
+"""
+    with pytest.raises(ValueError, match="'interval' must be > 0"):
+        _write_env(tmp_path, defaults=defaults)
+
+
+def test_field_interval_must_be_positive(tmp_path):
+    defaults = """
+devices:
+  A:
+    topic: "t/a"
+    fields:
+      T:
+        interval: -5
+"""
+    with pytest.raises(ValueError, match="'interval' must be > 0"):
+        _write_env(tmp_path, defaults=defaults)
+
+
+def test_valid_range_must_not_be_inverted(tmp_path):
+    # inverted bounds make is_valid() reject every real reading, so threshold
+    # alarms stop firing on a sensor that looks perfectly configured
+    defaults = """
+devices:
+  A:
+    topic: "t/a"
+    fields:
+      T:
+        validMin: 80
+        validMax: -20
+"""
+    with pytest.raises(ValueError, match="validMin"):
+        _write_env(tmp_path, defaults=defaults)
+
+
+def test_valid_range_equal_bounds_allowed(tmp_path):
+    defaults = """
+devices:
+  A:
+    topic: "t/a"
+    viewers: [ops]
+    fields:
+      T:
+        validMin: 5
+        validMax: 5
+"""
+    cfg = _write_env(tmp_path, defaults=defaults)
+    assert cfg.is_valid("A_T", 5.0) is True
+
+
+def test_unknown_group_name_warns_not_raises(tmp_path):
+    # fail-closed either way, but the author meant to grant access and nothing
+    # would otherwise tell them the group name never matched
+    defaults = """
+devices:
+  A:
+    topic: "t/a"
+    viewers: [wathcers]
+    fields:
+      T: {}
+"""
+    cfg = _write_env(tmp_path, defaults=defaults)
+    assert cfg.viewers_of("A_T") == set()
+    assert any("wathcers" in w for w in cfg.warnings)
 
 
 def test_decimals_out_of_range(tmp_path):
@@ -412,6 +505,14 @@ def test_blackout_collides_with_sensor_name(tmp_path):
         _write_env(tmp_path, defaults=bad)
 
 
+def test_blackout_collides_with_device_key(tmp_path):
+    # Devices and Blackout Groups share the alarm-subject namespace: a reused id
+    # would fold a device's OFFLINE history into the group's blackout history
+    bad = BLACKOUT_BASE.replace("  R2:", "  SM1:")
+    with pytest.raises(ValueError, match="collides with a device key"):
+        _write_env(tmp_path, defaults=bad)
+
+
 def test_blackout_stale_after_must_be_positive(tmp_path):
     bad = BLACKOUT_BASE.replace("stale_after: 15", "stale_after: 0")
     with pytest.raises(ValueError, match="'stale_after' must be > 0"):
@@ -469,6 +570,37 @@ def test_mqtt_tls_inferred_from_port_8883(tmp_path):
 def test_mqtt_tls_off_on_plain_port(tmp_path):
     cfg = _write_env(tmp_path)  # port 1883
     assert cfg.mqtt_tls is False
+
+
+def test_mqtt_tls_quoted_false_is_off(tmp_path):
+    # plain bool("false") is True: an explicit opt-out used to silently enable TLS
+    creds = CREDS.replace("port: 1883", 'port: 1883\n  tls: "false"')
+    assert _write_env(tmp_path, creds=creds).mqtt_tls is False
+
+
+def test_mqtt_tls_garbage_rejected(tmp_path):
+    creds = CREDS.replace("port: 1883", 'port: 1883\n  tls: "maybe"')
+    with pytest.raises(ValueError, match="expected a boolean"):
+        _write_env(tmp_path, creds=creds)
+
+
+def test_schedule_times_validated_at_load(tmp_path):
+    # a bad time used to kill the digest/archive task inside asyncio, leaving the
+    # bot up but silently no longer archiving or sending the digest
+    creds = CREDS.replace("group_id: -100", 'group_id: -100\n  digest_time: "3pm"')
+    with pytest.raises(ValueError, match="expected HH:MM"):
+        _write_env(tmp_path, creds=creds)
+
+
+def test_schedule_time_out_of_range_rejected(tmp_path):
+    creds = CREDS.replace("group_id: -100", 'group_id: -100\n  digest_time: "25:99"')
+    with pytest.raises(ValueError, match="not a valid time of day"):
+        _write_env(tmp_path, creds=creds)
+
+
+def test_schedule_time_normalised(tmp_path):
+    creds = CREDS.replace("group_id: -100", 'group_id: -100\n  digest_time: "9:5"')
+    assert _write_env(tmp_path, creds=creds).digest_time == "09:05"
 
 
 def test_poll_interval_clamped(tmp_path):

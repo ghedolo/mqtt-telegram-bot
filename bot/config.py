@@ -221,6 +221,39 @@ def _load_yaml(path: str) -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _as_bool(value, default: bool, where: str) -> bool:
+    """A YAML flag as a bool, rejecting anything ambiguous.
+
+    Plain `bool(value)` turned a quoted `"false"` into True — silently enabling
+    TLS on an installation that had explicitly written it off."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str) and value.strip().lower() in ("0", "1", "true", "false", "yes", "no"):
+        return value.strip().lower() in ("1", "true", "yes")
+    raise ValueError(f"{where}: expected a boolean, got {value!r}")
+
+
+def _as_hhmm(value, where: str) -> str:
+    """A daily-schedule time as `HH:MM`.
+
+    Validated here rather than at first use: the schedule loops parse it inside
+    an asyncio task, where a bad value kills the task on the spot and the bot
+    keeps running with no digest and no archiving, saying nothing."""
+    text = str(value)
+    try:
+        hh, mm = text.split(":")
+        hour, minute = int(hh), int(mm)
+    except ValueError:
+        raise ValueError(f"{where}: expected HH:MM, got {value!r}")
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError(f"{where}: {value!r} is not a valid time of day")
+    return f"{hour:02d}:{minute:02d}"
+
+
 def _collect_yaml_files(d: str) -> list[str]:
     """All *.yaml / *.yml under d, recursing into subdirectories, sorted."""
     files: list[str] = []
@@ -295,13 +328,26 @@ def load(
     seen_topics: set[str] = set()
     seen_names: set[str] = set()
     seen_names_lower: dict[str, str] = {}
+    seen_devices_lower: dict[str, str] = {}
 
     for dev_key, dv in raw.get("devices", {}).items():
         if dev_key in devices:
             raise ValueError(f"Duplicate device key: {dev_key!r}")
+        # Device keys are matched case-insensitively by resolve_device, exactly
+        # as Sensor names are, so two keys differing only by case would leave
+        # every command that names one of them resolving by dict order.
+        dev_low = dev_key.lower()
+        if dev_low in seen_devices_lower:
+            raise ValueError(
+                f"Device keys differ only by case: {seen_devices_lower[dev_low]!r} "
+                f"and {dev_key!r}"
+            )
+        seen_devices_lower[dev_low] = dev_key
 
         dev_topic: Optional[str] = dv.get("topic")
         dev_interval = int(dv.get("interval", default_interval))
+        if dev_interval <= 0:
+            raise ValueError(f"Device {dev_key!r}: 'interval' must be > 0")
 
         # Optional zigbee2mqtt availability. `availabilityTopic` names the topic
         # explicitly (wins if given, and is the way to enable it for a device
@@ -403,6 +449,22 @@ def load(
                     f"Field {fk!r} of device {dev_key!r}: decimals must be 0-5, got {decimals}"
                 )
 
+            f_interval = int(fv.get("interval", dev_interval))
+            if f_interval <= 0:
+                raise ValueError(
+                    f"Field {fk!r} of device {dev_key!r}: 'interval' must be > 0"
+                )
+
+            v_min = float(fv["validMin"]) if "validMin" in fv else None
+            v_max = float(fv["validMax"]) if "validMax" in fv else None
+            if v_min is not None and v_max is not None and v_min > v_max:
+                # a swapped pair makes is_valid() reject every real reading, so
+                # alarms quietly stop firing on a sensor that looks configured
+                raise ValueError(
+                    f"Field {fk!r} of device {dev_key!r}: validMin ({v_min:g}) "
+                    f"must not exceed validMax ({v_max:g})"
+                )
+
             states = None
             if "states" in fv:
                 # Readings are stored as floats, so normalise every key form
@@ -421,13 +483,13 @@ def load(
                 name=sensor_name,
                 topic=f_topic,
                 json_path=fv.get("json_path") or fv.get("json_field"),
-                interval=int(fv.get("interval", dev_interval)),
+                interval=f_interval,
                 info=dev_info,
                 unit=fv.get("unit", ""),
                 default_alarm_high=float(fv["defaultAlarmHigh"]) if "defaultAlarmHigh" in fv else None,
                 default_alarm_low=float(fv["defaultAlarmLow"]) if "defaultAlarmLow" in fv else None,
-                valid_min=float(fv["validMin"]) if "validMin" in fv else None,
-                valid_max=float(fv["validMax"]) if "validMax" in fv else None,
+                valid_min=v_min,
+                valid_max=v_max,
                 decimals=decimals,
                 states=states,
                 viewers=f_viewers,
@@ -451,10 +513,15 @@ def load(
     blackouts: dict[str, BlackoutGroup] = {}
     for gid, gv in (raw.get("blackouts") or {}).items():
         gv = gv or {}
+        # A Blackout Group id shares one namespace with Sensors, Signals and
+        # Device keys: all four end up as alarm subjects in the same column, so
+        # a reused id would fold two entities' alarm histories into one listing.
         if gid in sensors:
-            raise ValueError(
-                f"Blackout group {gid!r} collides with a sensor name"
-            )
+            raise ValueError(f"Blackout group {gid!r} collides with a sensor name")
+        if gid in signals:
+            raise ValueError(f"Blackout group {gid!r} collides with a signal name")
+        if gid in devices:
+            raise ValueError(f"Blackout group {gid!r} collides with a device key")
         g_fields = list(gv.get("fields", []))
         if not g_fields:
             raise ValueError(f"Blackout group {gid!r}: 'fields' is required and non-empty")
@@ -482,14 +549,28 @@ def load(
             stale_after=stale_after,
         )
 
-    for w in warnings:
-        log.warning("config: %s", w)
-
     tg = sec["telegram"]
     mq = sec["mqtt"]
     raw_groups = sec.get("groups", {})
     groups = {g: [int(i) for i in members] for g, members in raw_groups.items()}
     superadmin = [int(i) for i in sec.get("superadmin", [])]
+
+    # An Access Group named in sensors.d/ but absent from credentials.yaml
+    # resolves to the empty set, so the entity is fail-closed — safe, but the
+    # author wanted to grant access and nothing says they failed to. Warn rather
+    # than refuse: an unwatched sensor is the worse outcome of the two.
+    for entity, entries in (("sensor", sensors), ("signal", signals)):
+        for name, entry in entries.items():
+            for role, group_names in (("viewers", entry.viewers), ("admins", entry.admins)):
+                for g in group_names:
+                    if g not in groups:
+                        warnings.append(
+                            f"{entity} {name!r}: {role} names group {g!r}, which is not "
+                            f"defined in credentials.yaml — nobody is granted access by it"
+                        )
+
+    for w in warnings:
+        log.warning("config: %s", w)
 
     return AppConfig(
         telegram_token=tg["token"],
@@ -501,7 +582,7 @@ def load(
         mqtt_port=int(mq.get("port", 1883)),
         mqtt_username=mq.get("username", ""),
         mqtt_password=mq.get("password", ""),
-        mqtt_tls=bool(mq.get("tls", int(mq.get("port", 1883)) == 8883)),
+        mqtt_tls=_as_bool(mq.get("tls"), int(mq.get("port", 1883)) == 8883, "mqtt.tls"),
         sensors=sensors,
         devices=devices,
         retention_days=int(defaults.get("retention_days", 30)),
@@ -509,8 +590,8 @@ def load(
         alarm_offline_repeat=int(defaults.get("alarm_offline_repeat", 3600)),
         debug=int(tg.get("debug", 1)),
         silent_start=bool(int(tg.get("silent_start", 0))),
-        digest_time=str(tg.get("digest_time", "15:00")),
-        archive_time=str(defaults.get("archive_time", "12:00")),
+        digest_time=_as_hhmm(tg.get("digest_time", "15:00"), "telegram.digest_time"),
+        archive_time=_as_hhmm(defaults.get("archive_time", "12:00"), "defaults.archive_time"),
         enable_menu=bool(int(tg.get("enableMenu", 1))),
         trace_cmd=bool(int(tg.get("traceCmd", 0))),
         trace_cmd_file=str(tg.get("traceCmdFile", "data/cmdtrace.log")),

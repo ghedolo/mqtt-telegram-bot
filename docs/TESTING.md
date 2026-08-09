@@ -32,6 +32,7 @@ run tests.
 - `test_archive_moves_old_keeps_recent` — old rows move to `readings_archive`, recent stay.
 - `test_archive_noop_when_all_recent` — nothing archived when all rows are within retention.
 - `test_archive_boundary_is_strict` — a row exactly at the cutoff is **kept** (`ts < cutoff`); guards the regression that left the archive empty.
+- `test_migration_keeps_low_thresholds` — the NOT-NULL-drop rebuild of `thresholds` carries the `low` column across. Copying only `(sensor, value)` before the `DROP` destroyed every low threshold on the first startup after upgrading, once and unrecoverably; every other db test starts from a fresh schema and never walks this path.
 - `test_thresholds_set_and_partial_clear` — high/low set; clearing one keeps the row, clearing the last drops it.
 - `test_mute_expiry` — active mute is honoured; re-muting into the past expires it.
 - `test_forget_device_archives_and_clears` — readings archived, threshold cleared.
@@ -57,15 +58,22 @@ run tests.
 - `test_duplicate_device_key_across_files` — duplicate device key is a hard error.
 - `test_case_insensitive_name_collision` — sensor names differing only by case rejected.
 - `test_decimals_out_of_range` — `decimals` must be 0–5.
+- `test_interval_must_be_positive` / `test_field_interval_must_be_positive` — an `interval` of zero or less is refused at load; `3 × 0` would mark the device offline forever.
+- `test_valid_range_must_not_be_inverted` / `test_valid_range_equal_bounds_allowed` — a `validMin` above its `validMax` is refused (it would discard every real reading as a glitch, silencing alarms on a sensor that looks configured); equal bounds stay legal.
+- `test_device_keys_differing_only_by_case_rejected` — device keys get the case-collision check sensor names already had, since `resolve_device` matches case-insensitively.
+- `test_unknown_group_name_warns_not_raises` — a group name absent from `credentials.yaml` is fail-closed *and* reported as a config warning, rather than granting nothing in silence.
 - `test_stray_key_in_non_defaults_file` — only `00-defaults.yaml` may carry `defaults:`.
 - `test_blackout_valid` — a well-formed blackout group parses.
 - `test_blackout_unknown_field` — blackout referencing an unknown sensor rejected.
 - `test_blackout_below_must_be_positive` — `below` must be > 0.
 - `test_blackout_collides_with_sensor_name` — group id can't equal a sensor name.
+- `test_blackout_collides_with_device_key` — nor a device key: both are alarm subjects in the same column, so a reused id would fold a device's offline history into the group's blackout history.
 - `test_blackout_stale_after_must_be_positive` / `test_blackout_for_seconds_negative_rejected` — numeric bounds enforced.
 - `test_blackout_viewers_resolved_from_watched_fields` — blackout viewers resolved from the watched fields' device viewers.
 - `test_duplicate_topic_rejected` / `test_field_without_topic_rejected` — topic rules.
 - `test_mqtt_tls_inferred_from_port_8883` / `test_mqtt_tls_off_on_plain_port` — TLS inferred from port.
+- `test_mqtt_tls_quoted_false_is_off` / `test_mqtt_tls_garbage_rejected` — a quoted `"false"` means off (plain `bool()` made it *on*), and an unparseable value is refused instead of guessed.
+- `test_schedule_times_validated_at_load` / `..._out_of_range_rejected` / `..._normalised` — `digest_time`/`archive_time` are validated (and zero-padded) at load. Left to first use they raise inside an asyncio task, killing the digest or archive loop while the bot stays up and says nothing.
 - `test_poll_interval_clamped` — clamped to 1–10.
 - `test_group_ids_coerced_to_int` — group/superadmin ids coerced to int.
 - `test_resolve_device_is_case_insensitive_and_canonical` — a device key resolves to its canonical form regardless of case; unknown keys pass through unchanged (names are case-preserving but case-insensitive).

@@ -4,7 +4,35 @@ The archive tests pin down the regression that left readings_archive empty:
 archive_old_readings must move rows strictly older than
 now - retention_days*86400 and keep the rest.
 """
+import sqlite3
 import time
+
+from bot import db as db_module
+
+
+def test_migration_keeps_low_thresholds(tmp_path, monkeypatch):
+    """The NOT-NULL-drop migration rebuilds `thresholds`; it must carry `low`
+    across. Copying only (sensor, value) before the DROP wiped every low
+    threshold ever set, once, on the first startup after the upgrade — and the
+    fresh-schema fixtures never walked this path."""
+    dbfile = tmp_path / "old.db"
+    con = sqlite3.connect(dbfile)
+    # the intermediate schema: value still NOT NULL, low added by the earlier
+    # ALTER and already populated by /setAlarmLow
+    con.execute("CREATE TABLE thresholds (sensor TEXT PRIMARY KEY, value REAL NOT NULL)")
+    con.execute("ALTER TABLE thresholds ADD COLUMN low REAL")
+    con.execute("INSERT INTO thresholds (sensor, value, low) VALUES ('A_T', 30.0, 10.0)")
+    con.commit()
+    con.close()
+
+    monkeypatch.setattr(db_module, "DB_PATH", str(dbfile))
+    db_module.init()
+    assert db_module.get_threshold("A_T") == 30.0
+    assert db_module.get_threshold_low("A_T") == 10.0
+    # and the rebuild really happened: value is nullable now
+    with sqlite3.connect(dbfile) as check:
+        cols = check.execute("PRAGMA table_info(thresholds)").fetchall()
+    assert [c[3] for c in cols if c[1] == "value"] == [0]   # notnull cleared
 
 
 def test_insert_and_get_latest(temp_db):

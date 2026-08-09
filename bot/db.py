@@ -107,8 +107,12 @@ def init():
                     value  REAL,
                     low    REAL
                 );
-                INSERT INTO thresholds_new (sensor, value)
-                    SELECT sensor, value FROM thresholds;
+                -- `low` must be carried over: an installation that ran the
+                -- release which added the column but not yet this rebuild has
+                -- real low thresholds in it, and copying only (sensor, value)
+                -- before the DROP destroyed every one of them, once, silently.
+                INSERT INTO thresholds_new (sensor, value, low)
+                    SELECT sensor, value, low FROM thresholds;
                 DROP TABLE thresholds;
                 ALTER TABLE thresholds_new RENAME TO thresholds;
             """)
