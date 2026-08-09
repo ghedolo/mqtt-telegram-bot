@@ -80,6 +80,31 @@ def test_threshold_low(temp_db, clock):
     assert len(rec.msgs) == 2 and rec.msgs[1][1].startswith("🟢")
 
 
+def test_reset_only_forgets_the_band_it_was_given(temp_db, clock):
+    """Changing the high threshold must not forget a live low alarm: the
+    recovery branch keys off `active`, so clearing it meant no 🟢 was ever sent
+    and the low alarm silently evaporated."""
+    rec = Rec()
+    am = am_mod.AlarmManager(720, 3600, rec, Rec(), fmt)
+    temp_db.set_threshold_low("A_T", 10.0)
+    asyncio.run(am.check_threshold_low("A_T", 5.0))       # low alarm active
+    assert len(rec.msgs) == 1
+
+    am.reset_sensor_alarm("A_T", "threshold")             # /setAlarm on the high band
+    asyncio.run(am.check_threshold_low("A_T", 15.0))      # value recovers
+    assert len(rec.msgs) == 2 and rec.msgs[1][1].startswith("🟢")
+
+
+def test_reset_with_no_kind_forgets_both(temp_db, clock):
+    rec = Rec()
+    am = am_mod.AlarmManager(720, 3600, rec, Rec(), fmt)
+    temp_db.set_threshold_low("A_T", 10.0)
+    asyncio.run(am.check_threshold_low("A_T", 5.0))
+    am.reset_sensor_alarm("A_T")                          # both bands
+    asyncio.run(am.check_threshold_low("A_T", 15.0))
+    assert len(rec.msgs) == 1                             # no recovery: forgotten
+
+
 def test_threshold_none_set_no_alarm(temp_db, clock):
     rec = Rec()
     am = am_mod.AlarmManager(720, 3600, rec, Rec(), fmt)
@@ -145,6 +170,46 @@ def test_ackoff_while_online_does_not_mute_future_offline(temp_db, clock):
     clock["t"] += 3600                     # now go stale -> genuine offline
     asyncio.run(am.check_offline(dev))
     assert len(recdev.msgs) == 1 and "OFFLINE" in recdev.msgs[0][1]
+
+
+def test_device_added_by_reload_gets_its_own_grace(temp_db, clock):
+    """A device added by /reloadConfig has no MQTT subscription until a restart,
+    so measuring its silence from process start reported it OFFLINE on the next
+    poll and kept repeating — an alarm about the bot's own limitation."""
+    recdev = Rec()
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am._started_at = clock["t"] - 1000          # bot has been up a while
+    dev = make_device(key="NEW", interval=10)
+
+    am._device_first_seen[dev.key] = clock["t"]  # as run_offline_checks stamps it
+    asyncio.run(am.check_offline(dev))
+    assert recdev.msgs == []                     # inside its own grace
+
+    clock["t"] += 31                             # 3 x interval elapsed since
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 1                 # then it reports normally
+
+
+def test_run_offline_checks_stamps_devices_once(temp_db, clock):
+    # the stamp must not be refreshed on later passes, or the grace would renew
+    # itself every 60s and a genuinely dead device would never be reported
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt)
+    devices = {"D": make_device(interval=10)}
+
+    async def one_pass():
+        task = asyncio.ensure_future(am.run_offline_checks(devices))
+        await asyncio.sleep(0)      # let it stamp and run the first pass
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(one_pass())
+    assert am._device_first_seen["D"] == clock["t"]
+    clock["t"] += 600
+    asyncio.run(one_pass())
+    assert am._device_first_seen["D"] == clock["t"] - 600   # unchanged
 
 
 def test_offline_suppressed_during_startup_grace(temp_db, clock):
@@ -231,6 +296,28 @@ def _group():
         id="R2", info="R2", fields=["X_I1", "X_I2"],
         below=0.5, for_seconds=10, repeat_seconds=3600, stale_after=15,
     )
+
+
+def test_blackout_ignores_out_of_range_reading(temp_db, clock):
+    # a glitch is not evidence: the threshold path already refuses to act on an
+    # out-of-range sample, and letting one stand here let a single corrupted
+    # near-zero reading argue for a blackout on the next evaluation
+    recbo = Rec()
+    g = _group()
+    valid = {"X_I1": (0.0, 100.0), "X_I2": (0.0, 100.0)}
+
+    def is_valid(name, value):
+        lo, hi = valid[name]
+        return lo <= value <= hi
+
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g},
+                             is_valid_fn=is_valid)
+    temp_db.insert_reading("X_I1", -5.0, ts=1000)   # glitch, below validMin
+    temp_db.insert_reading("X_I2", 0.0, ts=1000)    # genuinely dark
+    clock["t"] = 1011
+    asyncio.run(am.check_blackout(g))
+    assert recbo.msgs == []                          # X_I1 counts as UNKNOWN
+    assert am._state("R2", "blackout").since == 0    # sustain timer never armed
 
 
 def test_blackout_not_raised_until_sustained(temp_db, clock):

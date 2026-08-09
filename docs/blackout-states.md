@@ -16,9 +16,16 @@ freshness (alive vs dead) and value (below vs at/above `below`).
 | alive (fresh) | `< below` | **DARK** (unpowered) |
 | alive (fresh) | `≥ below` | **LIT** (power present) |
 | dead (stale / missing) | *irrelevant* | **UNKNOWN** |
+| alive but outside `validMin`/`validMax` | *irrelevant* | **UNKNOWN** |
 
 Note: when a field is **dead** the value axis collapses — a stale reading is
 `UNKNOWN` whether it was above or below. So there are **3** field states, not 4.
+
+An **out-of-range** reading collapses the same way. The glitch filter that keeps
+a corrupted sample from firing a threshold alarm applies here too: such a sample
+is stored (the record stays honest) but carries no evidence, so a single
+corrupted near-zero current cannot argue a blackout into existence, nor can a
+wild spike argue one out of it.
 
 ## Group decision (both fields together)
 

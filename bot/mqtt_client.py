@@ -100,6 +100,15 @@ class MqttClient:
             log.error("MQTT connect failed: %s", reason_code)
 
     def _on_message(self, client, userdata, msg):
+        # size cap first, for every topic: the availability branch below decodes
+        # and JSON-parses its payload, and used to do so with no bound at all
+        if len(msg.payload) > _MAX_PAYLOAD_BYTES:
+            log.warning(
+                "Payload too large on %s (%d bytes), dropped",
+                msg.topic, len(msg.payload),
+            )
+            return
+
         device_key = self._availability_map.get(msg.topic)
         if device_key is not None:
             # An availability topic: it carries a device online/offline state,
@@ -114,13 +123,6 @@ class MqttClient:
 
         sensors = self._topic_map.get(msg.topic)
         if not sensors:
-            return
-
-        if len(msg.payload) > _MAX_PAYLOAD_BYTES:
-            log.warning(
-                "Payload too large on %s (%d bytes), dropped",
-                msg.topic, len(msg.payload),
-            )
             return
 
         if self._loop and self._on_topic_message:

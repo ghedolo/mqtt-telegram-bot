@@ -2,7 +2,7 @@ import asyncio
 import time
 import logging
 from dataclasses import dataclass
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Optional
 
 from . import db
 from .config import DeviceConfig
@@ -36,6 +36,7 @@ class AlarmManager:
         fmt_fn: Callable[[str, float], str],
         notify_blackout_fn: Callable[[str, str], Awaitable[None]] = None,
         blackout_groups: dict = None,
+        is_valid_fn: Callable[[str, float], bool] = None,
     ):
         self._threshold_repeat = threshold_repeat
         self._offline_repeat = offline_repeat
@@ -44,8 +45,14 @@ class AlarmManager:
         self._notify_blackout = notify_blackout_fn
         self._blackout_groups = blackout_groups or {}
         self._fmt = fmt_fn
+        # glitch filter, shared with the threshold path: a reading outside
+        # validMin/validMax is stored but must not count as evidence
+        self._is_valid = is_valid_fn or (lambda name, value: True)
         self._states: dict[str, AlarmState] = {}
         self._started_at = int(time.time())
+        # device_key → when its offline grace started (process start for the
+        # devices present at boot, first sight for one added by /reloadConfig)
+        self._device_first_seen: dict[str, int] = {}
         self._last_topic_ts: dict[str, int] = {}
         # device_key → last-known zigbee2mqtt availability (True=online). Fed live
         # by the MQTT availability callback; read by check_offline for devices
@@ -85,11 +92,19 @@ class AlarmManager:
     def last_mqtt_ts(self) -> int | None:
         return max(self._last_topic_ts.values(), default=None)
 
-    def reset_sensor_alarm(self, sensor: str):
-        for kind in ("threshold", "threshold_low"):
-            k = self._key(sensor, kind)
-            if k in self._states:
-                self._states[k].active = False
+    def reset_sensor_alarm(self, sensor: str, kind: Optional[str] = None):
+        """Forget an active threshold alarm so the next crossing is treated as
+        new. `kind` is "threshold" or "threshold_low"; None resets both.
+
+        The caller must name the band it actually changed. Resetting both from a
+        /setAlarm dropped a live low alarm's `active` flag, and the recovery
+        branch keys off exactly that: the 🟢 never came, no OK_LOW row was
+        written, and the alarm just evaporated."""
+        kinds = (kind,) if kind else ("threshold", "threshold_low")
+        for k in kinds:
+            key = self._key(sensor, k)
+            if key in self._states:
+                self._states[key].active = False
 
     def _key(self, sensor: str, kind: str) -> str:
         return f"{sensor}:{kind}"
@@ -161,20 +176,34 @@ class AlarmManager:
         tss = [self._last_topic_ts.get(sc.topic, 0) for sc in device.fields.values()]
         return max(tss) if tss else 0
 
+    def _grace_start(self, device_key: str) -> int:
+        """When this device's startup grace began.
+
+        Process start for everything present at boot; first sight for a device
+        added by /reloadConfig, which the MQTT client has not subscribed to yet
+        (subscriptions are wired at startup). Measuring its silence from process
+        start declared it OFFLINE on the very next poll and kept repeating until
+        someone restarted the bot — an alarm about the bot's own limitation.
+
+        The stamps are laid down by run_offline_checks; a device checked outside
+        that loop simply inherits the process-start grace."""
+        return self._device_first_seen.get(device_key, self._started_at)
+
     async def check_offline(self, device: DeviceConfig):
         now = int(time.time())
+        grace_start = self._grace_start(device.key)
 
         if device.availability_topic and device.key in self._availability:
             # Trust zigbee2mqtt: it already knows a battery sensor going quiet for
             # hours is normal, so its online/offline is authoritative here and the
             # data-cadence heuristic is skipped entirely.
-            if (now - self._started_at) < AVAIL_GRACE:
+            if (now - grace_start) < AVAIL_GRACE:
                 return
             offline = not self._availability[device.key]
             first_msg = f"OFFLINE {device.key}: unreachable (zigbee2mqtt)"
         else:
             offline_after = device.interval * 3
-            if (now - self._started_at) < offline_after:
+            if (now - grace_start) < offline_after:
                 return
             last_ts = self._device_last_ts(device)
             if last_ts == 0:
@@ -239,7 +268,15 @@ class AlarmManager:
             # Signal-backed fields live in the in-memory cache (never in the DB);
             # a regular field is never in the cache, so this routes correctly.
             row = self._signal_latest.get(name) or db.get_latest(name)
-            fresh = row is not None and (now - row["ts"]) <= group.stale_after
+            # An out-of-range sample is a glitch, not evidence: the threshold
+            # path already refuses to act on one, and letting it stand here let
+            # a single corrupted near-zero reading argue for a blackout (or a
+            # wild spike argue for its end) long after the sample itself.
+            fresh = (
+                row is not None
+                and (now - row["ts"]) <= group.stale_after
+                and self._is_valid(name, row["value"])
+            )
             if not fresh:
                 all_dark = False            # UNKNOWN
             elif row["value"] >= group.below:
@@ -284,6 +321,13 @@ class AlarmManager:
 
     async def run_offline_checks(self, devices: dict):
         while True:
+            # Stamp anything not seen before: on the first pass that is every
+            # configured device, at ~process start; later it is exactly the
+            # devices a /reloadConfig has just added, which then get a grace
+            # window of their own instead of inheriting an already-expired one.
+            now = int(time.time())
+            for dev_key in devices:
+                self._device_first_seen.setdefault(dev_key, now)
             for dev_key, device in list(devices.items()):
                 try:
                     await self.check_offline(device)

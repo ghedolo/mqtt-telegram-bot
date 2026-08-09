@@ -150,6 +150,8 @@ Unknown field names are rejected at startup. Each field is classified from its l
 
 The end-of-blackout message (`🔌`) is sent **only on positive proof** — when at least one field becomes LIT. A field going UNKNOWN (its meter stopped publishing) does **not** end the blackout: without a fresh reading the bot can't claim power is back, so it holds the alarm and stays silent, while that field's own device **offline** alarm reports the silence. This avoids a false "power restored" when, during a real outage, one current meter dies but another still reads zero.
 
+A reading outside a field's `validMin`/`validMax` counts as **UNKNOWN** here, exactly as it is skipped for threshold alarms — it is stored but proves nothing. Otherwise one corrupted near-zero sample would keep arguing for a blackout long after it arrived, and one wild spike could end a real one.
+
 The full state model (per-field DARK/LIT/UNKNOWN inputs plus the group POWERED→SUSPECTED→OUTAGE machine, with a diagram) is in [docs/blackout-states.md](docs/blackout-states.md).
 
 `for_seconds` (the sustain window) and `stale_after` (the freshness window) are **independent**: set `for_seconds` as low as you like to catch brief outages, but keep `stale_after ≥ the meter's real publish interval`, or fresh readings would be wrongly discarded and the blackout never raised. Evaluation is **event-driven** — the group is re-checked on every incoming current reading, so detection latency is roughly the meter's publish cadence. That cadence is also the hard floor on resolution: a blackout shorter than the interval between two published readings cannot be observed.
@@ -231,7 +233,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | Renaming a **config file** (e.g. `SM1.yaml` → `foo.yaml`) | **Reload** | Files are merged by *content*, not filename — no effect. Exception: renaming **to/from `00-defaults.yaml`** changes which file may carry `defaults:`/`blackouts:`. |
 | `topic` (same sensor name) | **Restart** | MQTT re-subscribes only at startup. |
 | `hasZigbeeAvailability` / `availabilityTopic` (add / change / remove) | **Restart** — a `/reloadConfig` is **not** enough | The availability topic is subscribed only at startup, like `topic`, so a reload never wires it up; the device stays on the `3 × interval` heuristic until a restart. |
-| Adding a new device / field / sensor | **Restart** | Reload makes it visible in commands, but no data flows until MQTT subscribes at restart. |
+| Adding a new device / field / sensor | **Restart** | Reload makes it visible in commands, but no data flows until MQTT subscribes at restart. The new device gets its own offline grace from the moment it appears, so the wait does not produce false `OFFLINE` alarms — once its `3 × interval` has passed it will report offline, correctly, until you restart. |
 | Adding / removing a **Signal** (`signal: true`) | **Restart** | Like any field its MQTT subscription is set at startup; point a blackout group's `fields` at it with a **reload**. |
 | Removing a device / field | **Restart** | Reload hides it; the old MQTT subscription lingers until restart (harmless). Old DB rows remain — archive them with `/forgetSensor`. |
 | `alarm_threshold_repeat` / `alarm_offline_repeat` | **Reload** | Pushed into the running `AlarmManager` on reload. |
@@ -405,18 +407,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-09
-- **Sessions:** 16 — 8204 messages (3018 user + 5186 assistant)
-- **Active conversation time:** ~1694 min (~28h 14m)
+- **Sessions:** 16 — 8365 messages (3090 user + 5275 assistant)
+- **Active conversation time:** ~1724 min (~28h 44m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 463,004 |
-| Output | 4,061,144 |
-| Cache write | 14,623,284 |
-| Cache read | 842,865,965 |
-| **Total** | **~862 M** |
+| Input (non-cache) | 463,174 |
+| Output | 4,101,978 |
+| Cache write | 14,694,079 |
+| Cache read | 870,085,162 |
+| **Total** | **~889 M** |
 
-The assistant averaged **783 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **778 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

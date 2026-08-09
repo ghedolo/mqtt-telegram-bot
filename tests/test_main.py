@@ -26,6 +26,24 @@ def _cfg(trace_cmd, path="x.log"):
     return SimpleNamespace(trace_cmd=trace_cmd, trace_cmd_file=path)
 
 
+def test_digest_recipients_survives_a_db_error(monkeypatch, caplog):
+    # this read runs inside the digest task's while-loop: letting it raise killed
+    # the task, and the daily digest then never fired again for the life of the
+    # process, with the failure only surfacing at shutdown
+    def boom():
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(main.db, "get_all_dm_registered", boom)
+    with caplog.at_level(logging.ERROR):
+        assert main._digest_recipients() == []
+    assert any("digest recipients" in r.message for r in caplog.records)
+
+
+def test_digest_recipients_passes_rows_through(monkeypatch):
+    monkeypatch.setattr(main.db, "get_all_dm_registered", lambda: [7, 9])
+    assert main._digest_recipients() == [7, 9]
+
+
 def test_trace_off_attaches_nothing(tmp_path):
     assert main._setup_cmd_trace(_cfg(False)) is False
     assert logging.getLogger("bot.cmdtrace").handlers == []

@@ -131,7 +131,9 @@ class TelegramBot:
         self._reload_fn = reload_fn
         self._bot_username: Optional[str] = None
         self.last_mqtt_fn: Optional[Callable[[], Optional[int]]] = None
-        self.reset_alarm_fn: Optional[Callable[[str], None]] = None
+        # (sensor, kind) — kind names the band just changed ("threshold" /
+        # "threshold_low"), so resetting one never forgets the other's alarm
+        self.reset_alarm_fn: Optional[Callable[[str, str], None]] = None
         self.apply_alarm_config_fn: Optional[Callable[["AppConfig"], None]] = None
         self.signal_snapshot_fn: Optional[Callable[[], dict]] = None
         self.availability_snapshot_fn: Optional[Callable[[], dict]] = None
@@ -1098,7 +1100,7 @@ class TelegramBot:
 
         db.set_threshold(name, value)
         if self.reset_alarm_fn:
-            self.reset_alarm_fn(name)
+            self.reset_alarm_fn(name, "threshold")
         await self._app.bot.send_message(
             chat_id=reply_chat, text="Threshold updated.", **_SILENT
         )
@@ -1134,7 +1136,7 @@ class TelegramBot:
 
         db.set_threshold_low(name, value)
         if self.reset_alarm_fn:
-            self.reset_alarm_fn(name)
+            self.reset_alarm_fn(name, "threshold_low")
         await self._app.bot.send_message(
             chat_id=reply_chat, text="Low threshold updated.", **_SILENT
         )
@@ -1156,7 +1158,7 @@ class TelegramBot:
             return
         db.clear_threshold(name)
         if self.reset_alarm_fn:
-            self.reset_alarm_fn(name)
+            self.reset_alarm_fn(name, "threshold")
         await self._app.bot.send_message(
             chat_id=reply_chat, text="High threshold cleared.", **_SILENT
         )
@@ -1178,7 +1180,7 @@ class TelegramBot:
             return
         db.clear_threshold_low(name)
         if self.reset_alarm_fn:
-            self.reset_alarm_fn(name)
+            self.reset_alarm_fn(name, "threshold_low")
         await self._app.bot.send_message(
             chat_id=reply_chat, text="Low threshold cleared.", **_SILENT
         )

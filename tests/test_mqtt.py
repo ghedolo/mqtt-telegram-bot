@@ -215,6 +215,17 @@ def test_availability_message_dispatched(tmp_path, monkeypatch):
     assert av.calls == [("AV", False), ("AV", True)]
 
 
+def test_oversized_availability_payload_dropped(tmp_path, monkeypatch):
+    # the size cap used to sit after the availability branch, so that branch
+    # decoded and JSON-parsed a payload of any size — the one hardening claim
+    # the README makes about MQTT input did not hold for these topics
+    av = AvailRecorder()
+    mc = _build_client(tmp_path, monkeypatch, Recorder(), on_availability=av)
+    big = b'{"state":"offline","pad":"' + b"0" * (64 * 1024) + b'"}'
+    mc._on_message(None, None, Msg("t/av/availability", big))
+    assert av.calls == []
+
+
 def test_availability_unknown_payload_no_call(tmp_path, monkeypatch):
     av = AvailRecorder()
     mc = _build_client(tmp_path, monkeypatch, Recorder(), on_availability=av)

@@ -83,8 +83,10 @@ run tests.
 - `test_threshold_raise_gate_repeat_recover` — 🔴 on first cross, no repeat within `threshold_repeat`, repeats after it, single 🟢 on recovery.
 - `test_threshold_low` — low-threshold raise + recovery.
 - `test_threshold_none_set_no_alarm` — no threshold configured → silent.
+- `test_reset_only_forgets_the_band_it_was_given` / `test_reset_with_no_kind_forgets_both` — `reset_sensor_alarm` clears only the band the caller changed. Resetting both from a `/setAlarm` dropped a live low alarm's `active` flag, and since the recovery branch keys off it, no 🟢 and no `OK_LOW` row ever followed.
 - `test_offline_then_recovery` — OFFLINE after `3×interval` of silence, ONLINE when data returns.
 - `test_offline_suppressed_during_startup_grace` — no offline alarm during the initial grace window.
+- `test_device_added_by_reload_gets_its_own_grace` / `test_run_offline_checks_stamps_devices_once` — a device added by `/reloadConfig` starts its grace when it appears (MQTT has not subscribed to it until a restart, so measuring from process start reported it OFFLINE immediately and kept repeating), and the stamp is never refreshed on later passes, which would renew the grace every 60s and hide a genuinely dead device.
 - `test_ackoff_suppresses_repeats_then_auto_clears_on_reconnect` — after `/ackOff`, offline repeats are suppressed while silenced, then the silence flag auto-clears when the device reconnects. Regression: the old `is_silenced` early-return short-circuited the reconnect branch, so silence never cleared.
 - `test_ackoff_while_online_does_not_mute_future_offline` — acking a device with no live outage drops the stale silence flag so it can't swallow the next genuine offline alarm.
 - `test_blackout_not_raised_until_sustained` — all-dark but below `for_seconds` → no alarm.
@@ -92,6 +94,7 @@ run tests.
 - `test_blackout_for_seconds_zero_raises_immediately` — `for_seconds: 0` raises on the first dark reading.
 - `test_blackout_repeat_notification` — re-notifies "still no current" only after `repeat_seconds`.
 - `test_blackout_all_stale_never_raises` — all fields stale (UNKNOWN) → never raised.
+- `test_blackout_ignores_out_of_range_reading` — an out-of-range sample is UNKNOWN, not DARK: the glitch filter that protects threshold alarms now protects blackout evidence too, so a single corrupted near-zero reading cannot arm the sustain timer.
 - `test_check_blackout_for_dispatches_only_watching_groups` — an event re-checks only groups watching that sensor.
 - `test_blackout_notify_none_is_noop` — no blackout notifier → early return, no state/crash.
 
@@ -103,6 +106,7 @@ run tests.
 - `test_malformed_json_dropped` — invalid JSON dropped.
 - `test_json_missing_field_skipped` — absent json field skipped (intermittent field is normal).
 - `test_oversized_payload_dropped` — payload over 64 KiB rejected.
+- `test_oversized_availability_payload_dropped` — the size cap is applied before the availability branch too; it used to sit after, so those topics decoded and JSON-parsed a payload of any size.
 
 ### `tests/test_ingest.py` — reading path integration (`bot/ingest.py`)
 Wires `process_reading` to the real DB and a real `AlarmManager` (only the
@@ -199,6 +203,7 @@ cannot silently miss the menu (how `/listSignal` was lost).
 - `test_seconds_until_rolls_over_midnight` — correct span across midnight. Guards the `sleep(86400)` archive bug.
 
 ### `tests/test_main.py` — startup wiring (`bot/main.py`)
+- `test_digest_recipients_survives_a_db_error` / `..._passes_rows_through` — the digest's recipient lookup returns an empty list and logs on failure instead of raising. It runs inside the digest task's `while True`, where one transient DB error used to kill the task outright: the daily digest then never fired again, the exception surfacing only at shutdown.
 - `test_trace_off_attaches_nothing` — `_setup_cmd_trace` is a no-op when `traceCmd` is off.
 - `test_trace_creates_parent_and_writes` — when on, it creates a missing parent dir and the `bot.cmdtrace` logger actually writes to the file.
 - `test_trace_failopen_does_not_raise` — a path that can't be opened (parent is a regular file) warns and returns without attaching a handler, never raising. Guards the read-only-`/app` startup crash: a monitoring bot must not refuse to start over a diagnostic file.

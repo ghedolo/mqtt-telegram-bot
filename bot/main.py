@@ -25,6 +25,20 @@ _DEBUG_LEVELS = {
 }
 
 
+def _digest_recipients() -> list[int]:
+    """Who gets today's digest, or nobody if the lookup fails.
+
+    The read sits behind its own guard because it runs inside the digest task's
+    `while True`: one transient DB error propagating out of that loop killed the
+    task for the life of the process, and the digest simply never fired again —
+    silently, since the exception is only collected by the shutdown gather."""
+    try:
+        return db.get_all_dm_registered()
+    except Exception:
+        log.exception("Could not read digest recipients; skipping this run")
+        return []
+
+
 def _setup_cmd_trace(cfg) -> bool:
     """Attach the command-trace FileHandler to the `bot.cmdtrace` logger, sending
     it to its own file only (`propagate=False`), independent of `debug`.
@@ -101,6 +115,7 @@ async def main():
         fmt_fn=cfg.fmt,
         notify_blackout_fn=notify_blackout,
         blackout_groups=cfg.blackouts,
+        is_valid_fn=cfg.is_valid,
     )
 
     tg.last_mqtt_fn = alarms.last_mqtt_ts
@@ -156,7 +171,7 @@ async def main():
             if target <= now:
                 target += timedelta(days=1)
             await asyncio.sleep((target - now).total_seconds())
-            for chat_id in db.get_all_dm_registered():
+            for chat_id in _digest_recipients():
                 try:
                     text = tg.build_digest(chat_id)
                     if text:
