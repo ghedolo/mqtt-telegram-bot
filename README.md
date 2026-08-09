@@ -129,6 +129,8 @@ A device that sets **`hasZigbeeAvailability: true`** opts out of that heuristic:
 
 Threshold alarms are evaluated on every incoming reading. When a value first crosses a field's high threshold (`/setAlarm`) or low threshold (`/setAlarmLow`), a `🔴` alarm is sent. While the value stays out of range the alarm repeats, but no more often than `alarm_threshold_repeat` seconds (default 720). The repeat is not a fixed timer: it is checked only when a new reading arrives, so it fires on the first reading after that interval has elapsed — a rarely-reporting sensor repeats later than the nominal period. When the value returns within range a single `🟢` recovery message is sent and the alarm resets. Offline alarms repeat the same way, gated by `alarm_offline_repeat` (default 3600), and auto-clear when the device reports again.
 
+Setting or clearing a threshold re-arms **only that band**: after `/setAlarm` the next high crossing counts as new, while a low alarm already active keeps its state and still gets its own `🟢` when the value recovers. The two bands are tracked separately, so touching one never silently swallows the other's recovery message.
+
 ### Blackout detection
 
 A **blackout** is a derived alarm inferred from current (amps) Fields. The monitoring stack (sensors, MQTT, the bot) runs on UPS while the measured loads (e.g. air-handling units) run on mains, so a mains outage shows up as every watched current dropping to near-zero while the meters keep reporting. A live-but-idle load still draws a baseline current, so a near-zero reading means *unpowered*, not idle.
@@ -407,18 +409,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-09
-- **Sessions:** 16 — 8365 messages (3090 user + 5275 assistant)
-- **Active conversation time:** ~1724 min (~28h 44m)
+- **Sessions:** 16 — 8376 messages (3094 user + 5282 assistant)
+- **Active conversation time:** ~1727 min (~28h 47m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 463,174 |
-| Output | 4,101,978 |
-| Cache write | 14,694,079 |
-| Cache read | 870,085,162 |
-| **Total** | **~889 M** |
+| Input (non-cache) | 463,187 |
+| Output | 4,105,502 |
+| Cache write | 14,701,071 |
+| Cache read | 872,423,628 |
+| **Total** | **~891 M** |
 
-The assistant averaged **778 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **777 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->
