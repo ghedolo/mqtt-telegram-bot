@@ -266,6 +266,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/csv <expr> [Nh]` | Download readings as CSV (default 8h, max 24h; 72h for admins) |
 | `/xlsx <expr> [Nh]` | Download readings as Excel, one sheet per sensor (default 8h, max 24h; 72h for admins) |
 | `/last` | Last time any message arrived from MQTT (no content shown) |
+| `/lastSeen [expr] [-s\|-f]` | Last stored reading per sensor: value, absolute timestamp, age. No arg = all visible sensors. Unlike `/get`'s `min ago` column (which saturates at `∞` past 6h) this dates a sensor that has been silent for days; `never` = no reading ever stored |
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
 | `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
@@ -399,19 +400,19 @@ This project was built entirely through a conversation with Claude Code, across
 multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
-- **Last message:** 2026-07-23
-- **Sessions:** 15 — 7470 messages (2709 user + 4761 assistant)
-- **Active conversation time:** ~1579 min (~26h 19m)
+- **Last message:** 2026-08-09
+- **Sessions:** 16 — 7623 messages (2775 user + 4848 assistant)
+- **Active conversation time:** ~1596 min (~26h 36m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 462,196 |
-| Output | 3,860,450 |
-| Cache write | 14,195,624 |
-| Cache read | 779,320,964 |
-| **Total** | **~797 M** |
+| Input (non-cache) | 462,361 |
+| Output | 3,888,634 |
+| Cache write | 14,312,597 |
+| Cache read | 784,251,640 |
+| **Total** | **~802 M** |
 
-The assistant averaged **811 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **802 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

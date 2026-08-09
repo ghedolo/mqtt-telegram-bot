@@ -62,6 +62,7 @@ checklist: [docs/permissions.md](docs/permissions.md).
 | `/csv <expr> [Nh]` | Download matching Readings as CSV (default 8h, max 24h; 72h for Admins) |
 | `/xlsx <expr> [Nh]` | Download matching Readings as Excel, one sheet per Sensor (default 8h, max 24h; 72h for Admins) |
 | `/last` | Timestamp of the last message received from MQTT, any Topic (no content) |
+| `/lastSeen [expr] [-s\|-f]` | Per-Sensor time of the last stored Reading (value, absolute timestamp, age); no expr = all visible Sensors. `never` = no Reading ever stored |
 | `/lastAlarms [expr] [Nh]` | Alarm events in the last N hours (default 8h); no expr = digest subscriptions |
 | `/last5Alarm <name>` | Last 5 alarm events for a Sensor or Device |
 | `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions (Blackout Group ids are valid targets) |

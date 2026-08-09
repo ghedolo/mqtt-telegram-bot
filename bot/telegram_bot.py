@@ -164,6 +164,7 @@ class TelegramBot:
         command("myid", self._cmd_myid)
         command("sysinfo", self._cmd_sysinfo)
         command("last", self._cmd_last)
+        command("lastSeen", self._cmd_lastseen)
         command("lastAlarms", self._cmd_lastalarms)
         command("last5Alarm", self._cmd_last5alarm)
         command("forgetSensor", self._cmd_forgetsensor)
@@ -568,6 +569,37 @@ class TelegramBot:
             lines.append(f"{n:<{wname}}  {v:>{wval}}  {a:>{wago}}")
         return "```\n" + "\n".join(lines) + "\n```"
 
+    def _render_last_seen_text(self, names: list[str]) -> Optional[str]:
+        """Build the monospace table behind /lastSeen: when each sensor last
+        stored a reading. Unlike the 'min ago' column of /get — which saturates
+        at ∞ past 6h — this prints the absolute timestamp, so a sensor silent
+        for days still tells you *when* it went quiet.
+        Returns a Markdown code block, or None if no sensors resolve."""
+        rows_map = {r["sensor"]: r for r in db.get_all_latest()}
+        now = int(time.time())
+        entries = []  # (name, value, last seen, ago)
+        for name in names:
+            if name not in self._cfg.sensors:
+                continue
+            r = rows_map.get(name)
+            if r:
+                entries.append(
+                    (name, self._cfg.fmt(name, r["value"]), _fmt_ts(r["ts"]), _fmt_ago(now - r["ts"]))
+                )
+            else:
+                entries.append((name, "-", "never", "-"))
+        if not entries:
+            return None
+        head = ("Sensor", "value", "last seen", "ago")
+        w = [max(len(head[i]), *(len(e[i]) for e in entries)) for i in range(4)]
+        lines = [
+            f"{head[0]:<{w[0]}}  {head[1]:>{w[1]}}  {head[2]:<{w[2]}}  {head[3]:>{w[3]}}",
+            "",
+        ]
+        for e in entries:
+            lines.append(f"{e[0]:<{w[0]}}  {e[1]:>{w[1]}}  {e[2]:<{w[2]}}  {e[3]:>{w[3]}}")
+        return "```\n" + "\n".join(lines) + "\n```"
+
     async def _show_sensors(self, reply_chat: int, names: list[str]):
         text = self._render_sensors_text(names) if names else None
         if text is None:
@@ -808,6 +840,7 @@ class TelegramBot:
             "/csv <expr> [Nh] — download readings as CSV (default 8h, max 24h; 72h admins)\n"
             "/xlsx <expr> [Nh] — download readings as Excel, one sheet per sensor (max 24h; 72h admins)\n"
             "/last — last time anything arrived from MQTT\n"
+            "/lastSeen [expr] [-s|-f] — last reading time per sensor (no args = all visible)\n"
             "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
             "/last5Alarm <name> — last 5 alarms for a sensor\n"
             "/digest [expr on|off] — manage daily digest subscriptions (also blackout group ids)\n"
@@ -1142,6 +1175,24 @@ class TelegramBot:
         else:
             text = f"Last sign of life from MQTT: {_fmt_ts(ts)}"
         await self._app.bot.send_message(chat_id=reply_chat, text=text, **_SILENT)
+
+    async def _cmd_lastseen(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        reply_chat = await self._get_reply_chat(update)
+        if reply_chat is None:
+            return
+        user_id = update.effective_user.id
+        args, sort_key = self._extract_sort(ctx.args)
+        # no args = every visible sensor (not the digest subscriptions /get
+        # defaults to): the point of the command is spotting the silent ones.
+        names = self._resolve_sensors(args, user_id) if args else self._cfg.visible_sensors(user_id)
+        names = self._apply_sort(names, sort_key)
+        text = self._render_last_seen_text(names) if names else None
+        if text is None:
+            await self._reply_no_match(reply_chat)
+            return
+        await self._app.bot.send_message(
+            chat_id=reply_chat, text=text, parse_mode="Markdown", **_SILENT
+        )
 
     async def _cmd_lastalarms(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
@@ -1510,6 +1561,7 @@ class TelegramBot:
             BotCommand("csv", "download readings as CSV"),
             BotCommand("xlsx", "download readings as Excel"),
             BotCommand("last", "last time anything arrived from MQTT"),
+            BotCommand("lastseen", "last reading time per sensor"),
             BotCommand("lastalarms", "alarms in last N hours"),
             BotCommand("last5alarm", "last 5 alarms for a sensor"),
             BotCommand("digest", "manage daily digest subscriptions"),

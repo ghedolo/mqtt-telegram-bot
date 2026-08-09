@@ -147,6 +147,7 @@ user and return what was sent. Constants `ADMIN` / `VIEWER` / `OUTSIDER` / `SUPE
 - `test_silent_*` — `/silent`: mute for N hours, clamp to 24h, unmute, no-arg list, per-user isolation.
 - `test_digest_*` — `/digest` subscribe on / unsubscribe off, no-arg list (visible only), bad usage.
 - `test_list_*` / `test_get_*` — `/list` shows a device reading and is empty for an outsider; `/get` renders a named sensor and reports "no matching" for an unknown one.
+- `test_lastseen_*` — `/lastSeen` dates a 3-day-old reading with an absolute timestamp (where `/get` would only print `∞`), lists sensors that never reported as `never` when called with no args, reports "no matching" for an unknown name, and never leaks a sensor the caller cannot view.
 - `test_getalarm_*` — `/getAlarm` renders the low/high band; unknown sensor rejected.
 - `test_lastalarms_*` / `test_last5alarm_*` — recent alarms for a sensor, "no alarms" when none, hours out of range rejected; last-5 named + unknown sensor.
 - `test_usersactivity_*` / `test_dbstats_*` — superadmin-gated; render activity list / DB stats.

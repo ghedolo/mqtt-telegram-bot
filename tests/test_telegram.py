@@ -703,6 +703,34 @@ def test_get_unknown_sensor(hbot, temp_db):
     assert "no matching" in sent[-1][1].lower()
 
 
+# /lastSeen
+
+def test_lastseen_shows_timestamp_not_saturated(hbot, temp_db):
+    # 3 days old: /get would print "∞", /lastSeen must still date it
+    old = int(time.time()) - 3 * 86400
+    temp_db.insert_reading("SM1_T", 22.5, old)
+    sent = _run(hbot, hbot._cmd_lastseen, ADMIN, "SM1_T")
+    assert "SM1_T" in sent[-1][1]
+    assert tb._fmt_ts(old) in sent[-1][1] and "3d" in sent[-1][1]
+
+
+def test_lastseen_no_args_lists_sensor_that_never_reported(hbot, temp_db):
+    # no args = all visible sensors (not digest subs), silent ones included
+    sent = _run(hbot, hbot._cmd_lastseen, ADMIN)
+    assert "SM1_T" in sent[-1][1] and "never" in sent[-1][1]
+
+
+def test_lastseen_no_matching_sensor(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_lastseen, ADMIN, "NOPE")
+    assert "no matching" in sent[-1][1].lower()
+
+
+def test_lastseen_hides_invisible_sensors(hbot, temp_db):
+    temp_db.insert_reading("SM2_T", 30.0)
+    sent = _run(hbot, hbot._cmd_lastseen, ADMIN, "*")
+    assert "SM2_T" not in sent[-1][1]
+
+
 # /getAlarm
 
 def test_getalarm_named_shows_band(hbot, temp_db):

@@ -121,7 +121,7 @@ also requires DM Registration.
 | Action | Non-user | Viewer | Admin |
 |---|---|---|---|
 | see it exist at all (`/list`, `/get`) | — | ✅ | ✅ |
-| read value, threshold, history (`/get`, `/getAlarm`, `/lastAlarms`, `/last5Alarm`) | — | ✅ | ✅ |
+| read value, threshold, history (`/get`, `/lastSeen`, `/getAlarm`, `/lastAlarms`, `/last5Alarm`) | — | ✅ | ✅ |
 | chart / export (`/graph`, `/csv`, `/xlsx`) | — | ✅ max 24h | ✅ max 72h |
 | set / clear thresholds (`/setAlarm`, `/setAlarmLow`, `/clearAlarm`, `/clearAlarmLow`) | — | ❌ *"Not authorized"* | ✅ |
 | receive threshold alarm DM | — | ✅ unless muted | ✅ unless muted |
@@ -240,6 +240,7 @@ within the caller's visibility, which for a user in no Access Group is empty.
 | `/exprSyntax` | none | — |
 | `/list` | viewer | visible Sensors + visible Blackout Groups |
 | `/get` | viewer | visible Sensors |
+| `/lastSeen` | viewer | visible Sensors (all of them when no expr) |
 | `/getAlarm` | viewer of the named Sensor | visible Sensors |
 | `/graph`, `/csv`, `/xlsx` | viewer | visible Sensors; window max 24h, **72h if `is_any_admin`** |
 | `/lastAlarms` | viewer | visible Sensors (subscriptions when no expr) |
