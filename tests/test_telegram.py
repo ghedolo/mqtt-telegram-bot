@@ -360,8 +360,14 @@ def test_render_sysinfo_surfaces_config_warnings(bot):
 # --- unknown command ---
 
 def _fake_app(sent, photos=None, docs=None):
+    # message ids are handed out per chat, exactly as Telegram does it: two
+    # chats see the same ids, which is what the prompt bookkeeping must survive
+    next_id = {}
+
     async def send_message(chat_id, text, **kw):
         sent.append((chat_id, text))
+        next_id[chat_id] = next_id.get(chat_id, 1000) + 1
+        return SimpleNamespace(message_id=next_id[chat_id])
 
     async def send_photo(chat_id, photo, caption=None, **kw):
         if photos is not None:
@@ -561,6 +567,23 @@ def test_ackoff_viewer_not_authorized(hbot, temp_db):
 def test_ackoff_unknown_device(hbot, temp_db):
     sent = _run(hbot, hbot._cmd_ackoff, ADMIN, "NOPE")
     assert "unknown" in sent[-1][1].lower()
+
+
+def test_ackoff_does_not_leak_device_existence(hbot, temp_db):
+    # OUTSIDER is in no access group: a real device key and an invented one must
+    # be indistinguishable, or /ackOff becomes a device-key oracle
+    real = _run(hbot, hbot._cmd_ackoff, OUTSIDER, "SM1")
+    fake = _run(hbot, hbot._cmd_ackoff, OUTSIDER, "NOPE")
+    assert real[-1][1] == fake[-1][1]
+    assert "unknown device" in real[-1][1].lower()
+    assert temp_db.is_silenced("SM1") is False
+
+
+def test_ackoff_viewer_told_it_lacks_admin(hbot, temp_db):
+    # someone who already sees the device is told the truth: not an access leak,
+    # they know it exists
+    sent = _run(hbot, hbot._cmd_ackoff, VIEWER, "SM1")
+    assert "authorized" in sent[-1][1].lower()
 
 
 def test_ackoff_no_args_lists_active(hbot, temp_db):
@@ -844,6 +867,16 @@ def test_getalarm_named_shows_band(hbot, temp_db):
     assert "SM1_T" in sent[-1][1] and "10" in sent[-1][1] and "30" in sent[-1][1]
 
 
+def test_getalarm_formats_like_the_value_columns(hbot, temp_db):
+    # `:g` printed 30 where /get prints 30.0, and fell into scientific notation
+    # on large numbers — the same threshold had two spellings across commands
+    temp_db.set_threshold("SM1_T", 1234567.0)
+    temp_db.set_threshold_low("SM1_T", 30.0)
+    sent = _run(hbot, hbot._cmd_getalarm, ADMIN, "SM1_T")
+    assert "30.0" in sent[-1][1]
+    assert "1234567.0" in sent[-1][1] and "e+" not in sent[-1][1]
+
+
 def test_getalarm_unknown_sensor(hbot, temp_db):
     sent = _run(hbot, hbot._cmd_getalarm, ADMIN, "NOPE")
     assert "unknown" in sent[-1][1].lower()
@@ -1104,6 +1137,83 @@ def test_on_arg_reply_consumes_edited_argument(hbot, temp_db):
     edited = _real_update(hbot, "SM1_T", edited=True, command=False)
     asyncio.run(hbot._on_arg_reply(edited, ctx))
     assert len(docs) == 1
+
+
+def _prompt_reply_update(user_id, text, prompt_id, chat_id=None):
+    """A phone-style reply: the argument arrives as a reply to the prompt."""
+    return SimpleNamespace(
+        effective_message=SimpleNamespace(
+            text=text,
+            reply_to_message=SimpleNamespace(message_id=prompt_id),
+        ),
+        effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=chat_id if chat_id is not None else user_id),
+    )
+
+
+def test_arg_prompt_is_scoped_to_its_chat(hbot, temp_db):
+    # message ids are per-chat counters, so two users' DMs hand out the same id:
+    # replying in one chat must never dispatch the other chat's pending command
+    temp_db.insert_reading("SM1_T", 21.0)
+    sent, docs = [], []
+    hbot._app = _fake_app(sent, None, docs)
+    asyncio.run(hbot._prompt_args(VIEWER, "csv"))     # VIEWER's prompt, id 1001
+    sent.clear()
+    # ADMIN replies in their own chat to a message with the very same id
+    asyncio.run(hbot._on_arg_reply(_prompt_reply_update(ADMIN, "SM1_T", 1001), _ctx()))
+    assert docs == [] and sent == []                  # nothing dispatched for ADMIN
+    assert len(hbot._arg_prompts) == 1                # VIEWER's prompt survives
+
+
+def test_answering_older_prompt_keeps_newer_one_alive(hbot, temp_db):
+    # two prompts open: answering the older by reply must not discard the
+    # fallback tracker of the newer, whose plain-text answer would then vanish
+    temp_db.insert_reading("SM1_T", 21.0)
+    hbot._arg_prompts[(ADMIN, 111)] = "csv"      # older prompt
+    hbot._arg_prompts[(ADMIN, 222)] = "graph"    # newer prompt
+    hbot._pending[ADMIN] = ("graph", time.time(), 222)
+    sent, photos, docs = [], [], []
+    hbot._app = _fake_app(sent, photos, docs)
+    asyncio.run(hbot._on_arg_reply(_prompt_reply_update(ADMIN, "SM1_T", 111), _ctx()))
+    assert len(docs) == 1                        # older prompt answered -> csv
+    assert hbot._pending.get(ADMIN) is not None   # newer prompt still tracked
+    # …and the browser fallback for it still works
+    asyncio.run(hbot._on_arg_reply(_reply_update(ADMIN, "SM1_T"), _ctx()))
+    assert len(photos) == 1
+
+
+# anonymous group admins — updates with no effective_user
+
+def _anonymous_update(text="/get"):
+    return SimpleNamespace(
+        effective_message=SimpleNamespace(text=text, reply_to_message=None),
+        effective_user=None,
+        effective_chat=SimpleNamespace(id=-100),
+    )
+
+
+@pytest.mark.parametrize("handler_name", [
+    "_cmd_get", "_cmd_list", "_cmd_start", "_cmd_myid", "_cmd_help", "_on_arg_reply",
+])
+def test_anonymous_sender_does_not_crash(hbot, temp_db, handler_name):
+    # a group with anonymous admins sends updates whose effective_user is None;
+    # dereferencing it raised AttributeError and the command died unanswered
+    sent = []
+    hbot._app = _fake_app(sent)
+    asyncio.run(getattr(hbot, handler_name)(_anonymous_update(), _ctx()))
+    assert sent == []
+
+
+# long listings are split instead of exceeding Telegram's 4096-char limit
+
+def test_usersactivity_splits_long_listing(hbot, temp_db):
+    for i in range(300):
+        temp_db.record_activity(1000 + i, f"user{i}", f"A Fairly Long Display Name {i}")
+    sent = _run(hbot, hbot._cmd_usersactivity, SUPER)
+    assert len(sent) > 1
+    assert all(len(text) <= 4096 for _, text in sent)
+    joined = "\n".join(t for _, t in sent)
+    assert "user0" in joined and "user299" in joined   # nothing dropped
 
 
 # notify_* — DM gating (registration / mute / subscription)

@@ -257,11 +257,14 @@ within the caller's visibility, which for a user in no Access Group is empty.
 | `/setAlarmLow <field> <value>` | same |
 | `/clearAlarm <field>` | same |
 | `/clearAlarmLow <field>` | same |
-| `/ackOff <device>` | `is_any_admin_of_device` |
+| `/ackOff <device>` | `is_any_viewer_of_device` then `is_any_admin_of_device` |
 
 The two-step check is deliberate: a non-viewer gets `Unknown sensor.` and a
 viewer-without-admin gets `Not authorized.`, so a user never learns that a
-Sensor exists outside their visibility.
+Sensor exists outside their visibility. `/ackOff` follows the same order for
+Devices — it used to answer `Unknown device.` before checking access, which
+turned it into an oracle: a caller with no access could tell real device keys
+from invented ones by which refusal came back.
 
 `/ackOff` **without arguments** lists active offline acks instead of setting
 one, and is scoped like any read: Access Group membership is required, and the

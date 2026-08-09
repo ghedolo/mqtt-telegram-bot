@@ -253,6 +253,8 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 
 > Tapping a command in Telegram's `/` menu sends it immediately, before you can type an argument (fixed client behaviour). For commands that need an argument (`/graph`, `/csv`, `/xlsx`, `/last5Alarm`), sending them bare replies with a `ForceReply` prompt — reply with the argument and the command runs. Telegram Web ignores ForceReply focus, so there you can just send the argument as a normal message within 30s of the prompt. The prompt message is deleted once you answer, so its reply box clears on all your devices.
 
+> **Anonymous group admins are ignored.** A group with the "anonymous admins" option delivers messages with no sender identity — Telegram attributes them to the group itself. Every permission in the bot hangs off a user id and every reply goes to a private chat, so there is nothing to authorise and nowhere to answer: those commands are dropped silently. Send them from your own account instead.
+
 > **Editing a command re-runs it.** Telegram Web often reissues a command by *editing* the previous bubble instead of sending a new message; the bot processes these edits like any other message, so rewriting `/help` into `/get` runs `/get`. The one thing it can't help with: re-sending the **identical** command this way is refused by Telegram itself with a "Message not modified" toast, before it ever reaches the bot — to repeat the same command on Web, send a fresh message.
 
 ### User commands
@@ -261,7 +263,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 |---|---|
 | `/list` | All devices — one line per device with all visible fields and thresholds; also lists subscribable blackout groups with your subscription state (🔔/🔕) |
 | `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-f` groups by measured quantity (default — all temperatures together, by the sensor name's last `_`-segment), `-s` by full name (keeps a device's fields together). The `min ago` column shows `∞` once the sensor counts as silent — by the same rule the offline alarm uses: `3 × interval`, or zigbee2mqtt availability where the device publishes it |
-| `/getAlarm [name]` | Show alarm threshold(s) |
+| `/getAlarm [name]` | Show alarm threshold(s) as `Tl/Th`, formatted with the sensor's configured `decimals` like every other value; `--` where no threshold is set |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h; 72h for admins) |
 | `/csv <expr> [Nh]` | Download readings as CSV (default 8h, max 24h; 72h for admins) |
 | `/xlsx <expr> [Nh]` | Download readings as Excel, one sheet per sensor (default 8h, max 24h; 72h for admins) |
@@ -285,7 +287,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/setAlarmLow <name> <value>` | Set low alarm threshold (alarm if value <). Rejected if it would not stay strictly below the high threshold |
 | `/clearAlarm <name>` | Clear high alarm threshold |
 | `/clearAlarmLow <name>` | Clear low alarm threshold |
-| `/ackOff [device]` | No arg: list devices with an active offline ack, limited to those you can see (superadmins see all). With `device`: acknowledge its offline alarm (suppresses repeats until it reconnects) |
+| `/ackOff [device]` | No arg: list devices with an active offline ack, limited to those you can see (superadmins see all). With `device`: acknowledge its offline alarm (suppresses repeats until it reconnects). A device you cannot view reads as `Unknown device.`, exactly as an invented key does, so the command never confirms that a hidden device exists |
 
 ### Superadmin-only commands
 
@@ -293,7 +295,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 |---|---|
 | `/forgetSensor <device>` | Archive all field readings for a device, clear alarm history and silence state |
 | `/reloadConfig` | Reload `sensors.d/` and `credentials.yaml` without restart |
-| `/usersActivity` | Last interaction time per user (name, username, id, timestamp). Bot records this itself — Telegram does not expose user last-seen |
+| `/usersActivity` | Last interaction time per user (name, username, id, timestamp), split across several messages when the list outgrows Telegram's 4096-character limit. Bot records this itself — Telegram does not expose user last-seen |
 | `/dbStats` | DB file size on disk, space reclaimable by VACUUM, and row counts + time span for `readings` and `readings_archive` |
 
 ### Sensor filter expressions (`/exprSyntax`)
@@ -401,18 +403,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-09
-- **Sessions:** 16 — 7939 messages (2902 user + 5037 assistant)
-- **Active conversation time:** ~1649 min (~27h 29m)
+- **Sessions:** 16 — 8076 messages (2962 user + 5114 assistant)
+- **Active conversation time:** ~1667 min (~27h 47m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 462,722 |
-| Output | 3,996,619 |
-| Cache write | 14,498,612 |
-| Cache read | 808,577,992 |
-| **Total** | **~827 M** |
+| Input (non-cache) | 462,868 |
+| Output | 4,029,642 |
+| Cache write | 14,554,734 |
+| Cache read | 824,620,079 |
+| **Total** | **~843 M** |
 
-The assistant averaged **793 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **788 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

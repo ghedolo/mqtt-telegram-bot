@@ -187,11 +187,12 @@ class TelegramBot:
         # runs first on every update: record last interaction per user
         self._app.add_handler(TypeHandler(Update, self._record_activity), group=-1)
 
-        # message_id of a pending ForceReply prompt -> command key to dispatch
-        self._arg_prompts: dict[int, str] = {}
-        # user_id -> (command key, prompt timestamp); fallback when the client
-        # does not reply to the prompt (e.g. Telegram Web). 30s window.
-        self._pending: dict[int, tuple[str, float]] = {}
+        # (chat_id, message_id) of a pending ForceReply prompt -> command key to
+        # dispatch. Message ids are per-chat, so the chat is part of the key.
+        self._arg_prompts: dict[tuple[int, int], str] = {}
+        # user_id -> (command key, prompt timestamp, prompt message_id); fallback
+        # when the client does not reply to the prompt (e.g. Telegram Web). 30s.
+        self._pending: dict[int, tuple[str, float, int]] = {}
 
     # ── command trace ────────────────────────────────────────────────────────────
 
@@ -293,7 +294,14 @@ class TelegramBot:
             log.exception("Failed to send registration prompt to group %s", group_id)
 
     async def _get_reply_chat(self, update: Update) -> Optional[int]:
-        """Returns the DM chat_id to reply to, or None (sends registration prompt)."""
+        """Returns the DM chat_id to reply to, or None (sends registration prompt).
+
+        A group with anonymous admins delivers messages with no `effective_user`
+        at all (the sender is the chat itself), and there is no DM to reply to:
+        bail out rather than raise AttributeError deep inside a handler, which
+        left the command with no answer of any kind."""
+        if update.effective_user is None:
+            return None
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
         if chat_id == user_id:
@@ -325,7 +333,10 @@ class TelegramBot:
             reply_markup=ForceReply(input_field_placeholder=placeholder),
             **_SILENT,
         )
-        self._arg_prompts[msg.message_id] = cmd_key
+        # keyed by (chat, message): Telegram message ids are per-chat counters,
+        # so two users' DMs hand out the same ids and a bare message_id key let
+        # one user's reply dispatch another user's pending command.
+        self._arg_prompts[(reply_chat, msg.message_id)] = cmd_key
         # reply_chat is the user's DM id; fallback for clients that ignore ForceReply
         self._pending[reply_chat] = (cmd_key, time.time(), msg.message_id)
 
@@ -337,15 +348,19 @@ class TelegramBot:
         msg = update.effective_message
         if msg is None or not msg.text:
             return
+        if update.effective_user is None:
+            return
         user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
 
         cmd_key = None
         prompt_id = None
         # phone: argument arrives as a reply to the ForceReply prompt
         if msg.reply_to_message is not None:
-            cmd_key = self._arg_prompts.pop(msg.reply_to_message.message_id, None)
-            if cmd_key is not None:
-                prompt_id = msg.reply_to_message.message_id
+            prompt_id = msg.reply_to_message.message_id
+            cmd_key = self._arg_prompts.pop((chat_id, prompt_id), None)
+            if cmd_key is None:
+                prompt_id = None
         # browser: ForceReply focus ignored -> plain follow-up message
         if cmd_key is None:
             pending = self._pending.get(user_id)
@@ -358,12 +373,17 @@ class TelegramBot:
         if cmd_key is None:
             return
 
-        self._pending.pop(user_id, None)
+        # only drop the fallback tracker if it points at the prompt just
+        # consumed: answering an older prompt must not orphan a newer one, whose
+        # plain-text follow-up would then be swallowed with no reply at all.
+        pending = self._pending.get(user_id)
+        if pending is not None and pending[2] == prompt_id:
+            self._pending.pop(user_id, None)
         # remove the ForceReply prompt so its reply box clears on every client
         if prompt_id is not None:
-            self._arg_prompts.pop(prompt_id, None)
+            self._arg_prompts.pop((chat_id, prompt_id), None)
             try:
-                await self._app.bot.delete_message(chat_id=user_id, message_id=prompt_id)
+                await self._app.bot.delete_message(chat_id=chat_id, message_id=prompt_id)
             except Exception:
                 log.debug("could not delete arg prompt %s", prompt_id)
         handlers = {
@@ -657,6 +677,28 @@ class TelegramBot:
             lines.append(f"{e[0]:<{w[0]}}  {e[1]:>{w[1]}}  {e[2]:<{w[2]}}  {e[3]:>{w[3]}}")
         return "```\n" + "\n".join(lines) + "\n```"
 
+    _MAX_MSG = 3500   # Telegram's hard limit is 4096; leave room for encoding
+
+    async def _send_lines(self, reply_chat: int, lines: list[str]):
+        """Send a line-oriented listing, split across as many messages as it
+        takes. A single send of an unbounded list raises BadRequest past 4096
+        characters, and since nothing catches it the caller gets no reply at
+        all — worst possible outcome for a listing that grows on its own."""
+        buf: list[str] = []
+        size = 0
+        for line in lines:
+            if buf and size + len(line) + 1 > self._MAX_MSG:
+                await self._app.bot.send_message(
+                    chat_id=reply_chat, text="\n".join(buf), **_SILENT
+                )
+                buf, size = [], 0
+            buf.append(line)
+            size += len(line) + 1
+        if buf:
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text="\n".join(buf), **_SILENT
+            )
+
     async def _show_sensors(self, reply_chat: int, names: list[str]):
         text = self._render_sensors_text(names) if names else None
         if text is None:
@@ -672,6 +714,8 @@ class TelegramBot:
     # ── commands ───────────────────────────────────────────────────────────────
 
     async def _cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if update.effective_user is None:   # anonymous group admin: no DM to register
+            return
         user_id = update.effective_user.id
         if ctx.args:
             if self._verify_token(ctx.args[0], user_id):
@@ -828,6 +872,8 @@ class TelegramBot:
         return f"{h}h{m:02d}m"
 
     async def _cmd_myid(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if update.effective_user is None:   # anonymous group admin: no id to report
+            return
         await self._app.bot.send_message(
             chat_id=update.effective_chat.id,
             text=f"Your Telegram ID: {update.effective_user.id}",
@@ -887,6 +933,8 @@ class TelegramBot:
         )
 
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if update.effective_user is None:   # anonymous group admin: no role to resolve
+            return
         reply_chat = update.effective_chat.id
         text = (
             f"🐶 LorTe v{__version__} — Available commands:\n"
@@ -1141,11 +1189,20 @@ class TelegramBot:
             return
         user_id = update.effective_user.id
 
+        # one query per table instead of two per sensor: `_thr_str` used to open
+        # a fresh SQLite connection for every name, and with no argument this
+        # command walks every sensor the caller can see
+        highs = db.get_all_thresholds()
+        lows = db.get_all_thresholds_low()
+
         def _thr_str(name: str) -> str:
-            thr = db.get_threshold(name)
-            low = db.get_threshold_low(name)
-            ll = f"{low:g}" if low is not None else "--"
-            hh = f"{thr:g}" if thr is not None else "--"
+            thr = highs.get(name)
+            low = lows.get(name)
+            # formatted like every other value: `:g` dropped the sensor's
+            # configured decimals and switched to scientific notation past six
+            # significant digits, so /getAlarm disagreed with /get and /list
+            ll = self._cfg.fmt(name, low) if low is not None else "--"
+            hh = self._cfg.fmt(name, thr) if thr is not None else "--"
             return f"{ll}/{hh}"
 
         if not ctx.args:
@@ -1203,8 +1260,9 @@ class TelegramBot:
             await self._reply_no_match(reply_chat)
             return
 
+        highs = db.get_all_thresholds()   # one query, not one per matched sensor
         sensor_list = [
-            (n, db.get_threshold(n), self._cfg.sensors[n].unit,
+            (n, highs.get(n), self._cfg.sensors[n].unit,
              self._cfg.sensors[n].valid_min, self._cfg.sensors[n].valid_max,
              self._cfg.sensors[n].interval, self._cfg.sensors[n].decimals,
              self._cfg.sensors[n].states)
@@ -1355,10 +1413,12 @@ class TelegramBot:
             return
 
         device_key = self._cfg.resolve_device(ctx.args[0])
-        if device_key not in self._cfg.devices:
-            await self._app.bot.send_message(
-                chat_id=reply_chat, text="Unknown device.", **_SILENT
-            )
+        # Two-step gate, as the sensor commands do it: a device the caller may
+        # not even view reads as non-existent, so probing "/ackOff <guess>"
+        # cannot tell a real device key from an invented one. Only someone who
+        # already sees the device is told they merely lack admin on it.
+        if not self._cfg.is_any_viewer_of_device(user_id, device_key):
+            await self._reply_bad_input(reply_chat, "Unknown device.")
             return
         if not self._cfg.is_any_admin_of_device(user_id, device_key):
             await self._reply_denied(reply_chat)
@@ -1476,9 +1536,7 @@ class TelegramBot:
                 who += f" (@{r['username']})"
             ago = _fmt_ago(now - r["last_seen"])
             lines.append(f"{who} [{r['user_id']}]\n  {_fmt_ts(r['last_seen'])} ({ago} ago)")
-        await self._app.bot.send_message(
-            chat_id=reply_chat, text="\n".join(lines), **_SILENT
-        )
+        await self._send_lines(reply_chat, lines)
 
     async def _cmd_dbstats(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
