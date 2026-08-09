@@ -39,6 +39,7 @@ run tests.
 - `test_silence_roundtrip` / `test_silence_is_per_key` — the offline-ack (silence) flag set/clear, keyed independently (behind `/ackOff` and auto-clear on reconnect).
 - `test_list_silenced_reports_keys_and_ts_oldest_first` — lists every silenced key with its `silenced_at`, oldest first, dropping cleared keys (backs `/ackOff` with no argument).
 - `test_get_last_alarms_order_and_sensor_filter` — alarm history newest-first, limited, optionally filtered to one sensor.
+- `test_get_last_alarms_across_subjects` — the newest events across a *set* of alarm subjects (a Field plus the Device owning it), newest-first with the limit applied to the whole set; backs `/last5Alarm`, which must mix threshold and offline history.
 - `test_get_alarms_since_filters_by_sensor_and_time` — alarms since a timestamp, filtered by sensor list (empty list → no rows).
 - `test_record_activity_upserts_and_orders` — user-activity upsert (one row per user) ordered by last-seen (behind `/usersActivity`).
 
@@ -151,8 +152,12 @@ user and return what was sent. Constants `ADMIN` / `VIEWER` / `OUTSIDER` / `SUPE
 - `test_lastseen_*` — `/lastSeen` dates a 3-day-old reading with an absolute timestamp (where `/get` would only print `∞`), lists sensors that never reported as `never` when called with no args, reports "no matching" for an unknown name, and never leaks a sensor the caller cannot view.
 - `test_getalarm_*` — `/getAlarm` renders the low/high band; unknown sensor rejected.
 - `test_lastalarms_*` / `test_last5alarm_*` — recent alarms for a sensor, "no alarms" when none, hours out of range rejected; last-5 named + unknown sensor.
+- `test_lastalarms_includes_offline_of_owning_device` / `test_last5alarm_includes_device_offline` — OFFLINE rows are stored under the *Device* key, so a viewer of one of its fields must still get them; before this the offline history was written and never queried by any command.
+- `test_lastalarms_hides_offline_of_invisible_device` — the expansion to Device subjects must not become a leak: a device the caller sees no field of stays out, while the listing is non-empty (guarding against a test that passes only because nothing was returned).
+- `test_lastalarms_subscribed_blackout_group` / `..._unsubscribed_blackout_group_excluded` / `..._blackout_group_named_in_expr` / `..._blackout_group_hidden_from_outsider` — blackout history follows the `/digest` opt-in with no args, is reachable by naming the group id, and is refused to a user who may not view the group.
 - `test_usersactivity_*` / `test_dbstats_*` — superadmin-gated; render activity list / DB stats.
-- `test_reloadconfig_*` — superadmin-gated; "not configured" when no reload hook; success path swaps config.
+- `test_reloadconfig_*` — superadmin-gated; "not configured" when no reload hook; success path swaps config. `test_reloadconfig_refreshes_signals` covers the Signal table specifically: it gates `viewers_of`/`admins_of`/`is_signal`, and was the one table the reload forgot, so revoking access left the revoked user seeing the live value in `/listSignal` until a restart.
+- `test_setalarm_rejects_signal_name` / `test_setalarmlow_*` / `test_clearalarm_*` / `test_getalarm_*` / `test_last5alarm_rejects_signal_name` — a Signal name is refused by every threshold command. `is_viewer`/`is_admin` fall back to the Signal table, so before the `_viewable_sensor` guard an admin of a Signal's device could store a threshold for a field whose readings are never stored, and `/getAlarm` would then display it.
 - `test_graph_*` / `test_csv_*` / `test_xlsx_*` — export handlers send a photo/document, clamp admin hours to 72h, and report "no data" / "no matching" appropriately.
 - `test_start_*` — `/start` registers the DM with no args, registers on a valid token, and refuses a token minted for a different sender.
 - `test_on_arg_reply_*` — the ForceReply follow-up routes a pending command's typed argument to its handler, ignores an expired pending entry, and (via `_consumes_edited_argument`) still dispatches when the argument arrives as an edit, since `_on_arg_reply` reads `effective_message`.

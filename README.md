@@ -220,7 +220,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | `info`, `note` (labels) | **Reload** | Cosmetic; shown in `/list`. |
 | `unit`, `decimals` | **Reload** | `decimals` affects only *new* readings; old stored values keep their precision. |
 | `validMin` / `validMax` | **Reload** | Glitch filter, applied to new readings. |
-| `viewers` / `admins` | **Reload** | Access changes take effect immediately. |
+| `viewers` / `admins` | **Reload** | Access changes take effect immediately, on Signals as well as stored fields. |
 | `defaultAlarmHigh` / `defaultAlarmLow` | **Reload** | Only *seeds* a threshold when none is set yet; to re-seed, clear the threshold first. |
 | `interval` (device/field) | **Reload** | Offline detection (`3×interval`) picks it up live. |
 | Access Groups / `superadmin` (credentials) | **Reload** | Membership and admin lists are live. |
@@ -267,8 +267,8 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/xlsx <expr> [Nh]` | Download readings as Excel, one sheet per sensor (default 8h, max 24h; 72h for admins) |
 | `/last` | Last time any message arrived from MQTT (no content shown) |
 | `/lastSeen [expr] [-s\|-f]` | Last stored reading per sensor: value, absolute timestamp, age. No arg = all visible sensors. Unlike `/get`'s `min ago` column (which shows `∞` once a sensor counts as silent) this dates a sensor that has been quiet for days; `never` = no reading ever stored |
-| `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h); no expr = digest subscriptions. 🔴 = alarm, 🟢 = recovery |
-| `/last5Alarm <name>` | Last 5 alarm events for a sensor (🔴/🟢 markers) |
+| `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h) for the matching sensors **and the devices they belong to**, so offline history shows up alongside threshold history; no expr = digest subscriptions, plus any subscribed blackout groups. A blackout group id works as an expr too. 🔴 = alarm/offline, 🟢 = recovery/back online, ⚡ = blackout |
+| `/last5Alarm <name>` | Last 5 alarm events concerning one sensor: its own threshold events **and** its device's offline events (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
 | `/listSignal` | Subscribable blackout groups, the Signals feeding each (live value for admins), and your subscription state — subscribe via `/digest <id> on` |
 | `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute. Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
@@ -401,18 +401,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-09
-- **Sessions:** 16 — 7716 messages (2813 user + 4903 assistant)
-- **Active conversation time:** ~1612 min (~26h 52m)
+- **Sessions:** 16 — 7939 messages (2902 user + 5037 assistant)
+- **Active conversation time:** ~1649 min (~27h 29m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 462,467 |
-| Output | 3,907,221 |
-| Cache write | 14,356,619 |
-| Cache read | 788,888,258 |
-| **Total** | **~807 M** |
+| Input (non-cache) | 462,722 |
+| Output | 3,996,619 |
+| Cache write | 14,498,612 |
+| Cache read | 808,577,992 |
+| **Total** | **~827 M** |
 
-The assistant averaged **797 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **793 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

@@ -481,14 +481,22 @@ class TelegramBot:
     def _fmt_alarms(self, rows) -> str:
         if not rows:
             return "No alarms recorded."
-        dot = {"ALARM": "🔴", "ALARM_LOW": "🔴", "OK": "🟢", "OK_LOW": "🟢"}
+        # every kind AlarmManager writes, not just the threshold ones: offline
+        # and blackout rows reach these listings too, and an unmapped kind would
+        # render with no marker at all.
+        dot = {
+            "ALARM": "🔴", "ALARM_LOW": "🔴", "OK": "🟢", "OK_LOW": "🟢",
+            "OFFLINE": "🔴", "ONLINE": "🟢",
+            "BLACKOUT": "⚡", "BLACKOUT_END": "🟢",
+        }
         out = []
         for r in rows:
             msg = r["message"]
             # emoji is derived from kind at display time; strip any leading
-            # marker left in historical rows (ALARM/OK word or 🔴/🟢).
+            # marker the stored message carries (a kind word, or the ⚡/🔌 the
+            # blackout messages are written with) so it is not printed twice.
             first, _, rest = msg.partition(" ")
-            if first in ("ALARM", "OK", "🔴", "🟢"):
+            if first in ("ALARM", "OK", "OFFLINE", "ONLINE", "🔴", "🟢", "⚡", "🔌"):
                 msg = rest
             out.append(f"[{_fmt_ts(r['ts'])}] {dot.get(r['kind'], '')} {msg}")
         return "\n".join(out)
@@ -522,6 +530,39 @@ class TelegramBot:
                     result.append(gid)
                     seen.add(gid)
         return result
+
+    def _viewable_sensor(self, arg: str, user_id: int) -> Optional[str]:
+        """Resolve one user-supplied name to a stored Sensor the caller may view,
+        or None.
+
+        Membership in `cfg.sensors` is asserted explicitly rather than left to
+        `is_viewer`: `viewers_of`/`admins_of` fall back to the Signal table, so a
+        Signal name otherwise clears every gate — and a threshold could be
+        written for a Field whose readings are never stored, which the access
+        model rules out for everybody by design."""
+        name = self._cfg.resolve_sensor(arg)
+        if name not in self._cfg.sensors or not self._cfg.is_viewer(user_id, name):
+            return None
+        return name
+
+    def _alarm_subjects(self, names: list[str]) -> list[str]:
+        """Expand Sensor names into the full set of alarm subjects that concern
+        them: the Sensor names themselves (threshold alarms) plus the key of
+        every Device owning one (OFFLINE/ONLINE alarms, which AlarmManager
+        records per Device, not per Field).
+
+        Without this the offline history was unreachable from any command — the
+        rows were written and never queried, because the callers only ever built
+        their list out of `cfg.sensors`."""
+        subjects = list(names)
+        seen = set(names)
+        for n in names:
+            sc = self._cfg.sensors.get(n)
+            if sc is None or not sc.device_key or sc.device_key in seen:
+                continue
+            seen.add(sc.device_key)
+            subjects.append(sc.device_key)
+        return subjects
 
     def _extract_sort(self, args: list[str]) -> tuple[list[str], Optional[str]]:
         """Split out a -f/-s sort flag from /get args. Last flag wins."""
@@ -988,8 +1029,8 @@ class TelegramBot:
             await self._reply_bad_input(reply_chat, "Usage: /setAlarm <sensor> <value>")
             return
 
-        name = self._cfg.resolve_sensor(ctx.args[0])
-        if not self._cfg.is_viewer(user_id, name):
+        name = self._viewable_sensor(ctx.args[0], user_id)
+        if name is None:
             await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
@@ -1024,8 +1065,8 @@ class TelegramBot:
             await self._reply_bad_input(reply_chat, "Usage: /setAlarmLow <sensor> <value>")
             return
 
-        name = self._cfg.resolve_sensor(ctx.args[0])
-        if not self._cfg.is_viewer(user_id, name):
+        name = self._viewable_sensor(ctx.args[0], user_id)
+        if name is None:
             await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
@@ -1058,8 +1099,8 @@ class TelegramBot:
         if not ctx.args:
             await self._reply_bad_input(reply_chat, "Usage: /clearAlarm <sensor>")
             return
-        name = self._cfg.resolve_sensor(ctx.args[0])
-        if not self._cfg.is_viewer(user_id, name):
+        name = self._viewable_sensor(ctx.args[0], user_id)
+        if name is None:
             await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
@@ -1080,8 +1121,8 @@ class TelegramBot:
         if not ctx.args:
             await self._reply_bad_input(reply_chat, "Usage: /clearAlarmLow <sensor>")
             return
-        name = self._cfg.resolve_sensor(ctx.args[0])
-        if not self._cfg.is_viewer(user_id, name):
+        name = self._viewable_sensor(ctx.args[0], user_id)
+        if name is None:
             await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
         if not self._cfg.is_admin(user_id, name):
@@ -1110,8 +1151,8 @@ class TelegramBot:
         if not ctx.args:
             names = self._cfg.visible_sensors(user_id)
         else:
-            name = self._cfg.resolve_sensor(ctx.args[0])
-            if not self._cfg.is_viewer(user_id, name):
+            name = self._viewable_sensor(ctx.args[0], user_id)
+            if name is None:
                 await self._reply_bad_input(reply_chat, "Unknown sensor.")
                 return
             names = [name]
@@ -1228,19 +1269,28 @@ class TelegramBot:
             hours = n
             args = args[:-1]
 
+        groups: list[str] = []
         if not args:
             subscribed = set(db.get_digest_subscriptions(user_id))
             visible = set(self._cfg.visible_sensors(user_id))
             names = [n for n in self._cfg.sensors if n in subscribed and n in visible]
+            # a Blackout Group is subscribed the same way a Sensor is, so its
+            # history belongs in the same no-argument listing
+            groups = [
+                g for g in self._cfg.blackouts
+                if g in subscribed and self._cfg.is_viewer_of_blackout(user_id, g)
+            ]
         else:
             names = self._resolve_sensors(args, user_id)
+            groups = self._resolve_blackouts(args, user_id)
 
-        if not names:
+        subjects = self._alarm_subjects(names) + groups
+        if not subjects:
             await self._reply_no_match(reply_chat)
             return
 
         since = int(time.time()) - hours * 3600
-        rows = db.get_alarms_since(names, since)
+        rows = db.get_alarms_since(subjects, since)
         if not rows:
             await self._app.bot.send_message(
                 chat_id=reply_chat, text=f"No alarms in last {hours}h.", **_SILENT
@@ -1259,11 +1309,14 @@ class TelegramBot:
         if not ctx.args:
             await self._prompt_args(reply_chat, "last5alarm")
             return
-        name = self._cfg.resolve_sensor(ctx.args[0])
-        if not self._cfg.is_viewer(user_id, name):
+        name = self._viewable_sensor(ctx.args[0], user_id)
+        if name is None:
             await self._reply_bad_input(reply_chat, "Unknown sensor.")
             return
-        rows = db.get_last_alarms(sensor=name, n=5)
+        # the Field's own threshold history plus its Device's offline history —
+        # "the last 5 things that happened to this sensor" reads that way to a
+        # user, and offline is the event they most often go looking for
+        rows = db.get_last_alarms(subjects=self._alarm_subjects([name]), n=5)
         await self._app.bot.send_message(
             chat_id=reply_chat, text=self._fmt_alarms(rows), **_SILENT
         )
@@ -1378,6 +1431,12 @@ class TelegramBot:
         self._cfg.devices.update(new.devices)
         self._cfg.blackouts.clear()
         self._cfg.blackouts.update(new.blackouts)
+        # Signals too: they carry their own viewers/admins, and `viewers_of` /
+        # `admins_of` / `is_signal` read this table. Left stale, a reload that
+        # revokes access still showed the revoked user the live value in
+        # /listSignal until the process was restarted.
+        self._cfg.signals.clear()
+        self._cfg.signals.update(new.signals)
 
         for sc in new.sensors.values():
             if sc.default_alarm_high is not None and db.get_threshold(sc.name) is None:

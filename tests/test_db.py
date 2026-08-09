@@ -159,6 +159,23 @@ def test_get_last_alarms_order_and_sensor_filter(temp_db, monkeypatch):
     assert temp_db.get_last_alarms(n=1)[0]["sensor"] == "SM2_T"
 
 
+def test_get_last_alarms_across_subjects(temp_db, monkeypatch):
+    # a Field's threshold history and its Device's offline history live under
+    # two different subjects; /last5Alarm asks for both at once
+    now = {"t": 1000}
+    monkeypatch.setattr(temp_db.time, "time", lambda: now["t"])
+    temp_db.insert_alarm("SM1_T", "ALARM", "hot")
+    now["t"] += 10
+    temp_db.insert_alarm("SM1", "OFFLINE", "no data")
+    now["t"] += 10
+    temp_db.insert_alarm("SM2", "OFFLINE", "other device")
+    rows = temp_db.get_last_alarms(subjects=["SM1_T", "SM1"], n=5)
+    assert [r["message"] for r in rows] == ["no data", "hot"]   # newest first
+    # the limit still applies across the whole subject set
+    assert len(temp_db.get_last_alarms(subjects=["SM1_T", "SM1"], n=1)) == 1
+    assert temp_db.get_last_alarms(subjects=[], n=5)[0]["message"] == "other device"
+
+
 def test_get_alarms_since_filters_by_sensor_and_time(temp_db, monkeypatch):
     now = {"t": 1000}
     monkeypatch.setattr(temp_db.time, "time", lambda: now["t"])

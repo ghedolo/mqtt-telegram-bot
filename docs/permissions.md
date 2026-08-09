@@ -243,8 +243,8 @@ within the caller's visibility, which for a user in no Access Group is empty.
 | `/lastSeen` | viewer | visible Sensors (all of them when no expr) |
 | `/getAlarm` | viewer of the named Sensor | visible Sensors |
 | `/graph`, `/csv`, `/xlsx` | viewer | visible Sensors; window max 24h, **72h if `is_any_admin`** |
-| `/lastAlarms` | viewer | visible Sensors (subscriptions when no expr) |
-| `/last5Alarm` | viewer of the named Sensor | one Sensor |
+| `/lastAlarms` | viewer | visible Sensors + the Devices owning them + Blackout Groups the user may view (subscriptions when no expr) |
+| `/last5Alarm` | viewer of the named Sensor | one Sensor + its Device |
 | `/digest` | viewer | visible Sensors + Blackout Groups the user may view |
 | `/silent` | viewer | own mutes only, per-user |
 | `/listSignal` | viewer of a watched Sensor | Blackout Groups the user may view; live Signal value shown only to Admins |
@@ -292,6 +292,16 @@ sent to the Telegram Group except registration prompts.
 
 Offline is Admin-gated *and* subscription-gated — the narrowest of the three.
 Blackout is the widest by role (any viewer) but strictly opt-in.
+
+**Being notified and being able to look it up are gated differently, on
+purpose.** The offline *notification* goes to Admins only, but the offline
+*history* surfaces to any Viewer of a Field of that Device through
+`/lastAlarms` and `/last5Alarm`. Reading that a Device was down is not the same
+capability as being told about it while it is down, still less as acknowledging
+it (`/ackOff`, Admin-only). A Viewer who can see a Field's readings can already
+tell the Device went quiet — `/get` prints `∞` and `/lastSeen` dates it — so
+withholding the recorded reason would hide nothing and only make the silence
+harder to explain.
 
 ## 7. Autocomplete menu is not a permission boundary
 

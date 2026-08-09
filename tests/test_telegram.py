@@ -805,6 +805,36 @@ def test_lastseen_hides_invisible_sensors(hbot, temp_db):
     assert "SM2_T" not in sent[-1][1]
 
 
+# Signals are not Sensors — no threshold command may touch one
+# (`bot` fixture: user 1 administers SM3, whose only field SM3_IF is a Signal)
+
+def test_setalarm_rejects_signal_name(bot, temp_db):
+    sent = _run(bot, bot._cmd_setalarm, 1, "SM3_IF", "30")
+    assert "unknown sensor" in sent[-1][1].lower()
+    assert temp_db.get_threshold("SM3_IF") is None
+
+
+def test_setalarmlow_rejects_signal_name(bot, temp_db):
+    sent = _run(bot, bot._cmd_setalarmlow, 1, "SM3_IF", "1")
+    assert "unknown sensor" in sent[-1][1].lower()
+    assert temp_db.get_threshold_low("SM3_IF") is None
+
+
+def test_getalarm_rejects_signal_name(bot, temp_db):
+    sent = _run(bot, bot._cmd_getalarm, 1, "SM3_IF")
+    assert "unknown sensor" in sent[-1][1].lower()
+
+
+def test_last5alarm_rejects_signal_name(bot, temp_db):
+    sent = _run(bot, bot._cmd_last5alarm, 1, "SM3_IF")
+    assert "unknown sensor" in sent[-1][1].lower()
+
+
+def test_clearalarm_rejects_signal_name(bot, temp_db):
+    sent = _run(bot, bot._cmd_clearalarm, 1, "SM3_IF")
+    assert "unknown sensor" in sent[-1][1].lower()
+
+
 # /getAlarm
 
 def test_getalarm_named_shows_band(hbot, temp_db):
@@ -835,6 +865,61 @@ def test_lastalarms_none(hbot, temp_db):
 def test_lastalarms_hours_out_of_range(hbot, temp_db):
     sent = _run(hbot, hbot._cmd_lastalarms, ADMIN, "SM1_T", "99h")
     assert "between 1 and 24" in sent[-1][1]
+
+
+def test_lastalarms_includes_offline_of_owning_device(hbot, temp_db):
+    # OFFLINE rows are recorded under the DEVICE key; a viewer of one of its
+    # fields must still see them, or the offline history is unreachable
+    temp_db.insert_alarm("SM1", "OFFLINE", "OFFLINE SM1: no data for >900s")
+    sent = _run(hbot, hbot._cmd_lastalarms, ADMIN, "SM1_T")
+    assert "no data for >900s" in sent[-1][1]
+    assert "🔴" in sent[-1][1]
+
+
+def test_lastalarms_hides_offline_of_invisible_device(hbot, temp_db):
+    # SM2 belongs to the `other` group; ADMIN sees no field of it
+    temp_db.insert_alarm("SM1", "OFFLINE", "OFFLINE SM1: no data for >900s")
+    temp_db.insert_alarm("SM2", "OFFLINE", "OFFLINE SM2: no data for >900s")
+    sent = _run(hbot, hbot._cmd_lastalarms, ADMIN, "*")
+    assert "SM1" in sent[-1][1]      # listing is not empty…
+    assert "SM2" not in sent[-1][1]  # …and still leaks nothing
+
+
+def test_lastalarms_subscribed_blackout_group(bot, temp_db):
+    # user 1 views SM1_T, which blackout group R2 watches
+    temp_db.subscribe_digest(1, "R2")
+    temp_db.insert_alarm("R2", "BLACKOUT", "⚡ BLACKOUT R2: no current for >10s")
+    sent = _run(bot, bot._cmd_lastalarms, 1)
+    assert "no current" in sent[-1][1]
+    assert sent[-1][1].count("⚡") == 1      # marker not printed twice
+
+
+def test_lastalarms_unsubscribed_blackout_group_excluded(bot, temp_db):
+    temp_db.subscribe_digest(1, "SM1_T")
+    temp_db.insert_alarm("SM1_T", "ALARM", "SM1_T: hot")
+    temp_db.insert_alarm("R2", "BLACKOUT", "⚡ BLACKOUT R2: no current for >10s")
+    sent = _run(bot, bot._cmd_lastalarms, 1)
+    assert "hot" in sent[-1][1]              # the subscribed sensor is listed…
+    assert "no current" not in sent[-1][1]   # …the unsubscribed group is not
+
+
+def test_lastalarms_blackout_group_named_in_expr(bot, temp_db):
+    temp_db.insert_alarm("R2", "BLACKOUT", "⚡ BLACKOUT R2: no current for >10s")
+    sent = _run(bot, bot._cmd_lastalarms, 1, "R2")
+    assert "no current" in sent[-1][1]
+
+
+def test_lastalarms_blackout_group_hidden_from_outsider(bot, temp_db):
+    temp_db.insert_alarm("R2", "BLACKOUT", "⚡ BLACKOUT R2: no current for >10s")
+    sent = _run(bot, bot._cmd_lastalarms, 99, "R2")   # user 99 is in no group
+    assert "no matching" in sent[-1][1].lower()       # refused before any query
+
+
+def test_last5alarm_includes_device_offline(hbot, temp_db):
+    temp_db.insert_alarm("SM1_T", "ALARM", "SM1_T: hot")
+    temp_db.insert_alarm("SM1", "OFFLINE", "OFFLINE SM1: no data for >900s")
+    sent = _run(hbot, hbot._cmd_last5alarm, ADMIN, "SM1_T")
+    assert "hot" in sent[-1][1] and "no data for >900s" in sent[-1][1]
 
 
 def test_last5alarm_named(hbot, temp_db):
@@ -888,6 +973,58 @@ def test_reloadconfig_success(hbot, temp_db):
     hbot._reload_fn = lambda: hbot._cfg   # reload returns a valid config
     sent = _run(hbot, hbot._cmd_reloadconfig, SUPER)
     assert "reloaded" in sent[-1][1].lower()
+
+
+SIGNAL_CREDS = """
+telegram:
+  token: "123:ABC"
+  group_id: -100
+mqtt:
+  host: "broker"
+  port: 1883
+groups:
+  ops: [1, 2]
+superadmin: [9]
+"""
+
+
+def _signal_defaults(admins: str) -> str:
+    return f"""
+defaults:
+  interval: 300
+devices:
+  SM3:
+    topic: "t/sm3"
+    admins: [{admins}]
+    fields:
+      IF: {{signal: true, topic: "t/sm3fast", json_path: cur}}
+blackouts:
+  SIG:
+    fields: [SM3_IF]
+    below: 0.5
+    for_seconds: 0
+    stale_after: 9
+"""
+
+
+def test_reloadconfig_refreshes_signals(tmp_path, temp_db):
+    # revoking access to a Signal must take effect on /reloadConfig: the Signal
+    # table gates viewers_of/admins_of/is_signal, and left stale it kept showing
+    # the live value to the revoked user until a process restart.
+    sd = tmp_path / "sensors.d"
+    sd.mkdir()
+    (sd / "00-defaults.yaml").write_text(_signal_defaults("ops"))
+    cf = tmp_path / "credentials.yaml"
+    cf.write_text(SIGNAL_CREDS)
+    b = tb.TelegramBot(config.load(str(sd), str(cf)))
+    b.signal_snapshot_fn = lambda: {"SM3_IF": {"value": 0.42, "ts": int(time.time())}}
+    assert "0.42" in b._render_signal_list(1)
+
+    # config now grants the signal to nobody
+    (sd / "00-defaults.yaml").write_text(_signal_defaults(""))
+    b._reload_fn = lambda: config.load(str(sd), str(cf))
+    _run(b, b._cmd_reloadconfig, SUPER)
+    assert "0.42" not in b._render_signal_list(1)
 
 
 # /start — DM registration + token gating

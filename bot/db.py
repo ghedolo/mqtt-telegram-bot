@@ -44,6 +44,11 @@ def init():
                 silenced_at INTEGER NOT NULL
             );
 
+            -- `sensor` is a misnomer kept for compatibility with existing
+            -- installations: the column holds the alarm's *subject*, which is a
+            -- Sensor name for threshold alarms, a Device key for OFFLINE/ONLINE,
+            -- and a Blackout Group id for BLACKOUT/BLACKOUT_END. It is not a
+            -- foreign key into `readings`. Query helpers name it `subject(s)`.
             CREATE TABLE IF NOT EXISTS alarms (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
                 sensor    TEXT    NOT NULL,
@@ -296,12 +301,23 @@ def insert_alarm(sensor: str, kind: str, message: str):
         )
 
 
-def get_last_alarms(sensor: Optional[str] = None, n: int = 1) -> list[sqlite3.Row]:
+def get_last_alarms(
+    subject: Optional[str] = None,
+    n: int = 1,
+    subjects: Optional[list[str]] = None,
+) -> list[sqlite3.Row]:
+    """The n newest alarm events, optionally restricted to one subject or a set
+    of them. See the `alarms` table note: a subject is a Sensor name, a Device
+    key or a Blackout Group id, so callers that want a Device's offline history
+    alongside a Field's threshold history pass both keys in `subjects`."""
+    keys = list(subjects) if subjects is not None else ([subject] if subject else [])
     with _conn() as con:
-        if sensor:
+        if keys:
+            ph = ",".join("?" * len(keys))
             return con.execute(
-                "SELECT sensor, kind, message, ts FROM alarms WHERE sensor=? ORDER BY ts DESC LIMIT ?",
-                (sensor, n),
+                f"SELECT sensor, kind, message, ts FROM alarms "
+                f"WHERE sensor IN ({ph}) ORDER BY ts DESC LIMIT ?",
+                (*keys, n),
             ).fetchall()
         return con.execute(
             "SELECT sensor, kind, message, ts FROM alarms ORDER BY ts DESC LIMIT ?",
@@ -309,16 +325,18 @@ def get_last_alarms(sensor: Optional[str] = None, n: int = 1) -> list[sqlite3.Ro
         ).fetchall()
 
 
-def get_alarms_since(sensors: list[str], since_ts: int) -> list[sqlite3.Row]:
-    """All alarm events for the given sensors with ts >= since_ts, newest first."""
-    if not sensors:
+def get_alarms_since(subjects: list[str], since_ts: int) -> list[sqlite3.Row]:
+    """All alarm events for the given subjects with ts >= since_ts, newest first.
+    A subject is any key the `alarms` table records against — Sensor, Device or
+    Blackout Group (see the table definition)."""
+    if not subjects:
         return []
     with _conn() as con:
-        ph = ",".join("?" * len(sensors))
+        ph = ",".join("?" * len(subjects))
         return con.execute(
             f"SELECT sensor, kind, message, ts FROM alarms "
             f"WHERE sensor IN ({ph}) AND ts>=? ORDER BY ts DESC",
-            (*sensors, since_ts),
+            (*subjects, since_ts),
         ).fetchall()
 
 
