@@ -627,6 +627,37 @@ superadmin: ["9"]
     assert cfg.telegram_group_id == -100
 
 
+@pytest.mark.parametrize("spelling", [" []", "", "\n    -"])
+def test_empty_group_parses_as_no_members(tmp_path, spelling):
+    # "nobody yet" is a legitimate state for an Access Group, and YAML spells it
+    # three ways: [], a bare key (None), and a key with a lone dash ([None]).
+    # Only the first used to survive: the others raised TypeError and stopped
+    # the whole config from loading, so the bot would not start at all.
+    creds = CREDS.replace("  ops: [1, 2]", f"  ops: [1, 2]\n  ccib:{spelling}")
+    cfg = _write_env(tmp_path, creds=creds)
+    assert cfg.groups["ccib"] == []
+    assert cfg.groups["ops"] == [1, 2]      # the real group still parses
+
+
+def test_empty_superadmin_list_is_allowed(tmp_path):
+    creds = CREDS.replace("superadmin: [9]", "superadmin:")
+    assert _write_env(tmp_path, creds=creds).superadmin == []
+
+
+def test_non_numeric_group_member_rejected(tmp_path):
+    # tolerating the empty spellings must not turn into tolerating a typo: an id
+    # that is not a number is a mistake worth stopping for
+    creds = CREDS.replace("  ops: [1, 2]", '  ops: [1, "luca"]')
+    with pytest.raises(ValueError, match="not a Telegram id"):
+        _write_env(tmp_path, creds=creds)
+
+
+def test_group_that_is_not_a_list_rejected(tmp_path):
+    creds = CREDS.replace("  ops: [1, 2]", "  ops: 1")
+    with pytest.raises(ValueError, match="expected a list"):
+        _write_env(tmp_path, creds=creds)
+
+
 # --- availability ---
 
 def test_availability_absent_is_none(tmp_path):

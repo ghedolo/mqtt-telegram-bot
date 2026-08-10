@@ -76,6 +76,8 @@ run tests.
 - `test_schedule_times_validated_at_load` / `..._out_of_range_rejected` / `..._normalised` — `digest_time`/`archive_time` are validated (and zero-padded) at load. Left to first use they raise inside an asyncio task, killing the digest or archive loop while the bot stays up and says nothing.
 - `test_poll_interval_clamped` — clamped to 1–10.
 - `test_group_ids_coerced_to_int` — group/superadmin ids coerced to int.
+- `test_empty_group_parses_as_no_members` (three YAML spellings) / `test_empty_superadmin_list_is_allowed` — a group with no members is legal however it is written (`[]`, a bare key, or a key with a lone `-`). Two of those spellings used to raise `TypeError` and stop the whole config from loading, so the bot did not start.
+- `test_non_numeric_group_member_rejected` / `test_group_that_is_not_a_list_rejected` — tolerating the empty spellings must not tolerate a typo: a non-numeric id and a group that is not a list are still refused.
 - `test_resolve_device_is_case_insensitive_and_canonical` — a device key resolves to its canonical form regardless of case; unknown keys pass through unchanged (names are case-preserving but case-insensitive).
 - `test_resolve_sensor_is_case_insensitive` — same for sensor names.
 

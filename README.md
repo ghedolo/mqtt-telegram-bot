@@ -115,7 +115,7 @@ failure.
 
 `decimals` (0-5, default 1) sets how many decimal places each reading is rounded to for storage and shown with everywhere — `/get`, `/list`, alarm messages, `/setAlarm` input, and graph stats. Out-of-range values are rejected at startup.
 
-**What the loader refuses to start on**, because the alternative is a bot that looks configured and quietly monitors nothing: an `interval` of zero or less (the offline heuristic is `3 × interval`); a `validMin` above its `validMax` (every real reading would be discarded as a glitch); two device keys differing only by case, like two sensor names, since both resolve case-insensitively; a blackout group id equal to a sensor name, a signal name **or** a device key (all four share one alarm-history namespace); `digest_time` / `archive_time` that is not a valid `HH:MM`; and an `mqtt.tls` that is neither a boolean nor an obvious yes/no spelling — a quoted `"false"` used to read as *true*. A **group name that does not exist** in `credentials.yaml` is not fatal: it is fail-closed anyway, so it becomes a config warning (visible at the bottom of `/sysinfo` and in the `/reloadConfig` reply) rather than a refusal to start.
+**What the loader refuses to start on**, because the alternative is a bot that looks configured and quietly monitors nothing: an `interval` of zero or less (the offline heuristic is `3 × interval`); a `validMin` above its `validMax` (every real reading would be discarded as a glitch); two device keys differing only by case, like two sensor names, since both resolve case-insensitively; a blackout group id equal to a sensor name, a signal name **or** a device key (all four share one alarm-history namespace); `digest_time` / `archive_time` that is not a valid `HH:MM`; and an `mqtt.tls` that is neither a boolean nor an obvious yes/no spelling — a quoted `"false"` used to read as *true*. A **group name that does not exist** in `credentials.yaml` is not fatal: it is fail-closed anyway, so it becomes a config warning (visible at the bottom of `/sysinfo` and in the `/reloadConfig` reply) rather than a refusal to start. Declaring that group with no members is a valid answer to such a warning, and clears it.
 
 `states` turns a numeric field into a **discrete state field** — the value is still stored as a number, but displayed as a label. It maps values to names (keys accept `false`/`true`, `0`/`1`, or `"0"`/`"1"` — all normalised to `0.0`/`1.0`), so a Zigbee2MQTT door contact (`contact: false`/`true`) shows as `Aperta`/`Chiusa` in `/get`, `/list` and the digest instead of `0.0`/`1.0`. It also changes how the field is **graphed**: a state field is drawn as a **step line** (holds its value between readings, jumps at each change) with the y-axis labelled by the state names, rather than an interpolated line with a numeric axis. A threshold set on the raw number (e.g. `/setAlarmLow contact 0.5`) still fires an edge alarm on the transition. Unmapped values (like the `0.5` threshold itself) fall back to the number.
 
@@ -196,6 +196,8 @@ All raw readings are always stored in the DB. The optional per-field `validMin`/
 See [`credentials.yaml.example`](credentials.yaml.example).
 
 Access Groups are defined at the top level of `credentials.yaml` and referenced by name in `sensors.d/`.
+
+A group **may be empty** — a legitimate "declared, nobody in it yet", and the way to silence the config warning about a group name that does not exist while you decide who belongs in it. All three YAML spellings work: `ccib: []`, a bare `ccib:`, or `ccib:` followed by a lone `-`. An empty group grants nothing, so anything referencing it stays visible to nobody. A member that is not a number is still an error, as is a group whose value is not a list.
 
 `superadmin` is a flat list of Telegram `chat_id`s with access to the caretaker commands — `/forgetSensor`, `/reloadConfig`, `/usersActivity`, `/dbStats`. Independent of sensor-level groups.
 
@@ -416,18 +418,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-10
-- **Sessions:** 16 — 8478 messages (3140 user + 5338 assistant)
-- **Active conversation time:** ~1760 min (~29h 20m)
+- **Sessions:** 16 — 8546 messages (3169 user + 5377 assistant)
+- **Active conversation time:** ~1777 min (~29h 37m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 463,295 |
-| Output | 4,146,436 |
-| Cache write | 15,430,633 |
-| Cache read | 891,757,444 |
-| **Total** | **~911 M** |
+| Input (non-cache) | 463,369 |
+| Output | 4,168,147 |
+| Cache write | 15,458,911 |
+| Cache read | 907,063,608 |
+| **Total** | **~927 M** |
 
-The assistant averaged **777 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **775 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

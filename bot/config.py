@@ -237,6 +237,30 @@ def _as_bool(value, default: bool, where: str) -> bool:
     raise ValueError(f"{where}: expected a boolean, got {value!r}")
 
 
+def _member_ids(value, where: str) -> list[int]:
+    """A list of Telegram ids from a credentials list, tolerating the empty ones.
+
+    An Access Group with no members is a legitimate way to say "nobody yet", and
+    YAML offers three spellings of it: `g: []`, a bare `g:` (which parses as
+    None), and `g:` followed by a lone `-` (which parses as `[None]`). Only the
+    first survived `[int(i) for i in members]`; the other two raised TypeError
+    and stopped the whole config from loading — the bot would not start, and a
+    /reloadConfig would answer "Reload failed"."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{where}: expected a list of Telegram ids, got {value!r}")
+    ids: list[int] = []
+    for item in value:
+        if item is None:          # a lone `-` under the key
+            continue
+        try:
+            ids.append(int(item))
+        except (TypeError, ValueError):
+            raise ValueError(f"{where}: {item!r} is not a Telegram id")
+    return ids
+
+
 def _as_hhmm(value, where: str) -> str:
     """A daily-schedule time as `HH:MM`.
 
@@ -551,9 +575,9 @@ def load(
 
     tg = sec["telegram"]
     mq = sec["mqtt"]
-    raw_groups = sec.get("groups", {})
-    groups = {g: [int(i) for i in members] for g, members in raw_groups.items()}
-    superadmin = [int(i) for i in sec.get("superadmin", [])]
+    raw_groups = sec.get("groups") or {}
+    groups = {g: _member_ids(members, f"groups.{g}") for g, members in raw_groups.items()}
+    superadmin = _member_ids(sec.get("superadmin"), "superadmin")
 
     # An Access Group named in sensors.d/ but absent from credentials.yaml
     # resolves to the empty set, so the entity is fail-closed — safe, but the
