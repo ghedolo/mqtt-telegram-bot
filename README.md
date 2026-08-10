@@ -197,7 +197,7 @@ See [`credentials.yaml.example`](credentials.yaml.example).
 
 Access Groups are defined at the top level of `credentials.yaml` and referenced by name in `sensors.d/`.
 
-`superadmin` is a flat list of Telegram `chat_id`s with access to `/forgetSensor` and `/reloadConfig`. Independent of sensor-level groups.
+`superadmin` is a flat list of Telegram `chat_id`s with access to the caretaker commands — `/forgetSensor`, `/reloadConfig`, `/usersActivity`, `/dbStats`. Independent of sensor-level groups.
 
 #### Logging and the command trace
 
@@ -284,6 +284,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/sysinfo` | Health summary (any user): bot version, uptime, memory (RSS/limit), DB size, last-MQTT freshness, device/sensor counts |
 | `/myid` | Your Telegram user ID |
 | `/help` | Command list |
+| `/start` | Register this chat for replies and notifications (also how the group registration button lands you here) |
 
 ### Admin-only commands
 
@@ -316,7 +317,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `*SUB*` | sensors containing SUB |
 | `A,B` or `A B` | comma- or space-separated patterns |
 
-Sort (only `/get`): default groups by field (all `_T`, then `_H`, …). `-s` sorts by sensor name instead; `-f` is the explicit field default. Example: `/get * -s`.
+Sort (`/get` and `/lastSeen`): default groups by field (all `_T`, then `_H`, …). `-s` sorts by sensor name instead; `-f` is the explicit field default. Example: `/get * -s`.
 
 ---
 
@@ -408,19 +409,19 @@ This project was built entirely through a conversation with Claude Code, across
 multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
-- **Last message:** 2026-08-09
-- **Sessions:** 16 — 8376 messages (3094 user + 5282 assistant)
-- **Active conversation time:** ~1727 min (~28h 47m)
+- **Last message:** 2026-08-10
+- **Sessions:** 16 — 8446 messages (3125 user + 5321 assistant)
+- **Active conversation time:** ~1740 min (~29h 0m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 463,187 |
-| Output | 4,105,502 |
-| Cache write | 14,701,071 |
-| Cache read | 872,423,628 |
-| **Total** | **~891 M** |
+| Input (non-cache) | 463,262 |
+| Output | 4,122,789 |
+| Cache write | 15,397,692 |
+| Cache read | 885,442,735 |
+| **Total** | **~905 M** |
 
-The assistant averaged **777 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **775 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

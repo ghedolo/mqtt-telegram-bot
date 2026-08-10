@@ -650,9 +650,9 @@ class TelegramBot:
 
     def _render_last_seen_text(self, names: list[str]) -> Optional[str]:
         """Build the monospace table behind /lastSeen: when each sensor last
-        stored a reading. Unlike the 'min ago' column of /get — which saturates
-        at ∞ past 6h — this prints the absolute timestamp, so a sensor silent
-        for days still tells you *when* it went quiet.
+        stored a reading. Where /get's 'min ago' column collapses to ∞ as soon
+        as a sensor counts as silent (see `_is_stale`), this prints the absolute
+        timestamp, so a sensor quiet for days still tells you *when* it stopped.
         Returns a Markdown code block, or None if no sensors resolve."""
         rows_map = {r["sensor"]: r for r in db.get_all_latest()}
         now = int(time.time())

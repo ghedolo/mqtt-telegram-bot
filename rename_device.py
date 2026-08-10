@@ -30,6 +30,9 @@ SENSOR_TABLES = [
     "silenced",
     "alarms",
     "digest_subscriptions",
+    # `mutes` too: a /silent mute left under the old name simply stops matching,
+    # so the user's alarm DMs resume without them having asked for it
+    "mutes",
 ]
 
 

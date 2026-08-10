@@ -1,6 +1,8 @@
-"""Tests for bot.main wiring that is worth pinning in isolation — currently the
-command-trace file setup, whose whole point is to never crash the bot over a bad
-path (the container mounts /app read-only)."""
+"""Tests for the bits of bot.main worth pinning in isolation: the command-trace
+file setup, whose whole point is to never crash the bot over a bad path (the
+container mounts /app read-only), and the digest's recipient lookup, which runs
+inside a long-lived task where an unguarded raise silently ends the daily
+digest for the life of the process."""
 import logging
 from types import SimpleNamespace
 

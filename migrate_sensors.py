@@ -40,10 +40,16 @@ def main() -> None:
 
     os.makedirs(args.out, exist_ok=True)
 
-    defaults = raw.get("defaults")
-    if defaults:
-        _write(os.path.join(args.out, "00-defaults.yaml"),
-               {"defaults": defaults}, args.force)
+    # `blackouts:` travels with `defaults:`, since 00-defaults.yaml is the only
+    # file the loader accepts either from. Dropping it here lost every blackout
+    # group definition, silently, on the one path this script exists for.
+    head = {}
+    if raw.get("defaults"):
+        head["defaults"] = raw["defaults"]
+    if raw.get("blackouts"):
+        head["blackouts"] = raw["blackouts"]
+    if head:
+        _write(os.path.join(args.out, "00-defaults.yaml"), head, args.force)
 
     for dev_key, dv in devices.items():
         fname = dev_key.replace("/", "_").replace(os.sep, "_") + ".yaml"

@@ -108,6 +108,11 @@ run tests.
 - `test_oversized_payload_dropped` — payload over 64 KiB rejected.
 - `test_oversized_availability_payload_dropped` — the size cap is applied before the availability branch too; it used to sit after, so those topics decoded and JSON-parsed a payload of any size.
 
+### `tests/test_rename_device.py` — the DB half of a device rename (`rename_device.py`)
+- `test_mute_follows_the_rename` — a `/silent` mute moves with the sensor. Left behind under the old name it stops matching, and the user's threshold-alarm DMs resume without them asking.
+- `test_every_sensor_keyed_table_is_covered` — the schema is the source of truth: every table with a `sensor` column must appear in `SENSOR_TABLES`, so a table added to `bot/db.py` cannot silently fall out of the rename (which is how `mutes` was missed).
+- `test_dry_run_changes_nothing` — `--dry-run` rolls back.
+
 ### `tests/test_ingest.py` — reading path integration (`bot/ingest.py`)
 Wires `process_reading` to the real DB and a real `AlarmManager` (only the
 notifiers are stubbed) and drives one full flow.
@@ -115,6 +120,7 @@ notifiers are stubbed) and drives one full flow.
 - `test_out_of_range_stored_but_not_alarmed` — a reading outside `validMin/Max` is persisted but skips alarm checks (glitch never alarms).
 - `test_threshold_alarm_end_to_end` — an in-range reading over threshold produces a 🔴 notification carrying the formatted value.
 - `test_blackout_evaluated_on_reading` — a dark current reading re-evaluates and raises its blackout group.
+- `test_signal_not_stored_but_feeds_blackout` — a Signal's reading never reaches the DB yet still drives blackout evaluation, the whole point of the Signal split.
 
 ### `tests/test_graph.py` — chart data prep & rendering (`bot/graph.py`)
 - `test_prepare_series_plain` — in-range readings pass through unchanged.

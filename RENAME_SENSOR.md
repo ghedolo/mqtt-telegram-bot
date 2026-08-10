@@ -11,9 +11,13 @@ renames the key in place, and — if that file is named after the device
 (`OLD.yaml`) — renames the file to `NEW.yaml` too.
 
 It updates every sensor-keyed DB table (`readings`, `readings_archive`,
-`thresholds`, `silenced`, `alarms`, `digest_subscriptions`) plus the
+`thresholds`, `silenced`, `alarms`, `digest_subscriptions`, `mutes`) plus the
 device-level rows used for offline alarms and silence state (keyed by the
 bare `device_key`).
+
+`mutes` matters more than it looks: a `/silent` mute left behind under the old
+sensor name stops matching, and the user's threshold-alarm DMs resume without
+them having asked for it.
 
 ## Why two steps
 

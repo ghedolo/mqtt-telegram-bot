@@ -1,7 +1,12 @@
-"""Tests for bot.telegram_bot pure helpers — sensor/blackout resolution with
-visibility gating, sort flags, the registration-token HMAC, digest building,
-and the small formatting helpers. No network: the PTB Application builds
-offline and we never start polling.
+"""Tests for bot.telegram_bot, in two layers.
+
+Pure helpers first — sensor/blackout resolution with visibility gating, sort
+flags, staleness, the registration-token HMAC, digest building, the formatting
+helpers — then the command handlers driven end to end against a fake bot app
+(`_fake_app` records what was sent), which is where the permission gates,
+argument parsing, name resolution and DB side effects actually live.
+
+No network: the PTB Application builds offline and polling is never started.
 """
 import asyncio
 import logging
