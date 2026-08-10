@@ -407,6 +407,8 @@ Built with [Claude Code](https://claude.ai/claude-code) by Anthropic.
 ## Development effort
 
 > How these numbers are computed (the cumulative, cross-machine ledger): [docs/devstats.md](docs/devstats.md).
+>
+> Part of that effort was a four-pass code review run with a **second model** reviewing while the main one verified and fixed. Its token cost, what it found, and what the split of roles does and does not prove: [docs/second-model-review.md](docs/second-model-review.md).
 
 <!-- devstats:start -->
 This project was built entirely through a conversation with Claude Code, across
@@ -414,18 +416,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-10
-- **Sessions:** 16 — 8468 messages (3135 user + 5333 assistant)
-- **Active conversation time:** ~1749 min (~29h 9m)
+- **Sessions:** 16 — 8478 messages (3140 user + 5338 assistant)
+- **Active conversation time:** ~1760 min (~29h 20m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 463,285 |
-| Output | 4,144,701 |
-| Cache write | 15,425,548 |
-| Cache read | 889,862,123 |
-| **Total** | **~909 M** |
+| Input (non-cache) | 463,295 |
+| Output | 4,146,436 |
+| Cache write | 15,430,633 |
+| Cache read | 891,757,444 |
+| **Total** | **~911 M** |
 
 The assistant averaged **777 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->
