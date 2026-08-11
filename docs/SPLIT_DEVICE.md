@@ -57,7 +57,7 @@ says so.
 
 ## Why two steps
 
-Same as `RENAME_SENSOR.md`, for the same reason — in the deployed (rootless
+Same as `docs/RENAME_SENSOR.md`, for the same reason — in the deployed (rootless
 Docker) setup the two targets live in different places:
 
 - **The DB** (`data/sensors.db`) is in a volume owned by the container's uid.
@@ -85,22 +85,22 @@ docker compose down
 cp data/sensors.db data/sensors.db.bak && cp -r sensors.d sensors.d.bak
 
 # 1. DB update, inside a throwaway container (dry-run first)
-docker compose run --rm -v ./split_device.py:/app/split_device.py \
-  -v ./rename_device.py:/app/rename_device.py bot \
-  python3 split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-yaml --dry-run
-docker compose run --rm -v ./split_device.py:/app/split_device.py \
-  -v ./rename_device.py:/app/rename_device.py bot \
-  python3 split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-yaml
+docker compose run --rm -v ./tools/split_device.py:/app/tools/split_device.py \
+  -v ./tools/rename_device.py:/app/tools/rename_device.py bot \
+  python3 tools/split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-yaml --dry-run
+docker compose run --rm -v ./tools/split_device.py:/app/tools/split_device.py \
+  -v ./tools/rename_device.py:/app/tools/rename_device.py bot \
+  python3 tools/split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-yaml
 
 # 2. YAML update, on the host (dry-run prints the whole rewritten file)
-python3 split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-db --dry-run
-python3 split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-db
+python3 tools/split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-db --dry-run
+python3 tools/split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-db
 
 # 3. set the real intervals on both halves, by hand, in sensors.d/
 #    (the new device inherited the old shared one). cadence.py measures what
 #    each sensor actually publishes and suggests the interval (the bot is down
 #    here, so `run --rm`, not `exec`):
-#      docker compose run --rm -T bot python3 - 'SM1_*' --no-config < cadence.py
+#      docker compose run --rm -T bot python3 - 'SM1_*' --no-config < tools/cadence.py
 
 # 4. restart — a reload is not enough: the MQTT topic map is built at startup
 #    and still binds the moved topics to the old sensor names

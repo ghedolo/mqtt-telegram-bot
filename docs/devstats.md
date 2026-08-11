@@ -31,8 +31,8 @@ is then rendered from the whole ledger.
 
 Because the ledger is committed, effort accumulates across machines:
 
-1. On machine A: `python3 devstats.py`, then commit + push `devstats.json`.
-2. On machine B: `git pull`, work, `python3 devstats.py` (adds B's sessions), commit + push.
+1. On machine A: `python3 tools/devstats.py`, then commit + push `devstats.json`.
+2. On machine B: `git pull`, work, `python3 tools/devstats.py` (adds B's sessions), commit + push.
 
 A session recorded once survives later transcript pruning — its entry stays in
 the ledger even after Claude Code deletes the `.jsonl`.
@@ -71,7 +71,7 @@ inside the baseline), so nothing is double-counted.
 ## Running it
 
 ```bash
-python3 devstats.py
+python3 tools/devstats.py
 git add devstats.json README.md && git commit -m "chore: devstats" && git push
 ```
 

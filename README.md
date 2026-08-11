@@ -18,6 +18,19 @@ main.py          →  entry point: wires components, runs periodic tasks
 
 Data flow: MQTT messages → `on_reading()` → SQLite. Readings are rounded in `on_reading()` to the field's configured `decimals` (default 1) before storage and threshold checks, matching the precision of alarm thresholds. `AlarmManager` polls for offline sensors and evaluates thresholds. Telegram commands query SQLite directly. A daily digest fires at the configured time.
 
+Only `bot/` is baked into the image. Everything under **`tools/`** is maintenance run by hand, against a stopped bot or as a one-off container — it is never part of the running service:
+
+```
+tools/rename_device.py    →  rename a device key, in sensors.d/ and the DB   (docs/RENAME_SENSOR.md)
+tools/split_device.py     →  move fields to a new device key, config + DB    (docs/SPLIT_DEVICE.md)
+tools/extract_device.py   →  move a device into its own file (config only)
+tools/cadence.py          →  measure each sensor's real publish cadence, suggest `interval`
+tools/blackout_diag.py    →  replay blackout detection over recorded readings
+tools/migrate_sensors.py  →  convert a monolithic sensors.yaml to sensors.d/
+tools/query.sh            →  ad-hoc SQL over the readings DB
+tools/devstats.py         →  regenerate the Development effort section        (docs/devstats.md)
+```
+
 ---
 
 ## Prerequisites
@@ -52,7 +65,7 @@ docker compose up -d
 
 ### `sensors.d/`
 
-Sensor config lives in the **`sensors.d/` directory**, not a single file. Every `*.yaml` / `*.yml` file under it is read **recursively** (subfolders allowed) and merged at startup — split devices however you like (e.g. one file per device or per building). A duplicate device key across files is a hard error. Convert an old monolithic `sensors.yaml` with `python3 migrate_sensors.py`.
+Sensor config lives in the **`sensors.d/` directory**, not a single file. Every `*.yaml` / `*.yml` file under it is read **recursively** (subfolders allowed) and merged at startup — split devices however you like (e.g. one file per device or per building). A duplicate device key across files is a hard error. Convert an old monolithic `sensors.yaml` with `python3 tools/migrate_sensors.py`.
 
 The shared **`defaults:` block lives only in `00-defaults.yaml`** (which may also carry `devices:`). Every other file must contain **nothing but `devices:`** — any stray top-level key is a hard error, so there is no ambiguity about where defaults come from.
 
@@ -125,7 +138,7 @@ A field marked **`signal: true`** is a **Signal**: its readings are *never store
 
 Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently. The same rule (including the zigbee2mqtt availability override below) decides when `/get` and the digest print `∞` instead of a `min ago` count, so the table never disagrees with the alarms.
 
-Two consequences worth planning around. First, `interval` is what decides how fast an outage is noticed, so it should match what the device really publishes: `python3 cadence.py` measures each sensor's actual cadence from the stored readings and suggests an interval (read-only; run it in the deploy with `docker compose exec -T bot python3 - < cadence.py`). Second, because the check is per-device, **one device key must model one physical unit**. A key covering two — say a room probe and a current meter that publishes every few seconds — lets the fast half keep the whole device looking alive while the slow half is dead, with no `OFFLINE` alarm and therefore no `ONLINE` one when it returns. `split_device.py` separates them; see [SPLIT_DEVICE.md](SPLIT_DEVICE.md).
+Two consequences worth planning around. First, `interval` is what decides how fast an outage is noticed, so it should match what the device really publishes: `python3 tools/cadence.py` measures each sensor's actual cadence from the stored readings and suggests an interval (read-only; run it in the deploy with `docker compose exec -T bot python3 - < tools/cadence.py`). Second, because the check is per-device, **one device key must model one physical unit**. A key covering two — say a room probe and a current meter that publishes every few seconds — lets the fast half keep the whole device looking alive while the slow half is dead, with no `OFFLINE` alarm and therefore no `ONLINE` one when it returns. `tools/split_device.py` separates them; see [SPLIT_DEVICE.md](docs/SPLIT_DEVICE.md).
 
 A device that sets **`hasZigbeeAvailability: true`** opts out of that heuristic: the bot subscribes to its zigbee2mqtt availability topic (`<topic>/availability`, or the explicit **`availabilityTopic`** if given) and takes z2m's own `online`/`offline` as the truth. zigbee2mqtt already distinguishes mains-powered devices (pinged, ~10 min timeout) from battery end-devices (much longer timeout), so a sensor like a Sonoff SNZB-06P that legitimately stays quiet for hours no longer trips a false `OFFLINE`. Both the JSON (`{"state":"online"}`) and legacy plain-string payloads are understood. Adding or changing these keys requires a **restart** — a `/reloadConfig` is **not** enough: MQTT subscriptions (including the `.../availability` topic) are wired up only at startup, exactly like `topic`, so a reload alone would never subscribe to availability and the device would stay on the old heuristic.
 
@@ -221,7 +234,7 @@ Every value in the YAML has a different cost to change. Three levels, cheapest t
 
 - **Reload** — run `/reloadConfig` (superadmin); no downtime.
 - **Restart** — `docker compose restart` (or `down`/`up`); a few seconds of downtime.
-- **DB migration** — the data in `data/sensors.db` is keyed by name, so a rename orphans history unless the DB is migrated too (see [RENAME_SENSOR.md](RENAME_SENSOR.md)).
+- **DB migration** — the data in `data/sensors.db` is keyed by name, so a rename orphans history unless the DB is migrated too (see [RENAME_SENSOR.md](docs/RENAME_SENSOR.md)).
 
 Why some changes still need a restart: MQTT topic subscriptions are set up **once at startup**, so anything that changes what/where the bot subscribes needs a restart. Everything else the `AlarmManager` uses (alarm-repeat intervals, blackout rules) is refreshed live by `/reloadConfig`.
 
@@ -248,9 +261,9 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | Add / remove a **current field** in a group (`fields:`) | **Reload** *(existing sensor)* / **Restart** *(brand-new sensor)* | All listed fields must be near-zero *at the same time* to trigger, so adding one tightens the condition and removing one loosens it. A field that is a brand-new sensor needs a restart first (it has no readings until MQTT subscribes). |
 | Rename a **blackout group id** (`R2` → `R2b`) | **Reload** *(+ re-subscribe)* | The new id works after reload, but the id is the key for `/digest` subscriptions and past alarm rows: users subscribed to the old id are silently dropped and **must re-subscribe** (`/digest R2b on`). To preserve them, migrate the old id to the new one in the `digest_subscriptions` (and `alarms`) tables. |
 | MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug`, `enableMenu`, `traceCmd`, `traceCmdFile` | **Restart** | Read only at startup. |
-| Renaming a **device key** (`SM_UTA1` → `SM1_UTA1`) | **Restart + DB migration** | Changes every derived sensor name. Use `rename_device.py` (config + DB); see [RENAME_SENSOR.md](RENAME_SENSOR.md). Without migration, history/thresholds/subscriptions/mutes for the old name are orphaned and the new name starts empty. |
+| Renaming a **device key** (`SM_UTA1` → `SM1_UTA1`) | **Restart + DB migration** | Changes every derived sensor name. Use `tools/rename_device.py` (config + DB); see [RENAME_SENSOR.md](docs/RENAME_SENSOR.md). Without migration, history/thresholds/subscriptions/mutes for the old name are orphaned and the new name starts empty. |
 | Renaming a **field key** (`T` → `Temp`) | **Restart + DB migration** | Same orphaning — the sensor name (`device_field`) changes. No dedicated script; migrate the DB by hand or accept the history loss. |
-| **Splitting a device** in two (moving fields to a new key) | **Restart + DB migration** | One key modelling two physical units hides the death of the quieter one: offline detection is per-Device, so a fast-publishing field keeps the whole device looking alive. Use `split_device.py` (config + DB + blackout references); see [SPLIT_DEVICE.md](SPLIT_DEVICE.md). Set each half's own `interval` afterwards — the new device inherits the old shared one. |
+| **Splitting a device** in two (moving fields to a new key) | **Restart + DB migration** | One key modelling two physical units hides the death of the quieter one: offline detection is per-Device, so a fast-publishing field keeps the whole device looking alive. Use `tools/split_device.py` (config + DB + blackout references); see [SPLIT_DEVICE.md](docs/SPLIT_DEVICE.md). Set each half's own `interval` afterwards — the new device inherits the old shared one. |
 
 The safe order for a rename is always: stop the bot → migrate the DB → edit the YAML → restart (the DB step reads the *old* key from config, so migrate before editing the YAML — or follow the two-step procedure in RENAME_SENSOR.md for the read-only-mounted Docker setup).
 

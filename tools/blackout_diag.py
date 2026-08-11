@@ -13,7 +13,7 @@ Run inside the deploy (cwd = /app, so sensors.d/, credentials.yaml and
 data/sensors.db are all present). It NEVER writes: the DB is opened read-only.
 
   docker compose exec -T bot python - \
-      --around "2026-07-15 19:00" --window-min 90 < blackout_diag.py
+      --around "2026-07-15 19:00" --window-min 90 < tools/blackout_diag.py
 
 Args:
   --around "YYYY-MM-DD HH:MM"  centre of the event window to trace (local time)

@@ -22,16 +22,19 @@ import re
 import sys
 from datetime import datetime
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-README = os.path.join(HERE, "README.md")
-LEDGER = os.path.join(HERE, "devstats.json")
+# the repo root, one level up from tools/ — both the README this rewrites and
+# the ledger it accumulates live there, and must be found from any cwd
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+README = os.path.join(ROOT, "README.md")
+LEDGER = os.path.join(ROOT, "devstats.json")
 
 
 def transcript_dir():
     """Claude Code stores a project's transcripts under ~/.claude/projects/<p>,
     where <p> is the project path with separators replaced by '-'. Derive it
-    from this script's directory so it resolves correctly on any machine."""
-    dashed = HERE.replace(os.sep, "-").replace(".", "-")
+    from the repo root — the directory Claude Code is opened in — so it resolves
+    correctly on any machine, and from anywhere in the tree."""
+    dashed = ROOT.replace(os.sep, "-").replace(".", "-")
     return os.path.expanduser(os.path.join("~/.claude/projects", dashed))
 
 

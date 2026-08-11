@@ -12,7 +12,7 @@ included). The renamer locates the file holding OLD, renames the key in place,
 and — if that file is named after the device (OLD.yaml) — renames the file too.
 
 Usage:
-    python rename_device.py OLD NEW [--db data/sensors.db] [--dir sensors.d] [--dry-run]
+    python tools/rename_device.py OLD NEW [--db data/sensors.db] [--dir sensors.d] [--dry-run]
 """
 import argparse
 import os

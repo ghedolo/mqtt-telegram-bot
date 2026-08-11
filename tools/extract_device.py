@@ -12,10 +12,10 @@ Use it when a device ended up in the wrong file — e.g. a split run before
 split_device.py placed its output by file name, which left both halves in the
 file named after one of them.
 
-    python extract_device.py SM1_CDZ1 --dir sensors.d --dry-run
+    python tools/extract_device.py SM1_CDZ1 --dir sensors.d --dry-run
 
 Usage:
-    python extract_device.py KEY [--dir sensors.d] [--to PATH] [--dry-run]
+    python tools/extract_device.py KEY [--dir sensors.d] [--to PATH] [--dry-run]
 """
 import argparse
 import os

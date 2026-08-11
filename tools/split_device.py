@@ -9,7 +9,7 @@ across all of a device's topics), the meter publishing every few seconds kept
 the whole device looking alive while the probe had been dead for days — no
 OFFLINE alarm, and therefore no ONLINE one when it came back.
 
-    python split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF
+    python tools/split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF
 
 The moved fields keep their field keys, so `SM1_UTA1_I` becomes `SM1_CDZ1_I`.
 The new device inherits every device-level key of the old one (info, interval,
@@ -30,10 +30,10 @@ What it touches, mirroring rename_device.py:
   - every sensor-keyed DB table (the list lives in rename_device.SENSOR_TABLES)
 
 Usage:
-    python split_device.py OLD NEW --fields F1,F2 [--db data/sensors.db]
+    python tools/split_device.py OLD NEW --fields F1,F2 [--db data/sensors.db]
                            [--dir sensors.d] [--dry-run] [--skip-db] [--skip-yaml]
 
-See SPLIT_DEVICE.md for the two-step host/container procedure.
+See docs/SPLIT_DEVICE.md for the two-step host/container procedure.
 """
 import argparse
 import os

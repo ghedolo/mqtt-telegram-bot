@@ -32,7 +32,7 @@ places and must be updated separately:
   (`--skip-db`).
 
 The script is not baked into the image, so bind-mount it for the container
-run (`-v ./rename_device.py:/app/rename_device.py`). No rebuild needed.
+run (`-v ./tools/rename_device.py:/app/tools/rename_device.py`). No rebuild needed.
 
 ## Procedure
 
@@ -44,14 +44,14 @@ which the script reads to discover the field list.
 docker compose down
 
 # 1. DB update, inside a throwaway container (dry-run first)
-docker compose run --rm -v ./rename_device.py:/app/rename_device.py bot \
-  python3 rename_device.py OLD NEW --skip-yaml --dry-run
-docker compose run --rm -v ./rename_device.py:/app/rename_device.py bot \
-  python3 rename_device.py OLD NEW --skip-yaml
+docker compose run --rm -v ./tools/rename_device.py:/app/tools/rename_device.py bot \
+  python3 tools/rename_device.py OLD NEW --skip-yaml --dry-run
+docker compose run --rm -v ./tools/rename_device.py:/app/tools/rename_device.py bot \
+  python3 tools/rename_device.py OLD NEW --skip-yaml
 
 # 2. YAML update, on the host (dry-run first)
-python3 rename_device.py OLD NEW --skip-db --dry-run
-python3 rename_device.py OLD NEW --skip-db
+python3 tools/rename_device.py OLD NEW --skip-db --dry-run
+python3 tools/rename_device.py OLD NEW --skip-db
 
 # 3. restart
 docker compose up -d

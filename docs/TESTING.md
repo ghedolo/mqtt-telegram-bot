@@ -19,7 +19,7 @@ pip install -r requirements-dev.txt         # pytest + runtime deps
 python -m pytest
 ```
 
-Config lives in `pytest.ini` (`pythonpath = .`, `testpaths = tests`). Run the
+Config lives in `pytest.ini` (`pythonpath = . tools`, `testpaths = tests`). Run the
 suite before every push; the deploy on the host (`./deploy.sh`) does **not**
 run tests.
 
@@ -110,15 +110,15 @@ run tests.
 - `test_oversized_payload_dropped` — payload over 64 KiB rejected.
 - `test_oversized_availability_payload_dropped` — the size cap is applied before the availability branch too; it used to sit after, so those topics decoded and JSON-parsed a payload of any size.
 
-### `tests/test_rename_device.py` — the DB half of a device rename (`rename_device.py`)
+### `tests/test_rename_device.py` — the DB half of a device rename (`tools/rename_device.py`)
 - `test_mute_follows_the_rename` — a `/silent` mute moves with the sensor. Left behind under the old name it stops matching, and the user's threshold-alarm DMs resume without them asking.
 - `test_every_sensor_keyed_table_is_covered` — the schema is the source of truth: every table with a `sensor` column must appear in `SENSOR_TABLES`, so a table added to `bot/db.py` cannot silently fall out of the rename (which is how `mutes` was missed).
 - `test_dry_run_changes_nothing` — `--dry-run` rolls back.
 
-### `tests/test_split_device.py` — splitting one device into two (`split_device.py`)
+### `tests/test_split_device.py` — splitting one device into two (`tools/split_device.py`)
 - `test_moved_fields_leave_the_old_device` / `test_new_device_inherits_device_level_keys` / `test_field_bodies_are_carried_over_intact` — the moved fields land under the new key with their bodies and comments intact, and the new device inherits the old one's device-level keys (info, viewers, admins).
 - `test_other_devices_are_untouched` — the new block is inserted after the old one, not over the device that followed it.
-- `test_moving_every_field_is_refused` / `test_unknown_field_is_refused` / `test_unknown_device_is_refused` — moving *all* fields is a rename (`rename_device.py`), and would leave a device with an empty `fields:`.
+- `test_moving_every_field_is_refused` / `test_unknown_field_is_refused` / `test_unknown_device_is_refused` — moving *all* fields is a rename (`tools/rename_device.py`), and would leave a device with an empty `fields:`.
 - `test_a_file_named_after_the_device_gets_a_file_of_its_own` / `test_a_shared_file_keeps_both_devices` — where the new block lands follows the tree's layout: `SM1_UTA1.yaml` → a new `SM1_CDZ1.yaml` beside it, a multi-device file keeps both.
 - `test_separate_file_dry_run_writes_nothing` / `test_existing_target_file_is_refused` — the dry-run creates no file, and an existing target is never overwritten.
 - `test_mapping_excludes_the_bare_device_key` — the old key survives a split, so its device-level rows (OFFLINE alarms, ackOff silence) stay put; remapping them would hand one unit's outage history to the other.
@@ -128,13 +128,13 @@ run tests.
 - `test_config_done_migrates_the_db_after_the_yaml_half` / `test_config_done_requires_skip_yaml` — catching the DB up when the YAML was split first: every config-based check has nothing left to validate against, so `--config-done` takes the mapping from `--fields` alone, and refuses to run without `--skip-yaml`.
 - `test_db_migration_moves_only_the_split_fields` — readings/threshold/mute/digest rows follow the moved fields; the fields that stayed, and the old device's own offline state, do not move.
 
-### `tests/test_extract_device.py` — moving a device to its own file (`extract_device.py`)
+### `tests/test_extract_device.py` — moving a device to its own file (`tools/extract_device.py`)
 - `test_the_block_moves_out_whole` / `test_extracting_the_first_of_three_keeps_the_rest` — the block runs to the next device key, not to end of file, and the devices that stay keep their bodies and comments.
 - `test_dry_run_writes_nothing` / `test_existing_target_is_never_overwritten` — it rewrites hand-maintained YAML in place, so neither file is touched when the run is a dry-run or the target is taken.
 - `test_a_device_already_alone_is_refused` — extracting it would leave a file holding `devices:` and nothing else, which the loader rejects.
 - `test_unknown_device_is_refused` — a typo in the key stops the run rather than rewriting the wrong file.
 
-### `tests/test_cadence.py` — measuring publish cadence (`cadence.py`)
+### `tests/test_cadence.py` — measuring publish cadence (`tools/cadence.py`)
 - `test_a_62s_meter_is_not_rounded_to_a_whole_minute` — the suggested `interval` rounds up proportionally: 62 → 70, not 120, which would double that meter's OFFLINE delay for the sake of a round number.
 - `test_measured_cadence_matches_the_data` / `test_a_single_reading_yields_no_cadence` — median and worst gap come out of the real timestamps; one reading yields no cadence rather than a bogus one.
 - `test_the_db_is_opened_read_only` — the script's READ-ONLY promise: a diagnostic run against production cannot mutate the readings it measures.

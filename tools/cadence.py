@@ -10,8 +10,8 @@ prints what the data actually says, per sensor.
 
 Run inside the deploy (cwd = /app, so data/sensors.db is present):
 
-  docker compose exec -T bot python3 - < cadence.py
-  docker compose exec -T bot python3 - 'SM1_*' --days 7 < cadence.py
+  docker compose exec -T bot python3 - < tools/cadence.py
+  docker compose exec -T bot python3 - 'SM1_*' --days 7 < tools/cadence.py
 
 Feeding the script on stdin avoids a bind-mount and avoids pasting an indented
 one-liner into a shell, which Python reads as an unexpected indented block.

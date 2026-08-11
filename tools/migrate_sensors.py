@@ -7,7 +7,7 @@ first. The bot reads every *.yaml / *.yml under sensors.d/ recursively and
 merges them, so this layout is equivalent to the original single file.
 
 Usage:
-    python3 migrate_sensors.py [--yaml sensors.yaml] [--out sensors.d] [--force]
+    python3 tools/migrate_sensors.py [--yaml sensors.yaml] [--out sensors.d] [--force]
 """
 import argparse
 import os
