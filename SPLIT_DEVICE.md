@@ -86,7 +86,10 @@ python3 split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-db --dry-run
 python3 split_device.py SM1_UTA1 SM1_CDZ1 --fields I,IF --skip-db
 
 # 3. set the real intervals on both halves, by hand, in sensors.d/
-#    (the new device inherited the old shared one)
+#    (the new device inherited the old shared one). cadence.py measures what
+#    each sensor actually publishes and suggests the interval (the bot is down
+#    here, so `run --rm`, not `exec`):
+#      docker compose run --rm -T bot python3 - 'SM1_*' --no-config < cadence.py
 
 # 4. restart — a reload is not enough: the MQTT topic map is built at startup
 #    and still binds the moved topics to the old sensor names

@@ -123,6 +123,13 @@ run tests.
 - `test_reference_rewrite_is_word_bounded` — a blackout group's `fields:` list names sensors in full and must follow the split, but `SM1_UTA1_I` is a prefix of `SM1_UTA1_IF`: an unbounded replace corrupts the longer name. A stale name there is a hard config-load error, i.e. a bot that will not start.
 - `test_db_migration_moves_only_the_split_fields` — readings/threshold/mute/digest rows follow the moved fields; the fields that stayed, and the old device's own offline state, do not move.
 
+### `tests/test_cadence.py` — measuring publish cadence (`cadence.py`)
+- `test_a_62s_meter_is_not_rounded_to_a_whole_minute` — the suggested `interval` rounds up proportionally: 62 → 70, not 120, which would double that meter's OFFLINE delay for the sake of a round number.
+- `test_measured_cadence_matches_the_data` / `test_a_single_reading_yields_no_cadence` — median and worst gap come out of the real timestamps; one reading yields no cadence rather than a bogus one.
+- `test_the_db_is_opened_read_only` — the script's READ-ONLY promise: a diagnostic run against production cannot mutate the readings it measures.
+- `test_patterns_filter_by_glob` — sensor selection by glob, and the empty-pattern (all sensors) case.
+- `test_report_flags_a_gap_that_would_have_alarmed` — a worst gap above `3 × suggested` is flagged, since adopting that interval would have raised an OFFLINE for it.
+
 ### `tests/test_ingest.py` — reading path integration (`bot/ingest.py`)
 Wires `process_reading` to the real DB and a real `AlarmManager` (only the
 notifiers are stubbed) and drives one full flow.
