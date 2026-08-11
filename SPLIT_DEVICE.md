@@ -25,8 +25,13 @@ which is the setting that decides how fast an outage is noticed.
 ## What it touches
 
 - **The device block** in whatever file under `sensors.d/` holds the old key:
-  the moved fields are cut and re-emitted under the new key, immediately after
-  the old block. Every line is carried across verbatim, comments included.
+  the moved fields are cut and re-emitted under the new key. Every line is
+  carried across verbatim, comments included. Where the new block lands follows
+  the tree's own layout: a device alone in a file named after it
+  (`SM1_UTA1.yaml`) gets its half in `SM1_CDZ1.yaml` beside it — the same signal
+  `rename_device.py` reads to decide whether to rename a file — while a file
+  holding several devices keeps both, the new one right after the old. Override
+  with `--new-file PATH` or `--same-file`.
 - **The new device's device-level keys** — `info`, `interval`, `topic`,
   `viewers`, `admins`, `note` — copied from the old device as-is. **Review
   them afterwards**: the two halves publish at different cadences, and the
@@ -107,6 +112,8 @@ main bot service, so the bot stays down until step 4.
 | Flag | Effect |
 |---|---|
 | `--fields F1,F2` | Field keys to move (required) |
+| `--new-file PATH` | Write the new device to this file instead of the default placement |
+| `--same-file` | Append the new device to the source file even when that file is named after the old device |
 | `--dry-run` | Show what would change; DB writes are rolled back, config is not touched (the rewritten file is printed) |
 | `--skip-db` | Update `sensors.d/` only |
 | `--skip-yaml` | Update the DB only |

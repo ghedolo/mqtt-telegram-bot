@@ -39,6 +39,7 @@ import argparse
 import os
 import re
 import sys
+from typing import Optional
 
 import yaml
 
@@ -121,10 +122,12 @@ def _field_entries(lines: list[str], start: int, end: int) -> dict[str, tuple[in
     return entries
 
 
-def split_yaml_text(text: str, old: str, new: str, fields: list[str]) -> str:
-    """Move `fields` out of device `old` into a new device `new`, appended right
-    after it. Every line is carried across verbatim — comments and formatting in
-    the moved fields survive the move."""
+def split_yaml_parts(text: str, old: str, new: str, fields: list[str]) -> tuple[str, str]:
+    """(text of the source file with the fields removed, block defining `new`).
+
+    Every line is carried across verbatim — comments and formatting in the moved
+    fields survive the move. The caller decides where the new block lands: back
+    into the same file, or into a file of its own."""
     lines = text.splitlines(keepends=True)
     dev_start, dev_end = _find_device_block(lines, old)
     f_start, f_end = _find_fields_block(lines, dev_start, dev_end)
@@ -159,37 +162,85 @@ def split_yaml_text(text: str, old: str, new: str, fields: list[str]) -> str:
     new_block = [f"{' ' * DEV_INDENT}{new}:\n", *attr_lines, f"{' ' * ATTR_INDENT}fields:\n", *moved_lines]
 
     # A device block is normally newline-terminated; if the file ended without
-    # one, terminate it here so the appended block starts on its own line.
+    # one, terminate it here so whatever follows starts on its own line.
     if kept_block and not kept_block[-1].endswith("\n"):
         kept_block[-1] += "\n"
 
-    out = lines[:dev_start] + kept_block + ["\n"] + new_block + lines[dev_end:]
-    return "".join(out)
+    kept = "".join(lines[:dev_start] + kept_block + lines[dev_end:])
+    return kept, "".join(new_block)
 
 
-def update_yaml(file_path: str, old: str, new: str, fields: list[str], dry_run: bool) -> str:
+def split_yaml_text(text: str, old: str, new: str, fields: list[str]) -> str:
+    """Both devices in one file: the new block is appended right after the old
+    one, which is where it belongs when the file holds several devices."""
+    kept, new_block = split_yaml_parts(text, old, new, fields)
+    lines = kept.splitlines(keepends=True)
+    _, dev_end = _find_device_block(lines, old)
+    return "".join(lines[:dev_end] + ["\n"] + [new_block] + lines[dev_end:])
+
+
+def new_file_path(dev_file: str, old: str, new: str) -> Optional[str]:
+    """Where the new device's own file goes, when the tree is one file per
+    device: `SM1_UTA1.yaml` → `SM1_CDZ1.yaml`, beside it. None when the source
+    file is not named after the device it holds — then it holds several, and
+    the new block belongs in it alongside them (rename_device.py reads the same
+    signal to decide whether to rename the file)."""
+    stem, ext = os.path.splitext(os.path.basename(dev_file))
+    if stem != old:
+        return None
+    return os.path.join(os.path.dirname(dev_file), new + ext)
+
+
+def update_yaml(file_path: str, old: str, new: str, fields: list[str], dry_run: bool,
+                separate_file: Optional[str] = None) -> list[str]:
+    """Move the fields out of `file_path`. With `separate_file`, the new device
+    is written there as a file of its own; otherwise it is appended in place."""
     with open(file_path) as f:
         text = f.read()
-    new_text = split_yaml_text(text, old, new, fields)
+
+    if separate_file is None:
+        new_text = split_yaml_text(text, old, new, fields)
+        if dry_run:
+            print(f"[dry-run] would rewrite {file_path}, moving {','.join(fields)} to '{new}':")
+            for line in new_text.splitlines():
+                print(f"    {line}")
+            return [file_path]
+        with open(file_path, "w") as f:
+            f.write(new_text)
+        print(f"YAML: moved {','.join(fields)} from {old} to {new} in {file_path}")
+        return [file_path]
+
+    if os.path.exists(separate_file):
+        sys.exit(f"Refusing: {separate_file} already exists")
+    kept, new_block = split_yaml_parts(text, old, new, fields)
+    new_text = "devices:\n" + new_block
     if dry_run:
-        print(f"[dry-run] would rewrite {file_path}, moving {','.join(fields)} to '{new}':")
+        print(f"[dry-run] would rewrite {file_path}, dropping {','.join(fields)}:")
+        for line in kept.splitlines():
+            print(f"    {line}")
+        print(f"[dry-run] would create {separate_file}:")
         for line in new_text.splitlines():
             print(f"    {line}")
-        return file_path
+        return [file_path, separate_file]
     with open(file_path, "w") as f:
+        f.write(kept)
+    with open(separate_file, "w") as f:
         f.write(new_text)
-    print(f"YAML: moved {','.join(fields)} from {old} to {new} in {file_path}")
-    return file_path
+    print(f"YAML: dropped {','.join(fields)} from {old} in {file_path}")
+    print(f"YAML: created {separate_file} with device {new}")
+    return [file_path, separate_file]
 
 
-def update_references(config_dir: str, dev_file: str, mapping: dict[str, str], dry_run: bool) -> list[str]:
+def update_references(config_dir: str, dev_file: str, mapping: dict[str, str], dry_run: bool,
+                      also_skip: Optional[str] = None) -> list[str]:
     """Rewrite full sensor names elsewhere in the tree — a blackout group's
     `fields:` list names sensors in full, and a stale name there is a hard
     config-load error ("unknown field"), i.e. a bot that will not start."""
+    handled = {os.path.abspath(p) for p in (dev_file, also_skip) if p}
     touched: list[str] = []
     for fp in _collect_yaml_files(config_dir):
-        if os.path.abspath(fp) == os.path.abspath(dev_file):
-            continue  # the device block is handled by update_yaml
+        if os.path.abspath(fp) in handled:
+            continue  # the device blocks are handled by update_yaml
         with open(fp) as f:
             lines = f.readlines()
 
@@ -240,6 +291,13 @@ def main():
     ap.add_argument("--skip-db", action="store_true", help="do not touch the DB")
     ap.add_argument("--skip-yaml", action="store_true",
                     help="do not touch the sensors.d/ config")
+    ap.add_argument("--new-file", metavar="PATH", default=None,
+                    help="write the new device to this file instead of appending it "
+                         "to the old one's (default: NEW.yaml beside it, when the "
+                         "source file is named after the device it holds)")
+    ap.add_argument("--same-file", action="store_true",
+                    help="append the new device to the source file even when that "
+                         "file is named after the old device")
     args = ap.parse_args()
 
     if args.old == args.new:
@@ -273,11 +331,19 @@ def main():
         note = "  (signal: config only, no DB rows)" if (declared.get(fk) or {}).get("signal") else ""
         print(f"  {args.old}_{fk} -> {args.new}_{fk}{note}")
 
+    if args.new_file and args.same_file:
+        sys.exit("--new-file and --same-file contradict each other")
+    # One file per device is the tree's own convention where it is followed:
+    # a device living in a file named after it gets its half in a file named
+    # after the new key. Anything else keeps both devices where they are.
+    separate = args.new_file or (None if args.same_file
+                                 else new_file_path(dev_file, args.old, args.new))
+
     if not args.skip_db:
         update_db(args.db, mapping, args.dry_run)
     if not args.skip_yaml:
-        touched = [update_yaml(dev_file, args.old, args.new, fields, args.dry_run)]
-        touched += update_references(args.dir, dev_file, mapping, args.dry_run)
+        touched = update_yaml(dev_file, args.old, args.new, fields, args.dry_run, separate)
+        touched += update_references(args.dir, dev_file, mapping, args.dry_run, separate)
         # The device-file dry-run prints the whole rewritten file, which buries
         # everything after it — including the fact that a second file (the one
         # holding the blackout groups) is in scope at all. Restate it at the end.

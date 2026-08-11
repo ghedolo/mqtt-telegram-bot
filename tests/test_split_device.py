@@ -46,6 +46,11 @@ CONFIG = textwrap.dedent("""\
     """)
 
 
+# the same device alone in a file named after it — the one-file-per-device
+# layout, where the split's two halves belong in two files
+CONFIG_ONE_DEVICE = CONFIG.split("  SM1_UTA2:")[0].rstrip() + "\n"
+
+
 def _split(text=CONFIG, old="SM1_UTA1", new="SM1_CDZ1", fields=("I", "IF")):
     return split_device.split_yaml_text(text, old, new, list(fields))
 
@@ -134,6 +139,69 @@ def test_reference_rewrite_is_word_bounded(tmp_path):
     assert got["blackouts"]["r2"]["fields"] == ["SM1_CDZ1_I", "SM1_CDZ1_IF"]
     # the device file itself is update_yaml's job, and must not be double-edited
     assert dev_file.read_text() == CONFIG
+
+
+def test_a_file_named_after_the_device_gets_a_file_of_its_own(tmp_path):
+    # the tree's own one-file-per-device convention, the same signal
+    # rename_device.py reads to decide whether to rename the file
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    src = d / "SM1_UTA1.yaml"
+    src.write_text(CONFIG_ONE_DEVICE)
+    assert split_device.new_file_path(str(src), "SM1_UTA1", "SM1_CDZ1") == str(d / "SM1_CDZ1.yaml")
+
+    touched = split_device.update_yaml(
+        str(src), "SM1_UTA1", "SM1_CDZ1", ["I", "IF"], dry_run=False,
+        separate_file=str(d / "SM1_CDZ1.yaml"),
+    )
+    assert touched == [str(src), str(d / "SM1_CDZ1.yaml")]
+
+    import yaml
+    kept = yaml.safe_load(src.read_text())["devices"]
+    moved = yaml.safe_load((d / "SM1_CDZ1.yaml").read_text())["devices"]
+    assert sorted(kept["SM1_UTA1"]["fields"]) == ["H", "T"]
+    assert sorted(moved["SM1_CDZ1"]["fields"]) == ["I", "IF"]
+    assert moved["SM1_CDZ1"]["admins"] == ["ops"]      # device-level keys inherited
+    assert "SM1_CDZ1" not in src.read_text()           # and not left in the source too
+
+
+def test_a_shared_file_keeps_both_devices(tmp_path):
+    # a file holding several devices is not named after any one of them, so the
+    # new block belongs in it, right after the device it came from
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    src = d / "sm1.yaml"
+    src.write_text(CONFIG)
+    assert split_device.new_file_path(str(src), "SM1_UTA1", "SM1_CDZ1") is None
+    split_device.update_yaml(str(src), "SM1_UTA1", "SM1_CDZ1", ["I", "IF"], dry_run=False)
+    assert sorted(_devices(src.read_text())) == ["SM1_CDZ1", "SM1_UTA1", "SM1_UTA2"]
+
+
+def test_separate_file_dry_run_writes_nothing(tmp_path):
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    src = d / "SM1_UTA1.yaml"
+    src.write_text(CONFIG_ONE_DEVICE)
+    split_device.update_yaml(
+        str(src), "SM1_UTA1", "SM1_CDZ1", ["I", "IF"], dry_run=True,
+        separate_file=str(d / "SM1_CDZ1.yaml"),
+    )
+    assert src.read_text() == CONFIG_ONE_DEVICE
+    assert not (d / "SM1_CDZ1.yaml").exists()
+
+
+def test_existing_target_file_is_refused(tmp_path):
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    src = d / "SM1_UTA1.yaml"
+    src.write_text(CONFIG_ONE_DEVICE)
+    (d / "SM1_CDZ1.yaml").write_text("devices: {}\n")
+    with pytest.raises(SystemExit):
+        split_device.update_yaml(
+            str(src), "SM1_UTA1", "SM1_CDZ1", ["I", "IF"], dry_run=False,
+            separate_file=str(d / "SM1_CDZ1.yaml"),
+        )
+    assert src.read_text() == CONFIG_ONE_DEVICE
 
 
 def test_reference_rewrite_handles_a_flow_sequence(tmp_path, capsys):
