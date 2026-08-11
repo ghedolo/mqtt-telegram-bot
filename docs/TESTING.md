@@ -125,6 +125,7 @@ run tests.
 - `test_reference_rewrite_is_word_bounded` — a blackout group's `fields:` list names sensors in full and must follow the split, but `SM1_UTA1_I` is a prefix of `SM1_UTA1_IF`: an unbounded replace corrupts the longer name. A stale name there is a hard config-load error, i.e. a bot that will not start.
 - `test_reference_rewrite_handles_a_flow_sequence` — the real config writes that list as a one-line flow sequence with a trailing comment, of which only some entries move; the changed lines are printed as a before/after pair, since "would update `<file>`" alone gives the operator nothing to review a partial rewrite against.
 - `test_dry_run_reference_rewrite_writes_nothing` — `--dry-run` leaves the file byte-identical while still reporting it, so the end-of-run file summary counts it.
+- `test_config_done_migrates_the_db_after_the_yaml_half` / `test_config_done_requires_skip_yaml` — catching the DB up when the YAML was split first: every config-based check has nothing left to validate against, so `--config-done` takes the mapping from `--fields` alone, and refuses to run without `--skip-yaml`.
 - `test_db_migration_moves_only_the_split_fields` — readings/threshold/mute/digest rows follow the moved fields; the fields that stayed, and the old device's own offline state, do not move.
 
 ### `tests/test_extract_device.py` — moving a device to its own file (`extract_device.py`)

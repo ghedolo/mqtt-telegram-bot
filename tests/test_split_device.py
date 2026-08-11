@@ -261,6 +261,48 @@ def split_db(tmp_path, monkeypatch):
     return str(dbfile)
 
 
+def test_config_done_migrates_the_db_after_the_yaml_half(split_db, monkeypatch, tmp_path):
+    # catching up: the YAML was split first, so the old device no longer
+    # declares the moved fields and every config-based check has nothing left to
+    # validate against. --config-done takes the mapping from --fields alone.
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    (d / "SM1_UTA1.yaml").write_text(
+        "devices:\n  SM1_UTA1:\n    info: x\n    fields:\n      T: {topic: a}\n"
+    )
+    (d / "SM1_CDZ1.yaml").write_text(
+        "devices:\n  SM1_CDZ1:\n    info: y\n    fields:\n      I: {topic: c}\n"
+    )
+    argv = ["split_device.py", "SM1_UTA1", "SM1_CDZ1", "--fields", "I,IF",
+            "--db", split_db, "--dir", str(d), "--skip-yaml"]
+
+    # without the flag the run stops: the new key is already in the config
+    monkeypatch.setattr("sys.argv", argv)
+    with pytest.raises(SystemExit):
+        split_device.main()
+
+    monkeypatch.setattr("sys.argv", argv + ["--config-done"])
+    split_device.main()
+    monkeypatch.setattr(db_module, "DB_PATH", split_db)
+    assert db_module.get_latest("SM1_CDZ1_I")["value"] == 3.2
+    assert db_module.get_latest("SM1_UTA1_I") is None
+    assert db_module.get_latest("SM1_UTA1_T")["value"] == 21.0
+
+
+def test_config_done_requires_skip_yaml(tmp_path, monkeypatch):
+    # without --skip-yaml it would try to move fields out of a device that no
+    # longer has them, on a config that is already correct
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    (d / "sm1.yaml").write_text(CONFIG)
+    monkeypatch.setattr("sys.argv", [
+        "split_device.py", "SM1_UTA1", "SM1_CDZ1", "--fields", "I,IF",
+        "--dir", str(d), "--config-done", "--dry-run",
+    ])
+    with pytest.raises(SystemExit):
+        split_device.main()
+
+
 def test_db_migration_moves_only_the_split_fields(split_db, monkeypatch):
     monkeypatch.setattr(db_module, "DB_PATH", split_db)
     mapping = split_device.build_mapping("SM1_UTA1", "SM1_CDZ1", ["I", "IF"])

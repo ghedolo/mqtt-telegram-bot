@@ -298,6 +298,10 @@ def main():
     ap.add_argument("--same-file", action="store_true",
                     help="append the new device to the source file even when that "
                          "file is named after the old device")
+    ap.add_argument("--config-done", action="store_true",
+                    help="the sensors.d/ half is already done: migrate the DB from "
+                         "--fields alone, without validating against the old device "
+                         "(requires --skip-yaml)")
     args = ap.parse_args()
 
     if args.old == args.new:
@@ -306,29 +310,43 @@ def main():
     if not fields:
         sys.exit("--fields is empty")
 
-    # Name the file, not just the directory: the tree is read recursively, so a
-    # leftover backup copy or an editor's stray file two folders down claims the
-    # key just as well as the real config, and "already exists in sensors.d/"
-    # sends you looking in the one file you were about to edit.
-    clash = find_device_file(args.dir, args.new)
-    if clash is not None:
-        sys.exit(f"Device {args.new!r} is already defined in {clash}")
-    dev_file = find_device_file(args.dir, args.old)
-    if dev_file is None:
-        sys.exit(f"Device {args.old!r} not found under {args.dir}")
+    if args.config_done and not args.skip_yaml:
+        sys.exit("--config-done only makes sense with --skip-yaml")
 
-    declared = load_device(dev_file, args.old).get("fields") or {}
-    unknown = [fk for fk in fields if fk not in declared]
-    if unknown:
-        sys.exit(f"Device {args.old!r} has no field(s) {unknown}")
-    if not set(declared) - set(fields):
-        sys.exit(
-            f"Moving every field of {args.old!r} is a rename, not a split — "
-            f"use rename_device.py"
-        )
+    if args.config_done:
+        # Catching up the DB after the YAML half was already done. Every check
+        # below reads the *old* device's field list from the config, which no
+        # longer holds those fields — that is the state we are here to fix, so
+        # there is nothing left to validate against. The mapping is taken from
+        # --fields as given.
+        declared = {}
+        dev_file = None
+    else:
+        # Name the file, not just the directory: the tree is read recursively,
+        # so a leftover backup copy or an editor's stray file two folders down
+        # claims the key just as well as the real config, and "already exists
+        # in sensors.d/" sends you looking in the one file you were about to
+        # edit.
+        clash = find_device_file(args.dir, args.new)
+        if clash is not None:
+            sys.exit(f"Device {args.new!r} is already defined in {clash}")
+        dev_file = find_device_file(args.dir, args.old)
+        if dev_file is None:
+            sys.exit(f"Device {args.old!r} not found under {args.dir}")
+
+        declared = load_device(dev_file, args.old).get("fields") or {}
+        unknown = [fk for fk in fields if fk not in declared]
+        if unknown:
+            sys.exit(f"Device {args.old!r} has no field(s) {unknown}")
+        if not set(declared) - set(fields):
+            sys.exit(
+                f"Moving every field of {args.old!r} is a rename, not a split — "
+                f"use rename_device.py"
+            )
 
     mapping = build_mapping(args.old, args.new, fields)
-    print(f"Splitting {args.old} -> {args.new}  fields: {','.join(fields)}  (in {dev_file})")
+    where = "DB only, config already split" if args.config_done else f"in {dev_file}"
+    print(f"Splitting {args.old} -> {args.new}  fields: {','.join(fields)}  ({where})")
     print("Mappings:")
     for fk in fields:
         # a Signal is never stored, so its rename is config-only — say so, or the
@@ -341,7 +359,7 @@ def main():
     # One file per device is the tree's own convention where it is followed:
     # a device living in a file named after it gets its half in a file named
     # after the new key. Anything else keeps both devices where they are.
-    separate = args.new_file or (None if args.same_file
+    separate = args.new_file or (None if (args.same_file or dev_file is None)
                                  else new_file_path(dev_file, args.old, args.new))
 
     if not args.skip_db:

@@ -73,7 +73,11 @@ No rebuild needed.
 
 **The DB step must come first.** The script reads the old device's field list
 from the config to validate `--fields`; once the YAML step has moved them, a
-DB-only run is refused with `Device 'SM1_UTA1' has no field(s) ['I']`.
+DB-only run is refused with `Device 'SM1_UTA1' has no field(s) ['I']` (or, when
+the new key is already declared, `Device 'SM1_CDZ1' is already defined in ...`).
+If the YAML half is already done, add `--config-done` to migrate the DB anyway —
+the mapping then comes from `--fields` alone, with nothing left to check it
+against, so read the dry-run before committing to it.
 
 ```bash
 # 0. stop the bot (DB must not be in use), and back up first
@@ -116,6 +120,7 @@ main bot service, so the bot stays down until step 4.
 | `--fields F1,F2` | Field keys to move (required) |
 | `--new-file PATH` | Write the new device to this file instead of the default placement |
 | `--same-file` | Append the new device to the source file even when that file is named after the old device |
+| `--config-done` | The `sensors.d/` half is already done: migrate the DB from `--fields` alone, skipping the checks that read the old device's field list. Requires `--skip-yaml` |
 | `--dry-run` | Show what would change; DB writes are rolled back, config is not touched (the rewritten file is printed) |
 | `--skip-db` | Update `sensors.d/` only |
 | `--skip-yaml` | Update the DB only |
