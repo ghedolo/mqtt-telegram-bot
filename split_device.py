@@ -306,8 +306,13 @@ def main():
     if not fields:
         sys.exit("--fields is empty")
 
-    if find_device_file(args.dir, args.new) is not None:
-        sys.exit(f"Device {args.new!r} already exists in {args.dir}")
+    # Name the file, not just the directory: the tree is read recursively, so a
+    # leftover backup copy or an editor's stray file two folders down claims the
+    # key just as well as the real config, and "already exists in sensors.d/"
+    # sends you looking in the one file you were about to edit.
+    clash = find_device_file(args.dir, args.new)
+    if clash is not None:
+        sys.exit(f"Device {args.new!r} is already defined in {clash}")
     dev_file = find_device_file(args.dir, args.old)
     if dev_file is None:
         sys.exit(f"Device {args.old!r} not found under {args.dir}")
