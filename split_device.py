@@ -167,7 +167,7 @@ def split_yaml_text(text: str, old: str, new: str, fields: list[str]) -> str:
     return "".join(out)
 
 
-def update_yaml(file_path: str, old: str, new: str, fields: list[str], dry_run: bool):
+def update_yaml(file_path: str, old: str, new: str, fields: list[str], dry_run: bool) -> str:
     with open(file_path) as f:
         text = f.read()
     new_text = split_yaml_text(text, old, new, fields)
@@ -175,33 +175,55 @@ def update_yaml(file_path: str, old: str, new: str, fields: list[str], dry_run: 
         print(f"[dry-run] would rewrite {file_path}, moving {','.join(fields)} to '{new}':")
         for line in new_text.splitlines():
             print(f"    {line}")
-        return
+        return file_path
     with open(file_path, "w") as f:
         f.write(new_text)
     print(f"YAML: moved {','.join(fields)} from {old} to {new} in {file_path}")
+    return file_path
 
 
-def update_references(config_dir: str, dev_file: str, mapping: dict[str, str], dry_run: bool):
+def update_references(config_dir: str, dev_file: str, mapping: dict[str, str], dry_run: bool) -> list[str]:
     """Rewrite full sensor names elsewhere in the tree — a blackout group's
     `fields:` list names sensors in full, and a stale name there is a hard
     config-load error ("unknown field"), i.e. a bot that will not start."""
+    touched: list[str] = []
     for fp in _collect_yaml_files(config_dir):
         if os.path.abspath(fp) == os.path.abspath(dev_file):
             continue  # the device block is handled by update_yaml
         with open(fp) as f:
-            text = f.read()
-        out = text
-        for old_name, new_name in mapping.items():
-            # word-bounded: SM1_UTA1_I must not match inside SM1_UTA1_IF
-            out = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(old_name)}(?![A-Za-z0-9_])", new_name, out)
-        if out == text:
+            lines = f.readlines()
+
+        changed: list[tuple[int, str, str]] = []
+        out_lines = []
+        for n, line in enumerate(lines, start=1):
+            new_line = line
+            for old_name, new_name in mapping.items():
+                # word-bounded: SM1_UTA1_I must not match inside SM1_UTA1_IF
+                new_line = re.sub(
+                    rf"(?<![A-Za-z0-9_]){re.escape(old_name)}(?![A-Za-z0-9_])",
+                    new_name, new_line,
+                )
+            if new_line != line:
+                changed.append((n, line.rstrip("\n"), new_line.rstrip("\n")))
+            out_lines.append(new_line)
+
+        if not changed:
             continue
+        # Show the lines, not just the file name: a blackout group's `fields:`
+        # list is often a one-line flow sequence holding several sensors, only
+        # some of which move, and "would update <file>" gives you nothing to
+        # check that against.
+        verb = "would update" if dry_run else "updated"
+        print(f"{'[dry-run] ' if dry_run else 'YAML: '}{verb} sensor references in {fp}")
+        for n, before, after in changed:
+            print(f"    {n}: - {before.strip()}")
+            print(f"    {n}: + {after.strip()}")
+        touched.append(fp)
         if dry_run:
-            print(f"[dry-run] would update sensor references in {fp}")
             continue
         with open(fp, "w") as f:
-            f.write(out)
-        print(f"YAML: updated sensor references in {fp}")
+            f.writelines(out_lines)
+    return touched
 
 
 def main():
@@ -254,11 +276,18 @@ def main():
     if not args.skip_db:
         update_db(args.db, mapping, args.dry_run)
     if not args.skip_yaml:
-        update_yaml(dev_file, args.old, args.new, fields, args.dry_run)
-        update_references(args.dir, dev_file, mapping, args.dry_run)
+        touched = [update_yaml(dev_file, args.old, args.new, fields, args.dry_run)]
+        touched += update_references(args.dir, dev_file, mapping, args.dry_run)
+        # The device-file dry-run prints the whole rewritten file, which buries
+        # everything after it — including the fact that a second file (the one
+        # holding the blackout groups) is in scope at all. Restate it at the end.
+        verb = "would change" if args.dry_run else "changed"
+        print(f"\nConfig files {verb} ({len(touched)}):")
+        for fp in touched:
+            print(f"  {fp}")
     if not args.dry_run:
         print(
-            "Done. Review 'info' and 'interval' on the new device, then restart the "
+            "\nDone. Review 'info' and 'interval' on the new device, then restart the "
             "bot: the MQTT topic map is built at startup and still binds the moved "
             "topics to the old sensor names."
         )

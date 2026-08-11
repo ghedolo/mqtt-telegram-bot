@@ -136,6 +136,46 @@ def test_reference_rewrite_is_word_bounded(tmp_path):
     assert dev_file.read_text() == CONFIG
 
 
+def test_reference_rewrite_handles_a_flow_sequence(tmp_path, capsys):
+    # the real config writes a blackout group's fields as a one-line flow
+    # sequence with a trailing comment, and only some of its entries move
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    defaults = d / "00-sensors.yaml"
+    defaults.write_text(
+        "blackouts:\n"
+        "  SM1-CDZ_outage:\n"
+        "    fields: [SM1_UTA1_IF, SM1_UTA2_IF]    # canonical sensor names\n"
+        "    below: 0.5\n"
+    )
+    dev_file = d / "sm1.yaml"
+    dev_file.write_text(CONFIG)
+    mapping = split_device.build_mapping("SM1_UTA1", "SM1_CDZ1", ["I", "IF"])
+    split_device.update_references(str(d), str(dev_file), mapping, dry_run=False)
+
+    text = defaults.read_text()
+    assert "fields: [SM1_CDZ1_IF, SM1_UTA2_IF]    # canonical sensor names" in text
+    # the diff is printed line by line: "would update <file>" alone gives the
+    # operator nothing to check a partial rewrite against
+    out = capsys.readouterr().out
+    assert "- fields: [SM1_UTA1_IF, SM1_UTA2_IF]" in out
+    assert "+ fields: [SM1_CDZ1_IF, SM1_UTA2_IF]" in out
+
+
+def test_dry_run_reference_rewrite_writes_nothing(tmp_path):
+    d = tmp_path / "sensors.d"
+    d.mkdir()
+    defaults = d / "00-sensors.yaml"
+    before = "blackouts:\n  g:\n    fields: [SM1_UTA1_IF]\n"
+    defaults.write_text(before)
+    dev_file = d / "sm1.yaml"
+    dev_file.write_text(CONFIG)
+    mapping = split_device.build_mapping("SM1_UTA1", "SM1_CDZ1", ["I", "IF"])
+    touched = split_device.update_references(str(d), str(dev_file), mapping, dry_run=True)
+    assert defaults.read_text() == before
+    assert touched == [str(defaults)]   # still reported, so the summary counts it
+
+
 @pytest.fixture
 def split_db(tmp_path, monkeypatch):
     """A DB with the real schema and rows under both halves of the old device."""
