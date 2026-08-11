@@ -127,6 +127,12 @@ run tests.
 - `test_dry_run_reference_rewrite_writes_nothing` — `--dry-run` leaves the file byte-identical while still reporting it, so the end-of-run file summary counts it.
 - `test_db_migration_moves_only_the_split_fields` — readings/threshold/mute/digest rows follow the moved fields; the fields that stayed, and the old device's own offline state, do not move.
 
+### `tests/test_extract_device.py` — moving a device to its own file (`extract_device.py`)
+- `test_the_block_moves_out_whole` / `test_extracting_the_first_of_three_keeps_the_rest` — the block runs to the next device key, not to end of file, and the devices that stay keep their bodies and comments.
+- `test_dry_run_writes_nothing` / `test_existing_target_is_never_overwritten` — it rewrites hand-maintained YAML in place, so neither file is touched when the run is a dry-run or the target is taken.
+- `test_a_device_already_alone_is_refused` — extracting it would leave a file holding `devices:` and nothing else, which the loader rejects.
+- `test_unknown_device_is_refused` — a typo in the key stops the run rather than rewriting the wrong file.
+
 ### `tests/test_cadence.py` — measuring publish cadence (`cadence.py`)
 - `test_a_62s_meter_is_not_rounded_to_a_whole_minute` — the suggested `interval` rounds up proportionally: 62 → 70, not 120, which would double that meter's OFFLINE delay for the sake of a round number.
 - `test_measured_cadence_matches_the_data` / `test_a_single_reading_yields_no_cadence` — median and worst gap come out of the real timestamps; one reading yields no cadence rather than a bogus one.

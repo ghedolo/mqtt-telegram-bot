@@ -31,7 +31,9 @@ which is the setting that decides how fast an outage is noticed.
   (`SM1_UTA1.yaml`) gets its half in `SM1_CDZ1.yaml` beside it — the same signal
   `rename_device.py` reads to decide whether to rename a file — while a file
   holding several devices keeps both, the new one right after the old. Override
-  with `--new-file PATH` or `--same-file`.
+  with `--new-file PATH` or `--same-file`. To move a device that is already in
+  the wrong file — e.g. after a split run before this placement existed — use
+  `extract_device.py KEY`: config-only, no sensor name changes, no DB step.
 - **The new device's device-level keys** — `info`, `interval`, `topic`,
   `viewers`, `admins`, `note` — copied from the old device as-is. **Review
   them afterwards**: the two halves publish at different cadences, and the
