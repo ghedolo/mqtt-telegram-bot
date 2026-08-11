@@ -248,6 +248,7 @@ Why some changes still need a restart: MQTT topic subscriptions are set up **onc
 | MQTT host/port/user/pass/tls, Telegram token/`group_id`, `poll_interval`, `digest_time`, `silent_start`, `debug`, `enableMenu`, `traceCmd`, `traceCmdFile` | **Restart** | Read only at startup. |
 | Renaming a **device key** (`SM_UTA1` → `SM1_UTA1`) | **Restart + DB migration** | Changes every derived sensor name. Use `rename_device.py` (config + DB); see [RENAME_SENSOR.md](RENAME_SENSOR.md). Without migration, history/thresholds/subscriptions/mutes for the old name are orphaned and the new name starts empty. |
 | Renaming a **field key** (`T` → `Temp`) | **Restart + DB migration** | Same orphaning — the sensor name (`device_field`) changes. No dedicated script; migrate the DB by hand or accept the history loss. |
+| **Splitting a device** in two (moving fields to a new key) | **Restart + DB migration** | One key modelling two physical units hides the death of the quieter one: offline detection is per-Device, so a fast-publishing field keeps the whole device looking alive. Use `split_device.py` (config + DB + blackout references); see [SPLIT_DEVICE.md](SPLIT_DEVICE.md). Set each half's own `interval` afterwards — the new device inherits the old shared one. |
 
 The safe order for a rename is always: stop the bot → migrate the DB → edit the YAML → restart (the DB step reads the *old* key from config, so migrate before editing the YAML — or follow the two-step procedure in RENAME_SENSOR.md for the read-only-mounted Docker setup).
 

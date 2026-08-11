@@ -115,6 +115,14 @@ run tests.
 - `test_every_sensor_keyed_table_is_covered` — the schema is the source of truth: every table with a `sensor` column must appear in `SENSOR_TABLES`, so a table added to `bot/db.py` cannot silently fall out of the rename (which is how `mutes` was missed).
 - `test_dry_run_changes_nothing` — `--dry-run` rolls back.
 
+### `tests/test_split_device.py` — splitting one device into two (`split_device.py`)
+- `test_moved_fields_leave_the_old_device` / `test_new_device_inherits_device_level_keys` / `test_field_bodies_are_carried_over_intact` — the moved fields land under the new key with their bodies and comments intact, and the new device inherits the old one's device-level keys (info, viewers, admins).
+- `test_other_devices_are_untouched` — the new block is inserted after the old one, not over the device that followed it.
+- `test_moving_every_field_is_refused` / `test_unknown_field_is_refused` / `test_unknown_device_is_refused` — moving *all* fields is a rename (`rename_device.py`), and would leave a device with an empty `fields:`.
+- `test_mapping_excludes_the_bare_device_key` — the old key survives a split, so its device-level rows (OFFLINE alarms, ackOff silence) stay put; remapping them would hand one unit's outage history to the other.
+- `test_reference_rewrite_is_word_bounded` — a blackout group's `fields:` list names sensors in full and must follow the split, but `SM1_UTA1_I` is a prefix of `SM1_UTA1_IF`: an unbounded replace corrupts the longer name. A stale name there is a hard config-load error, i.e. a bot that will not start.
+- `test_db_migration_moves_only_the_split_fields` — readings/threshold/mute/digest rows follow the moved fields; the fields that stayed, and the old device's own offline state, do not move.
+
 ### `tests/test_ingest.py` — reading path integration (`bot/ingest.py`)
 Wires `process_reading` to the real DB and a real `AlarmManager` (only the
 notifiers are stubbed) and drives one full flow.
