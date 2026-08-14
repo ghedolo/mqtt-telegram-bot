@@ -348,6 +348,8 @@ def test_blackout_lifecycle_raise_hold_end(temp_db, clock):
     temp_db.insert_reading("X_I2", 0.0, ts=1011)
     asyncio.run(am.check_blackout(g))
     assert len(recbo.msgs) == 1 and recbo.msgs[0][1].startswith("⚡")
+    # the raise carries the readings the decision was taken on
+    assert "X_I1=0.0 X_I2=0.0" in recbo.msgs[0][1]
     assert am._state("R2", "blackout").active is True
 
     # t=1100: one meter dies (X_I2 stale), the other still dark & fresh.
@@ -364,6 +366,10 @@ def test_blackout_lifecycle_raise_hold_end(temp_db, clock):
     temp_db.insert_reading("X_I1", 2.0, ts=1200)      # LIT
     asyncio.run(am.check_blackout(g))
     assert len(recbo.msgs) == 2 and recbo.msgs[1][1].startswith("🔌")
+    # the END reports the WHOLE outage: from the first all-dark reading (t=1000),
+    # not from the raise at t=1011 -> 200s. The dead meter is named as stale.
+    assert "BLACKOUT end after 3m 20s. (X restored)." in recbo.msgs[1][1]
+    assert "X_I1=2.0 X_I2=stale" in recbo.msgs[1][1]
     assert am._state("R2", "blackout").active is False
     # recovery reset the sustain timer so a new outage restarts cleanly
     assert am._state("R2", "blackout").since == 0
@@ -377,6 +383,8 @@ def test_blackout_for_seconds_zero_raises_immediately(temp_db, clock):
     temp_db.insert_reading("X_I1", 0.0, ts=1000)      # fresh & dark
     asyncio.run(am.check_blackout(g))
     assert len(recbo.msgs) == 1 and recbo.msgs[0][1].startswith("⚡")
+    # the subject is derived from the watched fields' device keys, not group.info
+    assert recbo.msgs[0][1] == "⚡ BLACKOUT started. (X outage). X_I1=0.0"
 
 
 def test_blackout_reads_signal_cache_without_db(temp_db, clock):
@@ -428,6 +436,67 @@ def test_blackout_repeat_notification(temp_db, clock):
     temp_db.insert_reading("X_I2", 0.0, ts=ts)
     asyncio.run(am.check_blackout(g))
     assert len(recbo.msgs) == 2 and "still no current" in recbo.msgs[1][1]
+    # the repeat is a running outage clock, counted from the onset at t=1000
+    assert "still no current after 1h. (X outage)." in recbo.msgs[1][1]
+    assert "X_I1=0.0 X_I2=0.0" in recbo.msgs[1][1]
+
+
+def test_blackout_end_without_known_onset_omits_duration(temp_db, clock):
+    # a restart mid-outage loses the in-memory onset; the END must still be sent,
+    # without inventing a length
+    recbo = Rec()
+    g = _group()
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g})
+    st = am._state("R2", "blackout")
+    st.active = True
+    st.since = 0
+
+    temp_db.insert_reading("X_I1", 2.0, ts=1000)      # LIT -> confirmed END
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 1
+    assert recbo.msgs[0][1].startswith("🔌")
+    assert "after" not in recbo.msgs[0][1]
+    assert "X_I1=2.0 X_I2=n/a" in recbo.msgs[0][1]
+
+
+def test_blackout_message_names_invalid_field(temp_db, clock):
+    # an out-of-range sample carries no evidence; the message says so rather than
+    # printing the corrupted value
+    recbo = Rec()
+    g = BlackoutGroup(id="R2", info="R2", fields=["X_I1", "X_I2"], below=0.5,
+                      for_seconds=0, repeat_seconds=3600, stale_after=15)
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g},
+                             is_valid_fn=lambda name, value: value >= 0.0)
+    st = am._state("R2", "blackout")
+    st.active = True
+    st.since = 900
+
+    temp_db.insert_reading("X_I1", 2.0, ts=1000)      # LIT -> END
+    temp_db.insert_reading("X_I2", -5.0, ts=1000)     # glitch
+    asyncio.run(am.check_blackout(g))
+    assert "X_I1=2.0 X_I2=?" in recbo.msgs[0][1]
+    assert "BLACKOUT end after 1m 40s. (X restored)." in recbo.msgs[0][1]
+
+
+def test_blackout_subject_comes_from_config(temp_db, clock):
+    # two currents of one meter name one subject; two meters name both, in order.
+    # The device key is read from the config, not split off the sensor name — a
+    # device key may itself contain an underscore.
+    devices = {"SM_3_I1": "SM_3", "SM_3_I2": "SM_3", "CDZ2_I": "CDZ2",
+               "CDZ1_I": "CDZ1", "CDZ2_IF": "CDZ2"}
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt,
+                             device_of_fn=lambda n: devices.get(n, ""))
+    one = BlackoutGroup(id="G", info="ignored", fields=["SM_3_I1", "SM_3_I2"],
+                        below=0.5, for_seconds=0, repeat_seconds=3600, stale_after=15)
+    two = BlackoutGroup(id="G", info="ignored", fields=["CDZ2_I", "CDZ1_I", "CDZ2_IF"],
+                        below=0.5, for_seconds=0, repeat_seconds=3600, stale_after=15)
+    assert am._blackout_subject(one) == "SM_3"
+    assert am._blackout_subject(two) == "CDZ2, CDZ1"
+
+    # a name the config does not know still yields something usable
+    unknown = BlackoutGroup(id="G", info="ignored", fields=["NOPE_I1"], below=0.5,
+                            for_seconds=0, repeat_seconds=3600, stale_after=15)
+    assert am._blackout_subject(unknown) == "NOPE"
 
 
 def test_blackout_all_stale_never_raises(temp_db, clock):

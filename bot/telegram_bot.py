@@ -483,7 +483,7 @@ class TelegramBot:
                 continue
             if group_id in db.get_digest_subscriptions(chat_id):
                 try:
-                    await self._app.bot.send_message(chat_id=chat_id, text=text)
+                    await self.send_dm_to(chat_id, text)
                 except Exception:
                     log.exception("Blackout notify failed for chat_id %s", chat_id)
 
@@ -509,7 +509,7 @@ class TelegramBot:
         dot = {
             "ALARM": "🔴", "ALARM_LOW": "🔴", "OK": "🟢", "OK_LOW": "🟢",
             "OFFLINE": "🔴", "ONLINE": "🟢",
-            "BLACKOUT": "⚡", "BLACKOUT_END": "🟢",
+            "BLACKOUT": "⚡", "BLACKOUT_END": "🔌",
         }
         out = []
         for r in rows:

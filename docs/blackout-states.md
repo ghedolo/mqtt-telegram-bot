@@ -51,10 +51,10 @@ stateDiagram-v2
     POWERED --> SUSPECTED: all fields DARK\n(start for_seconds timer)
     SUSPECTED --> POWERED: any field LIT
     SUSPECTED --> SUSPECTED: some UNKNOWN, no LIT (hold, timer frozen)
-    SUSPECTED --> OUTAGE: still all DARK for ≥ for_seconds\n→ ⚡ raise + notify
-    OUTAGE --> OUTAGE: still all DARK, ≥ repeat_seconds since last\n→ ⚡ repeat "still no current"
+    SUSPECTED --> OUTAGE: still all DARK for ≥ for_seconds\n→ ⚡ "BLACKOUT started" + notify
+    OUTAGE --> OUTAGE: still all DARK, ≥ repeat_seconds since last\n→ ⚡ repeat "still no current after <dur>"
     OUTAGE --> OUTAGE: some UNKNOWN, no LIT (hold, silent)
-    OUTAGE --> POWERED: any field LIT\n→ 🔌 END "power restored"
+    OUTAGE --> POWERED: any field LIT\n→ 🔌 "BLACKOUT end after <total dur>"
 ```
 
 Mapping to the code (`AlarmState` in `alarm_manager.py`): **OUTAGE** = `active
@@ -63,6 +63,42 @@ by `since` (0 = POWERED, non-zero = SUSPECTED, counting from that timestamp).
 
 Every arrow is evaluated **only when a current reading arrives** (from
 `on_reading` → `check_blackout_for`). Between readings the state is frozen.
+
+## Message anatomy
+
+Every blackout message is one line (they are persisted in `alarms.message` and
+re-rendered one per line by the history listings) and answers three questions:
+**who** lost power, **how long**, and **what the meters read** at the moment the
+decision was taken.
+
+```
+⚡ BLACKOUT started. (CDZ1, CDZ2 outage). CDZ1_I=0.0 CDZ2_I=0.0
+⚡ BLACKOUT still no current after 1h 5m. (CDZ1, CDZ2 outage). CDZ1_I=0.0 CDZ2_I=0.0
+🔌 BLACKOUT end after 1h 23m. (CDZ1, CDZ2 restored). CDZ1_I=4.2 CDZ2_I=0.0
+```
+
+The subject in brackets is the **Device keys of the watched Fields**, taken from
+the sensor config via `AppConfig.device_of` and deduped with order preserved — a
+group watching two currents of one meter names it once. It is deliberately not
+`group.info`: the group label is for `/list` and `/listSignal`, the message names
+the physical units. A Field the config does not know falls back to splitting its
+`{device}_{field}` name, which only happens in tests and diagnostics.
+
+The duration is always counted from **`since`** — the first all-DARK reading —
+so it starts before the alarm was raised: the `for_seconds` sustain window and
+every silent HOLD are inside it. The END line therefore reports the *whole*
+outage, not the time since the raise or since the last repeat. If the process
+restarted mid-outage the onset is gone, and the END is sent without a duration
+rather than with a made-up one.
+
+Fields that carried no evidence are named as such instead of showing a value:
+`=stale` (older than `stale_after`), `=?` (outside `validMin`/`validMax`),
+`=n/a` (never seen). A partial outage — one meter dead, one still reading zero —
+is thus legible from the message alone.
+
+Values go through the same `AppConfig.fmt` as `/get`, so `decimals` and `states`
+labels are honoured. Markers are consistent between the live message and the
+history listings: `⚡` for `BLACKOUT`, `🔌` for `BLACKOUT_END`.
 
 ## Parallel machine: device OFFLINE
 

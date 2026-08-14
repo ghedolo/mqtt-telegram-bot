@@ -82,14 +82,47 @@
     },
     "bb0bf823-23b7-4d4e-9fd5-4c12ca8f6a38": {
       "first": "2026-08-09T14:15:32.037Z",
-      "last": "2026-08-10T10:15:14.128Z",
-      "active_secs": 11681,
-      "user": 461,
-      "asst": 618,
-      "input": 1177,
-      "output": 308689,
-      "cache_read": 129601597,
-      "cache_write": 1266841
+      "last": "2026-08-10T10:36:55.056Z",
+      "active_secs": 12551,
+      "user": 477,
+      "asst": 642,
+      "input": 1223,
+      "output": 332303,
+      "cache_read": 140001708,
+      "cache_write": 1333215
+    },
+    "93b25856-9f52-4549-8272-583b9c262e0d": {
+      "first": "2026-08-14T16:23:34.215Z",
+      "last": "2026-08-14T17:28:47.696Z",
+      "active_secs": 2708,
+      "user": 118,
+      "asst": 163,
+      "input": 326,
+      "output": 91260,
+      "cache_read": 16050569,
+      "cache_write": 256164
+    },
+    "d9d130ca-0911-40e5-bad0-1c97927cdc51": {
+      "first": "2026-08-14T16:04:06.099Z",
+      "last": "2026-08-14T16:22:59.960Z",
+      "active_secs": 1133,
+      "user": 24,
+      "asst": 35,
+      "input": 70,
+      "output": 28683,
+      "cache_read": 1423290,
+      "cache_write": 109286
+    },
+    "e3aa9367-d747-4fac-b65a-969e4f63dfe1": {
+      "first": "2026-08-13T12:40:12.429Z",
+      "last": "2026-08-13T20:05:31.762Z",
+      "active_secs": 6876,
+      "user": 142,
+      "asst": 245,
+      "input": 10420,
+      "output": 323058,
+      "cache_read": 36789966,
+      "cache_write": 853569
     }
   }
 }

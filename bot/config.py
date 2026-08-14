@@ -116,6 +116,15 @@ class AppConfig:
             return set()
         return self._members(sc.viewers) | self._members(sc.admins)
 
+    def device_of(self, sensor: str) -> str:
+        """Device key a Sensor or Signal belongs to, straight from the config.
+
+        Blackout messages name the physical units that lost power from this, so
+        it must be the configured key, not the `{device}_{field}` name split on
+        the last underscore — a device key may itself contain one."""
+        sc = self.sensors.get(sensor) or self.signals.get(sensor)
+        return sc.device_key if sc is not None else ""
+
     def admins_of(self, sensor: str) -> set[int]:
         sc = self.sensors.get(sensor) or self.signals.get(sensor)
         if sc is None:

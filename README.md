@@ -155,7 +155,7 @@ Configure blackout groups under `blackouts:` in `00-defaults.yaml` (the only fil
 ```yaml
 blackouts:
   R2:
-    info: "Blackout R2 — CDZ senza corrente"
+    info: "Blackout R2 — CDZ senza corrente"   # label for /list and /listSignal (messages name the devices instead)
     fields: [SM1_UTA1_I, SM1_UTA2_I]   # canonical sensor names to watch
     below: 0.5                          # A; all fields must read under this
     for_seconds: 10                     # sustained duration before raising (0 = on first dark reading)
@@ -168,6 +168,18 @@ Unknown field names are rejected at startup. Each field is classified from its l
 The end-of-blackout message (`🔌`) is sent **only on positive proof** — when at least one field becomes LIT. A field going UNKNOWN (its meter stopped publishing) does **not** end the blackout: without a fresh reading the bot can't claim power is back, so it holds the alarm and stays silent, while that field's own device **offline** alarm reports the silence. This avoids a false "power restored" when, during a real outage, one current meter dies but another still reads zero.
 
 A reading outside a field's `validMin`/`validMax` counts as **UNKNOWN** here, exactly as it is skipped for threshold alarms — it is stored but proves nothing. Otherwise one corrupted near-zero sample would keep arguing for a blackout long after it arrived, and one wild spike could end a real one.
+
+The messages name **who** lost power, for **how long**, and the readings the decision was taken on:
+
+```
+⚡ BLACKOUT started. (CDZ1, CDZ2 outage). CDZ1_I=0.0 CDZ2_I=0.0
+⚡ BLACKOUT still no current after 1h 5m. (CDZ1, CDZ2 outage). CDZ1_I=0.0 CDZ2_I=0.0
+🔌 BLACKOUT end after 1h 23m. (CDZ1, CDZ2 restored). CDZ1_I=4.2 CDZ2_I=stale
+```
+
+The subject in brackets is the **device keys of the watched fields**, read from the sensor config (deduped, so a group watching two currents of one meter names it once) — not the group `info`, which stays a label for `/list` and `/listSignal`.
+
+The duration is counted from the **first all-dark reading**, so it starts before the alarm was raised: the `for_seconds` sustain window and every silent hold are inside it, and the end message reports the **whole** outage, not the time since the raise. A field that carried no evidence is named rather than valued — `=stale`, `=?` (out of `validMin`/`validMax`), `=n/a` (never seen) — so a partial outage is readable from the message itself.
 
 The full state model (per-field DARK/LIT/UNKNOWN inputs plus the group POWERED→SUSPECTED→OUTAGE machine, with a diagram) is in [docs/blackout-states.md](docs/blackout-states.md).
 
@@ -293,7 +305,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/xlsx <expr> [Nh]` | Download readings as Excel, one sheet per sensor (default 8h, max 24h; 72h for admins) |
 | `/last` | Last time any message arrived from MQTT (no content shown) |
 | `/lastSeen [expr] [-s\|-f]` | Last stored reading per sensor: value, absolute timestamp, age. No arg = all visible sensors. Unlike `/get`'s `min ago` column (which shows `∞` once a sensor counts as silent) this dates a sensor that has been quiet for days; `never` = no reading ever stored |
-| `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h) for the matching sensors **and the devices they belong to**, so offline history shows up alongside threshold history; no expr = digest subscriptions, plus any subscribed blackout groups. A blackout group id works as an expr too. 🔴 = alarm/offline, 🟢 = recovery/back online, ⚡ = blackout |
+| `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h) for the matching sensors **and the devices they belong to**, so offline history shows up alongside threshold history; no expr = digest subscriptions, plus any subscribed blackout groups. A blackout group id works as an expr too. 🔴 = alarm/offline, 🟢 = recovery/back online, ⚡ = blackout, 🔌 = end of blackout |
 | `/last5Alarm <name>` | Last 5 alarm events concerning one sensor: its own threshold events **and** its device's offline events (🔴/🟢 markers) |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
 | `/listSignal` | Subscribable blackout groups, the Signals feeding each (live value for admins), and your subscription state — subscribe via `/digest <id> on` |
@@ -433,19 +445,19 @@ This project was built entirely through a conversation with Claude Code, across
 multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
-- **Last message:** 2026-08-10
-- **Sessions:** 16 — 8559 messages (3175 user + 5384 assistant)
-- **Active conversation time:** ~1778 min (~29h 38m)
+- **Last message:** 2026-08-14
+- **Sessions:** 19 — 9326 messages (3475 user + 5851 assistant)
+- **Active conversation time:** ~1971 min (~32h 51m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 463,383 |
-| Output | 4,169,794 |
-| Cache write | 15,464,111 |
-| Cache read | 909,903,066 |
-| **Total** | **~930 M** |
+| Input (non-cache) | 474,245 |
+| Output | 4,636,409 |
+| Cache write | 16,749,504 |
+| Cache read | 974,567,002 |
+| **Total** | **~996 M** |
 
-The assistant averaged **774 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **792 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

@@ -932,6 +932,18 @@ def test_lastalarms_subscribed_blackout_group(bot, temp_db):
     assert sent[-1][1].count("⚡") == 1      # marker not printed twice
 
 
+def test_lastalarms_blackout_end_keeps_the_live_marker(bot, temp_db):
+    # history must render a BLACKOUT_END with the same 🔌 the live message used,
+    # and strip the stored one instead of printing it twice
+    temp_db.subscribe_digest(1, "R2")
+    temp_db.insert_alarm("R2", "BLACKOUT_END",
+                         "🔌 BLACKOUT end after 1h 23m. (SM1 restored). SM1_T=2.0")
+    sent = _run(bot, bot._cmd_lastalarms, 1)
+    assert "BLACKOUT end after 1h 23m" in sent[-1][1]
+    assert sent[-1][1].count("🔌") == 1
+    assert "🟢" not in sent[-1][1]
+
+
 def test_lastalarms_unsubscribed_blackout_group_excluded(bot, temp_db):
     temp_db.subscribe_digest(1, "SM1_T")
     temp_db.insert_alarm("SM1_T", "ALARM", "SM1_T: hot")

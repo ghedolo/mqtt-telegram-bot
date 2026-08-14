@@ -6,6 +6,7 @@ from typing import Callable, Awaitable, Optional
 
 from . import db
 from .config import DeviceConfig
+from .fmt import fmt_duration
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class AlarmManager:
         notify_blackout_fn: Callable[[str, str], Awaitable[None]] = None,
         blackout_groups: dict = None,
         is_valid_fn: Callable[[str, float], bool] = None,
+        device_of_fn: Callable[[str], str] = None,
     ):
         self._threshold_repeat = threshold_repeat
         self._offline_repeat = offline_repeat
@@ -48,6 +50,8 @@ class AlarmManager:
         # glitch filter, shared with the threshold path: a reading outside
         # validMin/validMax is stored but must not count as evidence
         self._is_valid = is_valid_fn or (lambda name, value: True)
+        # sensor/signal name → configured device key, for naming who lost power
+        self._device_of = device_of_fn or (lambda name: "")
         self._states: dict[str, AlarmState] = {}
         self._started_at = int(time.time())
         # device_key → when its offline grace started (process start for the
@@ -245,6 +249,64 @@ class AlarmManager:
                 # stale flag so it can't mute a future genuine offline forever.
                 db.unsilence_sensor(device.key)
 
+    def _classify_fields(self, group, now: int) -> list[tuple[str, str, Optional[float]]]:
+        """Classify every watched field of a group from its latest reading.
+
+        Returns (name, state, value) per field, state one of DARK / LIT / MISSING
+        / STALE / INVALID. The last three are all UNKNOWN as far as the state
+        machine is concerned — they are told apart only so the message can say
+        *why* a field carried no evidence."""
+        out = []
+        for name in group.fields:
+            # Signal-backed fields live in the in-memory cache (never in the DB);
+            # a regular field is never in the cache, so this routes correctly.
+            row = self._signal_latest.get(name) or db.get_latest(name)
+            if row is None:
+                out.append((name, "MISSING", None))
+            elif (now - row["ts"]) > group.stale_after:
+                out.append((name, "STALE", row["value"]))
+            # An out-of-range sample is a glitch, not evidence: the threshold
+            # path already refuses to act on one, and letting it stand here let
+            # a single corrupted near-zero reading argue for a blackout (or a
+            # wild spike argue for its end) long after the sample itself.
+            elif not self._is_valid(name, row["value"]):
+                out.append((name, "INVALID", row["value"]))
+            elif row["value"] >= group.below:
+                out.append((name, "LIT", row["value"]))
+            else:
+                out.append((name, "DARK", row["value"]))
+        return out
+
+    def _blackout_subject(self, group) -> str:
+        """Who lost power: the device keys of the Fields the detection watches,
+        read from the sensor config (`AppConfig.device_of`), deduped with order
+        preserved — a group watching two currents of one meter names one subject.
+
+        Falls back to splitting `{device}_{field}` only for a name the config
+        does not know, which is the test/diagnostic case."""
+        seen = []
+        for name in group.fields:
+            dev = self._device_of(name) or name.rsplit("_", 1)[0]
+            if dev not in seen:
+                seen.append(dev)
+        return ", ".join(seen)
+
+    def _fmt_blackout_fields(self, snapshot) -> str:
+        """Render the per-field snapshot for a blackout message: the readings the
+        decision was actually taken on, with the non-evidence ones named as such
+        so a partial outage is legible from the message alone."""
+        parts = []
+        for name, st, value in snapshot:
+            if st in ("DARK", "LIT"):
+                parts.append(f"{name}={self._fmt(name, value)}")
+            elif st == "STALE":
+                parts.append(f"{name}=stale")
+            elif st == "INVALID":
+                parts.append(f"{name}=?")
+            else:
+                parts.append(f"{name}=n/a")
+        return " ".join(parts)
+
     async def check_blackout(self, group):
         """Raise a blackout Alarm when every current Field in the group has a
         fresh reading below the threshold, sustained for the group duration.
@@ -262,27 +324,11 @@ class AlarmManager:
         now = int(time.time())
         state = self._state(group.id, "blackout")
 
-        all_dark = True
-        any_lit = False
-        for name in group.fields:
-            # Signal-backed fields live in the in-memory cache (never in the DB);
-            # a regular field is never in the cache, so this routes correctly.
-            row = self._signal_latest.get(name) or db.get_latest(name)
-            # An out-of-range sample is a glitch, not evidence: the threshold
-            # path already refuses to act on one, and letting it stand here let
-            # a single corrupted near-zero reading argue for a blackout (or a
-            # wild spike argue for its end) long after the sample itself.
-            fresh = (
-                row is not None
-                and (now - row["ts"]) <= group.stale_after
-                and self._is_valid(name, row["value"])
-            )
-            if not fresh:
-                all_dark = False            # UNKNOWN
-            elif row["value"] >= group.below:
-                all_dark = False
-                any_lit = True              # LIT
-            # else: DARK
+        snapshot = self._classify_fields(group, now)
+        all_dark = all(st == "DARK" for _, st, _ in snapshot)
+        any_lit = any(st == "LIT" for _, st, _ in snapshot)
+        fields = self._fmt_blackout_fields(snapshot)
+        subject = self._blackout_subject(group)
 
         if all_dark:
             if state.since == 0:
@@ -291,20 +337,28 @@ class AlarmManager:
             if sustained and not state.active:
                 state.active = True
                 state.last_notified = now
-                msg = f"⚡ BLACKOUT {group.info}: no current for >{group.for_seconds}s"
+                msg = f"⚡ BLACKOUT started. ({subject} outage). {fields}"
                 db.insert_alarm(group.id, "BLACKOUT", msg)
                 await self._notify_blackout(group.id, msg)
             elif state.active and (now - state.last_notified) >= group.repeat_seconds:
                 state.last_notified = now
-                msg = f"⚡ BLACKOUT {group.info}: still no current"
+                msg = (f"⚡ BLACKOUT still no current after "
+                       f"{fmt_duration(now - state.since)}. ({subject} outage). {fields}")
                 db.insert_alarm(group.id, "BLACKOUT", msg)
                 await self._notify_blackout(group.id, msg)
         elif any_lit:
-            # confirmed power on at least one field → real end
+            # confirmed power on at least one field → real end. Read the onset
+            # before clearing it: it is what makes the END message report the
+            # *whole* outage (sustain window and silent holds included), not
+            # just the time since the alarm was raised.
+            started = state.since
             state.since = 0
             if state.active:
                 state.active = False
-                msg = f"🔌 BLACKOUT END {group.info}: power restored"
+                # started == 0 only if the process restarted mid-outage and lost
+                # the in-memory onset; report the end without inventing a length.
+                for_how_long = f" after {fmt_duration(now - started)}" if started else ""
+                msg = f"🔌 BLACKOUT end{for_how_long}. ({subject} restored). {fields}"
                 db.insert_alarm(group.id, "BLACKOUT_END", msg)
                 await self._notify_blackout(group.id, msg)
         # else: only UNKNOWN fields (stale) and none LIT → hold, no message

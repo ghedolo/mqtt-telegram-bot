@@ -116,6 +116,7 @@ async def main():
         notify_blackout_fn=notify_blackout,
         blackout_groups=cfg.blackouts,
         is_valid_fn=cfg.is_valid,
+        device_of_fn=cfg.device_of,
     )
 
     tg.last_mqtt_fn = alarms.last_mqtt_ts
