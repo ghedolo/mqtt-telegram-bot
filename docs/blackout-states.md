@@ -50,7 +50,7 @@ stateDiagram-v2
     [*] --> POWERED
     POWERED --> SUSPECTED: all fields DARK\n(start for_seconds timer)
     SUSPECTED --> POWERED: any field LIT
-    SUSPECTED --> SUSPECTED: some UNKNOWN, no LIT (hold, timer frozen)
+    SUSPECTED --> SUSPECTED: some UNKNOWN, no LIT (hold, onset kept)
     SUSPECTED --> OUTAGE: still all DARK for ≥ for_seconds\n→ ⚡ "BLACKOUT started" + notify
     OUTAGE --> OUTAGE: still all DARK, ≥ repeat_seconds since last\n→ ⚡ repeat "still no current after <dur>"
     OUTAGE --> OUTAGE: some UNKNOWN, no LIT (hold, silent)
@@ -60,6 +60,9 @@ stateDiagram-v2
 Mapping to the code (`AlarmState` in `alarm_manager.py`): **OUTAGE** = `active
 == True`; **POWERED** and **SUSPECTED** are both `active == False`, told apart
 by `since` (0 = POWERED, non-zero = SUSPECTED, counting from that timestamp).
+A HOLD leaves `since` untouched — only a LIT reading clears it — so the
+`for_seconds` window is always measured from the *first* all-DARK reading, with
+any silent hold counted inside it.
 
 Every arrow is evaluated **only when a current reading arrives** (from
 `on_reading` → `check_blackout_for`). Between readings the state is frozen.

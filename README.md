@@ -189,23 +189,23 @@ The full state model (per-field DARK/LIT/UNKNOWN inputs plus the group POWERED�
 
 #### Understanding `stale_after`
 
-`stale_after` does **not** change *how fast* a blackout is detected (that is `for_seconds` plus the meter cadence). It controls **how old a reading may be to still count as evidence**. A field counts as "dark" only when its latest reading is both below `below` **and** no older than `stale_after`; an older reading is ignored and the field is treated as not-dark.
+`stale_after` does **not** change *how fast* a blackout is detected (that is `for_seconds` plus the meter cadence). It controls **how old a reading may be to still count as evidence**. A field counts as "dark" only when its latest reading is both below `below` **and** no older than `stale_after`; an older reading proves nothing and the field becomes UNKNOWN.
 
-It exists for a specific failure: if a meter *stops publishing* while its last value happened to be near-zero, without a freshness limit that stale zero would look like a permanent blackout forever. `stale_after` says "stale data doesn't count". It therefore plays a **double role** — the blackout also auto-clears when a field *goes stale* (not only when it rises above `below`), so `stale_after` is effectively the "assume power is back after this much silence" timeout.
+It exists for a specific failure: if a meter *stops publishing* while its last value happened to be near-zero, without a freshness limit that stale zero would argue for a blackout forever. `stale_after` says "stale data doesn't count" — and it says it in **both** directions. Going stale is *not* a recovery: only a LIT reading ends a blackout (see above), so `stale_after` is **not** an "assume power is back after this much silence" timeout. When a watched field goes stale the group simply **holds** — no message either way — and that meter's own device **offline** alarm is what reports the silence.
 
 Pick it at roughly **2–4× the real publish cadence**:
 
 | `stale_after` vs cadence | effect |
 |---|---|
-| **too low** (< cadence) | between two publishes the reading ages past the window → stale → never dark → **blackout never raised** (this was the original bug). A single late/dropped message drops the condition. |
-| **right** (~2–4×) | tolerates a couple of missed/late messages; if the meter goes silent for longer, the blackout is treated as ended. |
-| **too high** (e.g. minutes) | a meter that *dies* mid-blackout keeps the alarm falsely "active" for that long; recovery is slow. |
+| **too low** (< cadence) | between two publishes the reading ages past the window → UNKNOWN → never all-dark → **blackout never raised** (this was the original bug). A single late/dropped message drops the condition. |
+| **right** (~2–4×) | tolerates a couple of missed/late messages; a meter silent for longer stops contributing evidence and the group holds. |
+| **too high** (e.g. minutes) | the opposite risk: a long-dead meter's last near-zero reading keeps counting as proof of darkness for that long, so a blackout can be raised on data nobody is publishing any more. |
 
 Example — cadence 5 s, `stale_after: 15`:
 
 - meter publishes `0` at t=0, 5, 10 … → each reading is ≤ 15 s old → dark holds.
 - the t=10 message is dropped, but the t=5 one is still there → at t=12 its age is 7 s ≤ 15 → **still dark** (a missed message is tolerated).
-- the meter goes fully silent after t=5 → at t=21 the last reading is 16 s old > 15 → **stale** → the blackout is auto-cleared.
+- the meter goes fully silent after t=5 → at t=21 the last reading is 16 s old > 15 → **UNKNOWN**, and the group **holds**: a blackout already raised stays raised (silently), one not yet raised is not raised. The onset is kept, so if dark readings resume, the `for_seconds` window still counts from the *first* all-dark reading — the silent gap included.
 
 Notification is **opt-in**: the group id is a subscribable pseudo-entity — `/digest R2 on`. It carries no reading, so it never appears as a value row in `/get` or the daily digest; it only serves as the notification flag. Any **viewer** of at least one watched field may subscribe (more permissive than offline alarms, which are admin-gated, because subscription is an explicit opt-in). Blackout groups are listed at the bottom of `/list` (with a 🔔/🔕 subscription marker) so users can discover them. See [ADR-0007](docs/adr/0007-blackout-detection-from-current.md).
 
