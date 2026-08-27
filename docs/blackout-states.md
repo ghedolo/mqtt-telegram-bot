@@ -96,6 +96,12 @@ rather than with a made-up one. The *alarm* itself does survive the restart —
 `AlarmManager.restore_states` rebuilds `active` at startup from the newest row
 per subject in `alarms` — so the END is sent at all; only `since` is lost.
 
+An unknown onset stays unknown: while the alarm is active with `since == 0` the
+repeats omit the duration too (`⚡ BLACKOUT still no current. (…)`). Stamping
+`now` on it at the first all-dark reading after the restart would have made an
+hours-old outage announce itself as `after 0s`, and every later repeat would
+have counted from the restart rather than from the outage.
+
 Fields that carried no evidence are named as such instead of showing a value:
 `=stale` (older than `stale_after`), `=?` (outside `validMin`/`validMax`),
 `=n/a` (never seen). A partial outage — one meter dead, one still reading zero —

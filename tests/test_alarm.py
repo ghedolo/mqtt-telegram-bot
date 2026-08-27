@@ -608,3 +608,81 @@ def test_restored_blackout_can_end_on_positive_proof(temp_db, clock):
     assert recbo.msgs[0][1].startswith("🔌")
     # the onset is not invented: no duration is claimed
     assert "after" not in recbo.msgs[0][1]
+
+
+def test_restored_blackout_repeat_claims_no_duration(temp_db, clock):
+    # the onset is lost by the restart, so the repeat must not claim a length:
+    # stamping `now` on `since` produced "still no current after 0s" for an
+    # outage hours old, and every later repeat counted from the restart
+    recbo = Rec()
+    g = BlackoutGroup(id="R2", info="R2", fields=["X_I1"], below=0.5,
+                      for_seconds=0, repeat_seconds=600, stale_after=15)
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g})
+    am.restore_states({"R2": ("BLACKOUT", 100)}, set(), {"R2"})
+
+    temp_db.insert_reading("X_I1", 0.0, ts=1000)      # still dark
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 1
+    assert "still no current. (X outage)." in recbo.msgs[0][1]
+    assert "after" not in recbo.msgs[0][1]
+    # and the unknown onset stays unknown, so later repeats don't start
+    # counting from the restart either
+    assert am._state("R2", "blackout").since == 0
+
+    clock["t"] = 1000 + 601
+    temp_db.insert_reading("X_I1", 0.0, ts=clock["t"])
+    asyncio.run(am.check_blackout(g))
+    assert "after" not in recbo.msgs[1][1]
+
+
+def test_a_normal_blackout_still_reports_its_duration(temp_db, clock):
+    # the guard above must not silence the ordinary case
+    recbo = Rec()
+    g = BlackoutGroup(id="R2", info="R2", fields=["X_I1"], below=0.5,
+                      for_seconds=0, repeat_seconds=600, stale_after=15)
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g})
+
+    temp_db.insert_reading("X_I1", 0.0, ts=1000)
+    asyncio.run(am.check_blackout(g))                  # raise
+    clock["t"] = 1000 + 601
+    temp_db.insert_reading("X_I1", 0.0, ts=clock["t"])
+    asyncio.run(am.check_blackout(g))                  # repeat
+    assert "still no current after 10m 1s." in recbo.msgs[1][1]
+
+
+def test_restored_offline_under_ackoff_stays_silent_then_clears(temp_db, clock):
+    # a silenced device keeps its restored state: no DM while the ack holds, and
+    # the reconnect still auto-clears the silence and announces the recovery
+    recdev = Rec()
+    dev = make_device(interval=10)
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am.restore_states({"D": ("OFFLINE", 100)}, {"D"}, set())
+    temp_db.silence_sensor("D")
+
+    clock["t"] = 2000
+    asyncio.run(am.check_offline(dev))                 # still down, acked
+    assert recdev.msgs == []
+
+    am.record_topic_message("t/d")
+    asyncio.run(am.check_offline(dev))                 # back
+    assert len(recdev.msgs) == 1
+    assert recdev.msgs[0][1] == "ONLINE D: back online"
+    assert temp_db.is_silenced("D") is False
+
+
+def test_restored_offline_on_the_availability_path_recovers_too(temp_db, clock):
+    # a zigbee2mqtt device takes its state from the availability topic, not from
+    # data cadence: the restored flag must clear there as well
+    recdev = Rec()
+    sc = SensorConfig(name="Z_T", topic="z2m/Z", json_path=None, interval=10,
+                      info="", unit="", default_alarm_high=None, default_alarm_low=None)
+    dev = DeviceConfig(key="Z", topic="z2m/Z", interval=10, info="", note="",
+                       fields={"T": sc}, availability_topic="z2m/Z/availability")
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am.restore_states({"Z": ("OFFLINE", 100)}, {"Z"}, set())
+
+    am.record_availability("Z", True)
+    clock["t"] = 1000 + am_mod.AVAIL_GRACE + 1
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 1
+    assert recdev.msgs[0][1] == "ONLINE Z: back online"

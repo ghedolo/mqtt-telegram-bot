@@ -365,9 +365,15 @@ class AlarmManager:
         subject = self._blackout_subject(group)
 
         if all_dark:
-            if state.since == 0:
+            # Only an alarm that is not yet active accumulates an onset. A
+            # blackout restored across a restart is active with `since == 0`:
+            # its onset is genuinely unknown, and stamping `now` on it would
+            # make the repeats claim a duration counted from the restart —
+            # "still no current after 0s" for an outage hours old. Unknown
+            # stays unknown until the outage ends.
+            if state.since == 0 and not state.active:
                 state.since = now
-            sustained = (now - state.since) >= group.for_seconds
+            sustained = state.since != 0 and (now - state.since) >= group.for_seconds
             if sustained and not state.active:
                 state.active = True
                 state.last_notified = now
@@ -376,8 +382,12 @@ class AlarmManager:
                 await self._notify_blackout(group.id, msg)
             elif state.active and (now - state.last_notified) >= group.repeat_seconds:
                 state.last_notified = now
-                msg = (f"⚡ BLACKOUT still no current after "
-                       f"{fmt_duration(now - state.since)}. ({subject} outage). {fields}")
+                # same rule as the END line: report a length only when the onset
+                # is known, never an invented one
+                for_how_long = (f" after {fmt_duration(now - state.since)}"
+                                if state.since else "")
+                msg = (f"⚡ BLACKOUT still no current{for_how_long}. "
+                       f"({subject} outage). {fields}")
                 db.insert_alarm(group.id, "BLACKOUT", msg)
                 await self._notify_blackout(group.id, msg)
         elif any_lit:

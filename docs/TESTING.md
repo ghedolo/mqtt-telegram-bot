@@ -257,6 +257,9 @@ cannot silently miss the menu (how `/listSignal` was lost).
 - `test_restore_skips_subjects_the_config_no_longer_knows` — a device or group removed from the config cannot be resurrected by its old history.
 - `test_restored_offline_keeps_the_repeat_cadence` — `last_notified` comes from the stored row, so a restart does not reset the repeat window into an immediate re-notification.
 - `test_restored_blackout_can_end_on_positive_proof` — a blackout restored as active still ends on a LIT reading, and claims no duration: the onset is deliberately not invented.
+- `test_restored_blackout_repeat_claims_no_duration` / `test_a_normal_blackout_still_reports_its_duration` — an onset lost to a restart stays unknown: the repeats omit the duration instead of announcing an hours-old outage as `after 0s` and then counting from the restart. The ordinary case keeps reporting its real length.
+- `test_restored_offline_under_ackoff_stays_silent_then_clears` — a restored state under an `/ackOff` silence sends nothing while the ack holds, and the reconnect still clears the silence and announces the recovery.
+- `test_restored_offline_on_the_availability_path_recovers_too` — the zigbee2mqtt branch takes its state from the availability topic, not from data cadence; the restored flag must clear there as well.
 
 ### `tests/test_schedule.py` — wall-clock scheduling (`bot/schedule.py`)
 - `test_next_occurrence_later_today` — target still ahead today.
