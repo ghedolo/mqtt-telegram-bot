@@ -123,6 +123,28 @@
       "output": 323058,
       "cache_read": 36789966,
       "cache_write": 853569
+    },
+    "38f44cde-39b4-42a8-bcd9-a5923191e066": {
+      "first": "2026-08-27T12:38:23.010Z",
+      "last": "2026-08-27T13:14:39.415Z",
+      "active_secs": 648,
+      "user": 53,
+      "asst": 73,
+      "input": 146,
+      "output": 20605,
+      "cache_read": 3673801,
+      "cache_write": 108340
+    },
+    "84130a02-38fe-401b-982b-bced79ee423f": {
+      "first": "2026-08-11T07:28:21.953Z",
+      "last": "2026-08-11T14:29:34.399Z",
+      "active_secs": 5926,
+      "user": 201,
+      "asst": 272,
+      "input": 514,
+      "output": 208223,
+      "cache_read": 35555006,
+      "cache_write": 344775
     }
   }
 }
