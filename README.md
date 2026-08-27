@@ -26,6 +26,7 @@ tools/split_device.py     →  move fields to a new device key, config + DB    (
 tools/extract_device.py   →  move a device into its own file (config only)
 tools/cadence.py          →  measure each sensor's real publish cadence, suggest `interval`
 tools/blackout_diag.py    →  replay blackout detection over recorded readings
+tools/silence_diag.py     →  is a Field mute or frozen, and which filter swallowed the message
 tools/migrate_sensors.py  →  convert a monolithic sensors.yaml to sensors.d/
 tools/query.sh            →  ad-hoc SQL over the readings DB
 tools/devstats.py         →  regenerate the Development effort section        (docs/devstats.md)
@@ -138,7 +139,7 @@ A field marked **`signal: true`** is a **Signal**: its readings are *never store
 
 Offline detection is per-device: one alarm fires when no message arrives on the device's topic(s) for `3 × interval`. For devices with per-field topics, the device is considered alive if any field topic received a message recently. The same rule (including the zigbee2mqtt availability override below) decides when `/get` and the digest print `∞` instead of a `min ago` count, so the table never disagrees with the alarms.
 
-Two consequences worth planning around. First, `interval` is what decides how fast an outage is noticed, so it should match what the device really publishes: `python3 tools/cadence.py` measures each sensor's actual cadence from the stored readings and suggests an interval (read-only; run it in the deploy with `docker compose exec -T bot python3 - < tools/cadence.py`). Second, because the check is per-device, **one device key must model one physical unit**. A key covering two — say a room probe and a current meter that publishes every few seconds — lets the fast half keep the whole device looking alive while the slow half is dead, with no `OFFLINE` alarm and therefore no `ONLINE` one when it returns. `tools/split_device.py` separates them; see [SPLIT_DEVICE.md](docs/SPLIT_DEVICE.md).
+Two consequences worth planning around. First, `interval` is what decides how fast an outage is noticed, so it should match what the device really publishes: `python3 tools/cadence.py` measures each sensor's actual cadence from the stored readings and suggests an interval (read-only; run it in the deploy with `docker compose exec -T bot python3 - < tools/cadence.py`). Second, because the check is per-device, **one device key must model one physical unit**. A key covering two — say a room probe and a current meter that publishes every few seconds — lets the fast half keep the whole device looking alive while the slow half is dead, with no `OFFLINE` alarm and therefore no `ONLINE` one when it returns. `tools/split_device.py` separates them; see [SPLIT_DEVICE.md](docs/SPLIT_DEVICE.md). `tools/silence_diag.py` reports which fields are currently masked that way, and who would receive the offline DM if it fired.
 
 A device that sets **`hasZigbeeAvailability: true`** opts out of that heuristic: the bot subscribes to its zigbee2mqtt availability topic (`<topic>/availability`, or the explicit **`availabilityTopic`** if given) and takes z2m's own `online`/`offline` as the truth. zigbee2mqtt already distinguishes mains-powered devices (pinged, ~10 min timeout) from battery end-devices (much longer timeout), so a sensor like a Sonoff SNZB-06P that legitimately stays quiet for hours no longer trips a false `OFFLINE`. Both the JSON (`{"state":"online"}`) and legacy plain-string payloads are understood. Adding or changing these keys requires a **restart** — a `/reloadConfig` is **not** enough: MQTT subscriptions (including the `.../availability` topic) are wired up only at startup, exactly like `topic`, so a reload alone would never subscribe to availability and the device would stay on the old heuristic.
 
@@ -206,6 +207,25 @@ Example — cadence 5 s, `stale_after: 15`:
 - meter publishes `0` at t=0, 5, 10 … → each reading is ≤ 15 s old → dark holds.
 - the t=10 message is dropped, but the t=5 one is still there → at t=12 its age is 7 s ≤ 15 → **still dark** (a missed message is tolerated).
 - the meter goes fully silent after t=5 → at t=21 the last reading is 16 s old > 15 → **UNKNOWN**, and the group **holds**: a blackout already raised stays raised (silently), one not yet raised is not raised. The onset is kept, so if dark readings resume, the `for_seconds` window still counts from the *first* all-dark reading — the silent gap included.
+
+**When a watched current stops moving.** Two different failures produce the same
+symptom — no message at all — and they need telling apart:
+
+- **mute** — the meter stopped publishing. The blackout holds silently (above),
+  and the *device* OFFLINE alarm is what should report it. It may not: a Signal
+  is excluded from the offline check by construction, a device whose other
+  fields still publish looks online (see _Offline detection_ above), and the DM
+  only reaches an **admin of that field** who is DM-registered **and** has a
+  digest subscription **on the field name** — a `/digest <group id> on` does not
+  deliver offline alarms.
+- **frozen** — the meter keeps publishing one unchanging value. Nothing detects
+  this. The reading is fresh, so the field is classified LIT or DARK on a number
+  nobody is updating: a stuck value at/above `below` keeps the group POWERED
+  forever, and would end a real blackout.
+
+`python3 tools/silence_diag.py` tells the two apart on real data and prints,
+per field, which of those filters applied (read-only; run it in the deploy with
+`docker compose exec -T bot python3 - < tools/silence_diag.py`).
 
 Notification is **opt-in**: the group id is a subscribable pseudo-entity — `/digest R2 on`. It carries no reading, so it never appears as a value row in `/get` or the daily digest; it only serves as the notification flag. Any **viewer** of at least one watched field may subscribe (more permissive than offline alarms, which are admin-gated, because subscription is an explicit opt-in). Blackout groups are listed at the bottom of `/list` (with a 🔔/🔕 subscription marker) so users can discover them. See [ADR-0007](docs/adr/0007-blackout-detection-from-current.md).
 
@@ -446,18 +466,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-27
-- **Sessions:** 21 — 9925 messages (3729 user + 6196 assistant)
-- **Active conversation time:** ~2081 min (~34h 41m)
+- **Sessions:** 23 — 10180 messages (3827 user + 6353 assistant)
+- **Active conversation time:** ~2135 min (~35h 35m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 474,905 |
-| Output | 4,865,237 |
-| Cache write | 17,202,619 |
-| Cache read | 1,013,795,809 |
-| **Total** | **~1036 M** |
+| Input (non-cache) | 475,219 |
+| Output | 4,990,075 |
+| Cache write | 17,542,284 |
+| Cache read | 1,027,343,402 |
+| **Total** | **~1050 M** |
 
 The assistant averaged **785 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

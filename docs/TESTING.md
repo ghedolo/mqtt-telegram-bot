@@ -134,6 +134,17 @@ run tests.
 - `test_a_device_already_alone_is_refused` — extracting it would leave a file holding `devices:` and nothing else, which the loader rejects.
 - `test_unknown_device_is_refused` — a typo in the key stops the run rather than rewriting the wrong file.
 
+### `tests/test_silence_diag.py` — mute vs frozen, and the swallowed message (`tools/silence_diag.py`)
+- `test_the_db_is_opened_read_only` — the script's READ-ONLY promise: a diagnosis run against production cannot mutate the readings it reads.
+- `test_history_reaches_into_the_archive` — the history spans `readings` **and** `readings_archive`, newest first: a freeze is easily older than retention.
+- `test_a_frozen_run_is_measured_from_the_last_change` / `test_a_never_changing_window_reports_a_lower_bound` — the flat run is measured back to the last different value; when the window holds no change at all the length is a lower bound and is flagged as such, rather than stating a figure the data cannot support.
+- `test_cadence_is_the_median_gap_not_the_worst` — cadence is the median gap, so one long outage cannot inflate it and disarm the mute test below.
+- `test_mute_uses_the_configured_interval_when_there_is_one` / `test_mute_falls_back_to_the_measured_cadence_without_a_config` — mute is silence beyond `3 × interval`, the same rule `check_offline` applies; run outside the deploy, where `sensors.d/` is unreadable, the measured cadence stands in for `interval` instead of the verdict going blank.
+- `test_a_publishing_meter_stuck_on_one_value_reads_as_frozen` / `test_a_live_changing_meter_is_ok` — a fresh but unchanging field is the failure nothing in the bot detects, so the tool must name it.
+- `test_classification_matches_the_alarm_managers_order_of_tests` — DARK/LIT/STALE/INVALID in the same order as `AlarmManager._classify_fields`: staleness and out-of-range both win over the value, since neither is evidence.
+- `test_group_verdict_holds_on_stale_and_ends_only_on_lit` — all-DARK raises, any LIT is POWERED, everything else HOLDs in silence — the state that produces the missing message.
+- `test_a_dm_needs_access_registration_and_a_subscription_on_that_key` / `test_no_recipient_is_reported_as_an_empty_set_not_an_error` — the delivery AND from `notify_device`/`notify_blackout`: a user following the blackout group id gets no offline DM about a field, and an unregistered subscriber gets nothing.
+
 ### `tests/test_cadence.py` — measuring publish cadence (`tools/cadence.py`)
 - `test_a_62s_meter_is_not_rounded_to_a_whole_minute` — the suggested `interval` rounds up proportionally: 62 → 70, not 120, which would double that meter's OFFLINE delay for the sake of a round number.
 - `test_measured_cadence_matches_the_data` / `test_a_single_reading_yields_no_cadence` — median and worst gap come out of the real timestamps; one reading yields no cadence rather than a bogus one.
