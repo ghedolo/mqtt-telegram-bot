@@ -72,6 +72,40 @@ class AlarmManager:
         self._offline_repeat = offline_repeat
         self._blackout_groups = blackout_groups or {}
 
+    def restore_states(self, last_alarms: dict, device_keys, group_ids):
+        """Rebuild the alarm states a restart would otherwise drop.
+
+        The states live in memory only, so a restart used to make the bot forget
+        every outage it had already reported. The consequence was silent and
+        one-directional: a Device that came back while the process was down
+        never got its ONLINE, because the `active` flag the recovery branch
+        keys off no longer existed — the users' last word on it stayed OFFLINE
+        forever. Same for a blackout that ended across a restart.
+
+        The `alarms` table already holds the answer: the newest row per subject
+        says whether it was last reported as broken or as recovered. Only the
+        raising kinds are restored (OFFLINE, BLACKOUT); a subject whose last row
+        is a recovery is already in the default state. Subjects the config no
+        longer knows are skipped, so a removed Device cannot be resurrected.
+
+        The blackout onset is deliberately NOT invented: `since` stays 0, and
+        the end message then reports the outage without a duration rather than
+        with a made-up one.
+        """
+        for subject, (kind, ts) in last_alarms.items():
+            if kind == "OFFLINE" and subject in device_keys:
+                state = self._state(subject, "offline")
+            elif kind == "BLACKOUT" and subject in group_ids:
+                state = self._state(subject, "blackout")
+            else:
+                continue
+            state.active = True
+            # keep the repeat cadence continuous across the restart instead of
+            # re-notifying immediately
+            state.last_notified = ts
+            log.info("Restored %s alarm state for %s (last reported %s)",
+                     state.kind, subject, kind)
+
     def record_topic_message(self, topic: str):
         self._last_topic_ts[topic] = int(time.time())
 

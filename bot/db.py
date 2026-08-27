@@ -417,6 +417,22 @@ def unsubscribe_digest(user_id: int, sensor: str):
         )
 
 
+def get_last_alarm_per_subject() -> dict[str, tuple[str, int]]:
+    """The most recent alarm row of every subject: subject → (kind, ts).
+
+    `id` is the tiebreaker, not `ts`: a raise and its recovery can land in the
+    same second, and the row written last is the one that describes the current
+    state. Read once at startup to rebuild the in-memory alarm states, which are
+    otherwise lost on every restart.
+    """
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT sensor, kind, ts FROM alarms "
+            "WHERE id IN (SELECT MAX(id) FROM alarms GROUP BY sensor)"
+        ).fetchall()
+        return {r["sensor"]: (r["kind"], r["ts"]) for r in rows}
+
+
 def get_digest_subscriptions(user_id: int) -> list[str]:
     with _conn() as con:
         rows = con.execute(

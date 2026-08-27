@@ -119,6 +119,13 @@ async def main():
         device_of_fn=cfg.device_of,
     )
 
+    # The alarm states live in memory: without this, a restart makes the bot
+    # forget every outage it has already reported, and a Device that recovers
+    # while the process is down never gets its "back online" message.
+    alarms.restore_states(
+        db.get_last_alarm_per_subject(), set(cfg.devices), set(cfg.blackouts)
+    )
+
     tg.last_mqtt_fn = alarms.last_mqtt_ts
     tg.reset_alarm_fn = alarms.reset_sensor_alarm
     tg.signal_snapshot_fn = alarms.signal_snapshot

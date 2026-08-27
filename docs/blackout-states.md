@@ -92,7 +92,9 @@ so it starts before the alarm was raised: the `for_seconds` sustain window and
 every silent HOLD are inside it. The END line therefore reports the *whole*
 outage, not the time since the raise or since the last repeat. If the process
 restarted mid-outage the onset is gone, and the END is sent without a duration
-rather than with a made-up one.
+rather than with a made-up one. The *alarm* itself does survive the restart —
+`AlarmManager.restore_states` rebuilds `active` at startup from the newest row
+per subject in `alarms` — so the END is sent at all; only `since` is lost.
 
 Fields that carried no evidence are named as such instead of showing a value:
 `=stale` (older than `stale_after`), `=?` (outside `validMin`/`validMax`),

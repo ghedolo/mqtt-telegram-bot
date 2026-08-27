@@ -230,3 +230,23 @@ def test_record_activity_upserts_and_orders(temp_db, monkeypatch):
     assert [r["user_id"] for r in rows] == [1, 2]      # newest last_seen first
     assert rows[0]["username"] == "alice2"             # updated, not duplicated
     assert sum(1 for r in rows if r["user_id"] == 1) == 1
+
+
+def test_last_alarm_per_subject_returns_the_newest_row_of_each(temp_db):
+    temp_db.insert_alarm("D1", "OFFLINE", "down")
+    temp_db.insert_alarm("D1", "ONLINE", "back")
+    temp_db.insert_alarm("D2", "OFFLINE", "down")
+    temp_db.insert_alarm("R2", "BLACKOUT", "dark")
+    last = temp_db.get_last_alarm_per_subject()
+    assert last["D1"][0] == "ONLINE"
+    assert last["D2"][0] == "OFFLINE"
+    assert last["R2"][0] == "BLACKOUT"
+
+
+def test_last_alarm_per_subject_breaks_ties_on_insertion_order(temp_db, monkeypatch):
+    # a raise and its recovery can land in the same second; the row written last
+    # is the one that describes the current state, so `id` decides, not `ts`
+    monkeypatch.setattr(db_module.time, "time", lambda: 1000)
+    temp_db.insert_alarm("D1", "OFFLINE", "down")
+    temp_db.insert_alarm("D1", "ONLINE", "back")
+    assert temp_db.get_last_alarm_per_subject()["D1"] == ("ONLINE", 1000)

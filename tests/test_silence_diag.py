@@ -246,3 +246,69 @@ def test_health_stays_quiet_while_readings_keep_arriving(tmp_path, capsys):
     sd.sec_health(None, ro, [("CDZ1_T", "sensor", "")])
     ro.close()
     assert "NOTHING was stored" not in capsys.readouterr().out
+
+
+def test_the_global_tail_shows_subjects_outside_the_examined_fields(health_db, capsys):
+    # a bot-wide fault (dropped MQTT session) and a single dead meter look the
+    # same in section E, which is scoped to the fields being examined
+    con = sd.ro_conn(health_db)
+    con.close()
+    rw = sqlite3.connect(health_db)
+    now = int(time.time())
+    rw.executemany("INSERT INTO alarms(sensor,kind,message,ts) VALUES (?,?,?,?)",
+                   [("OTHER_DEV", "OFFLINE", "OFFLINE OTHER_DEV: no data for >900s", now - 60),
+                    ("THIRD_DEV", "OFFLINE", "OFFLINE THIRD_DEV: no data for >900s", now - 60)])
+    rw.commit()
+    rw.close()
+    con = sd.ro_conn(health_db)
+    sd.sec_all_alarms(con, 10)
+    con.close()
+    out = capsys.readouterr().out
+    assert "OTHER_DEV" in out and "THIRD_DEV" in out
+    assert "same minute" in out
+
+
+def test_the_global_tail_honours_its_limit(health_db, capsys):
+    con = sd.ro_conn(health_db)
+    sd.sec_all_alarms(con, 1)
+    con.close()
+    body = [l for l in capsys.readouterr().out.splitlines() if "still no data" in l]
+    assert len(body) == 1
+
+
+def test_recipients_section_dates_the_dm_registration(tmp_path, capsys, monkeypatch):
+    # the tables hold today's state: someone who registered after the outage was
+    # not a recipient when it happened, and the report must make that checkable
+    dbfile = tmp_path / "who.db"
+    con = sqlite3.connect(str(dbfile))
+    con.executescript("""
+        CREATE TABLE readings (id INTEGER PRIMARY KEY, sensor TEXT, value REAL, ts INTEGER);
+        CREATE TABLE dm_registered (chat_id INTEGER PRIMARY KEY, registered_at INTEGER);
+        CREATE TABLE digest_subscriptions (user_id INTEGER, sensor TEXT);
+        CREATE TABLE mutes (chat_id INTEGER, sensor TEXT, until_ts INTEGER);
+        CREATE TABLE silenced (sensor TEXT PRIMARY KEY, silenced_at INTEGER);
+    """)
+    now = int(time.time())
+    # `ago()` reads the module-level NOW, stamped at import: pin it, or the age
+    # printed drifts by however long the suite has been running
+    monkeypatch.setattr(sd, "NOW", now)
+    con.execute("INSERT INTO dm_registered VALUES (7, ?)", (now - 900,))
+    con.execute("INSERT INTO digest_subscriptions VALUES (7, 'CDZ1_I')")
+    con.execute("INSERT INTO mutes VALUES (7, 'CDZ1_T', ?)", (now + 3600,))
+    con.commit()
+    con.close()
+
+    class _C(_Cfg):
+        def admins_of(self, name):
+            return {7}
+
+        def viewers_of_blackout(self, gid):
+            return {7}
+
+    ro = sd.ro_conn(str(dbfile))
+    sd.sec_recipients(_C(), ro, [("CDZ1_I", "sensor", "G")])
+    ro.close()
+    out = capsys.readouterr().out
+    assert "15m" in out                    # registration age, not just the id
+    assert "CDZ1_T" in out                 # the mute is listed
+    assert "never OFFLINE" in out          # and scoped correctly

@@ -144,6 +144,8 @@ Two consequences worth planning around. First, `interval` is what decides how fa
 
 A device that sets **`hasZigbeeAvailability: true`** opts out of that heuristic: the bot subscribes to its zigbee2mqtt availability topic (`<topic>/availability`, or the explicit **`availabilityTopic`** if given) and takes z2m's own `online`/`offline` as the truth. zigbee2mqtt already distinguishes mains-powered devices (pinged, ~10 min timeout) from battery end-devices (much longer timeout), so a sensor like a Sonoff SNZB-06P that legitimately stays quiet for hours no longer trips a false `OFFLINE`. Both the JSON (`{"state":"online"}`) and legacy plain-string payloads are understood. Adding or changing these keys requires a **restart** — a `/reloadConfig` is **not** enough: MQTT subscriptions (including the `.../availability` topic) are wired up only at startup, exactly like `topic`, so a reload alone would never subscribe to availability and the device would stay on the old heuristic.
 
+**Alarm state survives a restart.** The `active` flag of each offline and blackout alarm lives in memory, so a restart used to wipe every outage the bot had already reported — one-directionally: a device that came back while the process was down never got its `ONLINE`, because the flag the recovery branch keys off no longer existed, and the last word users had on it stayed `OFFLINE` forever. At startup the states are now rebuilt from the newest row per subject in the `alarms` table: last row `OFFLINE` (or `BLACKOUT`) means the subject is still considered down, anything else means recovered. Subjects the config no longer knows are skipped, and the blackout onset is *not* reconstructed — the end message then reports the outage without a duration rather than with an invented one. Threshold alarms are not restored: `/setAlarm` may have changed the threshold while the bot was down, so their history is not a reliable statement about the present.
+
 Threshold alarms are evaluated on every incoming reading. When a value first crosses a field's high threshold (`/setAlarm`) or low threshold (`/setAlarmLow`), a `🔴` alarm is sent. While the value stays out of range the alarm repeats, but no more often than `alarm_threshold_repeat` seconds (default 720). The repeat is not a fixed timer: it is checked only when a new reading arrives, so it fires on the first reading after that interval has elapsed — a rarely-reporting sensor repeats later than the nominal period. When the value returns within range a single `🟢` recovery message is sent and the alarm resets. Offline alarms repeat the same way, gated by `alarm_offline_repeat` (default 3600), and auto-clear when the device reports again.
 
 Setting or clearing a threshold re-arms **only that band**: after `/setAlarm` the next high crossing counts as new, while a low alarm already active keeps its state and still gets its own `🟢` when the value recovers. The two bands are tracked separately, so touching one never silently swallows the other's recovery message.
@@ -476,18 +478,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-27
-- **Sessions:** 23 — 10239 messages (3849 user + 6390 assistant)
-- **Active conversation time:** ~2156 min (~35h 56m)
+- **Sessions:** 23 — 10314 messages (3877 user + 6437 assistant)
+- **Active conversation time:** ~2175 min (~36h 15m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 475,293 |
-| Output | 5,043,987 |
-| Cache write | 17,611,926 |
-| Cache read | 1,032,223,164 |
-| **Total** | **~1055 M** |
+| Input (non-cache) | 475,387 |
+| Output | 5,111,855 |
+| Cache write | 17,694,386 |
+| Cache read | 1,040,755,762 |
+| **Total** | **~1064 M** |
 
-The assistant averaged **789 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **794 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

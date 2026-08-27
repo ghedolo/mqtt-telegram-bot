@@ -382,6 +382,29 @@ def sec_recipients(cfg, con, watched):
     print("\nNOTE: a /digest subscription to the GROUP id does not deliver OFFLINE —")
     print("offline delivery is keyed on the FIELD name, and needs admin rights.")
 
+    print("\nDM registration age — a recipient registered after the event was not one")
+    print("at the time (the tables hold today's state, not the state back then):")
+    table(("chat_id", "registered"),
+          [(r["chat_id"], ago(r["registered_at"])) for r in con.execute(
+              "SELECT chat_id, registered_at FROM dm_registered ORDER BY registered_at DESC")])
+
+    print("\nDigest subscriptions per user (the key an alarm is delivered on):")
+    rows = []
+    for uid in sorted(subs):
+        rows.append((uid, ", ".join(sorted(subs[uid]))[:90]))
+    table(("user", "subscribed to"), rows)
+
+    print("\nActive mutes (they suppress THRESHOLD DMs only, never OFFLINE):")
+    if has_table(con, "mutes"):
+        table(("chat_id", "sensor", "until"),
+              [(r["chat_id"], r["sensor"],
+                time.strftime("%Y-%m-%d %H:%M", time.localtime(r["until_ts"])))
+               for r in con.execute(
+                   "SELECT chat_id, sensor, until_ts FROM mutes WHERE until_ts>=? "
+                   "ORDER BY chat_id", (NOW,))])
+    else:
+        print("  (no mutes table)")
+
     print("\nackOff silences in force (they suppress OFFLINE DMs):")
     if has_table(con, "silenced"):
         table(("subject", "since"),
@@ -414,6 +437,26 @@ def sec_alarms(cfg, con, watched, since_ts):
     print("No OFFLINE row for a device whose field is mute means the alarm never")
     print("fired (section C says why); a row whose recipients are 0 in section D")
     print("means it fired and nobody was told.")
+
+
+def sec_all_alarms(con, limit: int):
+    """The last N alarm rows, whatever the subject.
+
+    Section E is scoped to the fields under examination, which hides the one
+    thing that separates a per-meter fault from a bot-wide one: whether every
+    other device went offline at the same moment (a dropped MQTT session, a
+    broker outage) or only these did."""
+    section(f"G. Last {limit} alarm rows — any subject")
+    rows = con.execute(
+        "SELECT ts, sensor, kind, message FROM alarms ORDER BY ts DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    table(("when", "subject", "kind", "message"),
+          [(time.strftime("%Y-%m-%d %H:%M", time.localtime(r["ts"])),
+            r["sensor"], r["kind"], r["message"][:80]) for r in rows])
+    print()
+    print("Several devices going OFFLINE within the same minute points at the bot's")
+    print("own MQTT session, not at the meters; one device alone points at the meter.")
 
 
 def sec_health(cfg, con, watched):
@@ -464,10 +507,10 @@ def sec_health(cfg, con, watched):
     else:
         print("  (config unreadable)")
     print()
-    print("A restart clears the in-memory alarm state: a Device that recovers while")
-    print("the bot is down gets NO 'back online' message — the state it would have")
-    print("cleared no longer exists. Check the bot's uptime (/sysinfo) before")
-    print("reading a gap in the history as a recovery.")
+    print("Since 1.6.6 the alarm state is rebuilt at startup from the newest row per")
+    print("subject in `alarms`, so a Device that recovers while the bot is down still")
+    print("gets its 'back online'. Before that a restart lost the state silently — an")
+    print("OFFLINE with no matching ONLINE around a restart is that old behaviour.")
 
 
 # ---------------------------------------------------------------- main
@@ -482,6 +525,8 @@ def main():
                     help="history window in days (0 = all available; default 30)")
     ap.add_argument("--limit", type=int, default=20000,
                     help="max readings scanned per field (default 20000)")
+    ap.add_argument("--tail-alarms", type=int, default=30,
+                    help="how many recent alarm rows to list regardless of subject (default 30)")
     args = ap.parse_args()
 
     since_ts = NOW - args.days * 86400 if args.days else 0
@@ -499,6 +544,7 @@ def main():
         sec_recipients(cfg, con, watched)
         sec_alarms(cfg, con, watched, since_ts)
         sec_health(cfg, con, watched)
+        sec_all_alarms(con, args.tail_alarms)
     finally:
         con.close()
 

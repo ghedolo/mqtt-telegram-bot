@@ -38,6 +38,7 @@ run tests.
 - `test_forget_device_archives_and_clears` — readings archived, threshold cleared.
 - `test_digest_subscriptions_roundtrip` — subscribe (idempotent) / unsubscribe.
 - `test_silence_roundtrip` / `test_silence_is_per_key` — the offline-ack (silence) flag set/clear, keyed independently (behind `/ackOff` and auto-clear on reconnect).
+- `test_last_alarm_per_subject_returns_the_newest_row_of_each` / `test_last_alarm_per_subject_breaks_ties_on_insertion_order` — the startup read behind `restore_states`: newest row per subject, with `id` (not `ts`) as the tiebreaker, since a raise and its recovery can land in the same second and the row written last is the one describing the present.
 - `test_list_silenced_reports_keys_and_ts_oldest_first` — lists every silenced key with its `silenced_at`, oldest first, dropping cleared keys (backs `/ackOff` with no argument).
 - `test_get_last_alarms_order_and_sensor_filter` — alarm history newest-first, limited, optionally filtered to one sensor.
 - `test_get_last_alarms_across_subjects` — the newest events across a *set* of alarm subjects (a Field plus the Device owning it), newest-first with the limit applied to the whole set; backs `/last5Alarm`, which must mix threshold and offline history.
@@ -249,6 +250,13 @@ cannot silently miss the menu (how `/listSignal` was lost).
 - `test_menu_omits_exactly_the_privileged_commands` — registered minus menu equals `MENU_EXEMPT`; the regression guard.
 - `test_menu_contains_no_privileged_command` — no admin/superadmin command leaks into autocomplete.
 - `test_listsignal_is_in_the_menu` — `/listSignal` is user-level, so it belongs there.
+
+**Alarm state restored across a restart**
+- `test_restored_offline_state_lets_a_recovery_be_announced` — the bug: the states are in memory, so a device that came back while the process was down never got its `ONLINE` and the last word users had stayed `OFFLINE`. After `restore_states` the recovery branch fires and an `ONLINE` row is written.
+- `test_a_subject_last_reported_recovered_is_not_restored` — a subject whose newest row is a recovery starts clean; nothing is re-announced.
+- `test_restore_skips_subjects_the_config_no_longer_knows` — a device or group removed from the config cannot be resurrected by its old history.
+- `test_restored_offline_keeps_the_repeat_cadence` — `last_notified` comes from the stored row, so a restart does not reset the repeat window into an immediate re-notification.
+- `test_restored_blackout_can_end_on_positive_proof` — a blackout restored as active still ends on a LIT reading, and claims no duration: the onset is deliberately not invented.
 
 ### `tests/test_schedule.py` — wall-clock scheduling (`bot/schedule.py`)
 - `test_next_occurrence_later_today` — target still ahead today.

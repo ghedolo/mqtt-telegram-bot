@@ -536,3 +536,75 @@ def test_blackout_notify_none_is_noop(temp_db, clock):
     temp_db.insert_reading("X_I2", 0.0, ts=1000)
     asyncio.run(am.check_blackout(g))
     assert "R2:blackout" not in am._states
+
+
+# --- state restored across a restart ---
+
+def test_restored_offline_state_lets_a_recovery_be_announced(temp_db, clock):
+    # the bug this fixes: the states live in memory, so a device that came back
+    # while the process was down never got its ONLINE — the last thing users
+    # heard stayed OFFLINE forever
+    recdev = Rec()
+    dev = make_device(interval=10)
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am.restore_states({"D": ("OFFLINE", 500)}, {"D"}, set())
+
+    clock["t"] = 2000
+    am.record_topic_message("t/d")            # the device is publishing again
+    asyncio.run(am.check_offline(dev))
+
+    assert len(recdev.msgs) == 1
+    assert recdev.msgs[0][1] == "ONLINE D: back online"
+    assert temp_db.get_last_alarms("D", 1)[0]["kind"] == "ONLINE"
+
+
+def test_a_subject_last_reported_recovered_is_not_restored(temp_db, clock):
+    recdev = Rec()
+    dev = make_device(interval=10)
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am.restore_states({"D": ("ONLINE", 500)}, {"D"}, set())
+
+    clock["t"] = 2000
+    am.record_topic_message("t/d")
+    asyncio.run(am.check_offline(dev))
+    assert recdev.msgs == []                  # nothing to announce
+
+
+def test_restore_skips_subjects_the_config_no_longer_knows(temp_db, clock):
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt)
+    am.restore_states({"GONE": ("OFFLINE", 500), "R2": ("BLACKOUT", 500)},
+                      {"D"}, {"OTHER"})
+    assert am._states == {}                   # a removed device cannot be resurrected
+
+
+def test_restored_offline_keeps_the_repeat_cadence(temp_db, clock):
+    # last_notified comes from the stored row, so a restart does not restart the
+    # repeat window: the device is still down, and the next repeat falls due on
+    # the original schedule
+    recdev = Rec()
+    dev = make_device(interval=10)
+    am = am_mod.AlarmManager(720, 3600, Rec(), recdev, fmt)
+    am.restore_states({"D": ("OFFLINE", 1000)}, {"D"}, set())
+
+    clock["t"] = 3000                          # 2000s < offline_repeat 3600
+    asyncio.run(am.check_offline(dev))
+    assert recdev.msgs == []
+
+    clock["t"] = 4700                          # 3700s > 3600
+    asyncio.run(am.check_offline(dev))
+    assert len(recdev.msgs) == 1
+    assert recdev.msgs[0][1] == "OFFLINE D: still no data"
+
+
+def test_restored_blackout_can_end_on_positive_proof(temp_db, clock):
+    recbo = Rec()
+    g = _group()
+    am = am_mod.AlarmManager(720, 3600, Rec(), Rec(), fmt, recbo, {"R2": g})
+    am.restore_states({"R2": ("BLACKOUT", 500)}, set(), {"R2"})
+
+    temp_db.insert_reading("X_I1", 2.0, ts=1000)      # LIT -> confirmed END
+    asyncio.run(am.check_blackout(g))
+    assert len(recbo.msgs) == 1
+    assert recbo.msgs[0][1].startswith("🔌")
+    # the onset is not invented: no duration is claimed
+    assert "after" not in recbo.msgs[0][1]
