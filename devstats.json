@@ -148,14 +148,14 @@
     },
     "2bd87e93-d393-4d11-bd26-2e3b0077caae": {
       "first": "2026-08-27T14:47:10.922Z",
-      "last": "2026-08-27T15:02:58.200Z",
-      "active_secs": 947,
-      "user": 44,
-      "asst": 71,
-      "input": 142,
-      "output": 66856,
-      "cache_read": 5276508,
-      "cache_write": 209225
+      "last": "2026-08-27T15:29:39.936Z",
+      "active_secs": 2199,
+      "user": 66,
+      "asst": 108,
+      "input": 216,
+      "output": 120768,
+      "cache_read": 10156270,
+      "cache_write": 278867
     },
     "8f2cf9b8-21c4-4bf0-b6b0-84575e693f53": {
       "first": "2026-08-14T21:19:29.691Z",

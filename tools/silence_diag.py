@@ -209,7 +209,13 @@ def dm_targets(candidates: set[int], registered: set[int],
 # ---------------------------------------------------------------- sections
 
 def scope(cfg, extra_patterns, con) -> list[tuple[str, str, str]]:
-    """(field, kind, group id) for everything to examine."""
+    """(field, kind, group id) for everything to examine.
+
+    Beyond the Fields a blackout group names, this pulls in the **stored
+    siblings** of each one's Device: a group that watches only Signals would
+    otherwise produce an empty report, since a Signal has no history to read —
+    while the Device's stored current is exactly what says whether the meter
+    went quiet. The siblings are tagged `<group id>*`."""
     watched: list[tuple[str, str, str]] = []
     if cfg is not None:
         for gid, grp in cfg.blackouts.items():
@@ -217,6 +223,16 @@ def scope(cfg, extra_patterns, con) -> list[tuple[str, str, str]]:
                 kind = ("signal" if name in cfg.signals
                         else "sensor" if name in cfg.sensors else "UNKNOWN")
                 watched.append((name, kind, gid))
+        known = {n for n, _, _ in watched}
+        for gid, grp in cfg.blackouts.items():
+            for name in grp.fields:
+                dev = cfg.devices.get(cfg.device_of(name))
+                if dev is None:
+                    continue
+                for osc in dev.fields.values():
+                    if osc.name not in known:
+                        known.add(osc.name)
+                        watched.append((osc.name, "sensor", f"{gid}*"))
     if extra_patterns:
         known = {n for n, _, _ in watched}
         for r in con.execute("SELECT DISTINCT sensor FROM readings ORDER BY sensor"):
@@ -400,6 +416,60 @@ def sec_alarms(cfg, con, watched, since_ts):
     print("means it fired and nobody was told.")
 
 
+def sec_health(cfg, con, watched):
+    """Is the bot still ingesting and still checking, or did it stop?
+
+    A device that is mute while the whole DB is mute is not a sensor problem:
+    the repeats stop because nothing is running, not because anything recovered.
+    The distinction is invisible from the alarm history alone — a stopped bot
+    and a recovered device both simply stop producing rows."""
+    section("F. Process health — is anything still being written?")
+    newest = con.execute("SELECT MAX(ts) AS t FROM readings").fetchone()["t"]
+    last_alarm = con.execute("SELECT MAX(ts) AS t FROM alarms").fetchone()["t"]
+    fresh_1h = con.execute("SELECT COUNT(*) AS c FROM readings WHERE ts>=?",
+                           (NOW - 3600,)).fetchone()["c"]
+    live = con.execute("SELECT COUNT(*) AS c FROM (SELECT sensor FROM readings "
+                       "WHERE ts>=? GROUP BY sensor)", (NOW - 3600,)).fetchone()["c"]
+    table(("what", "when", "age"), [
+        ("newest reading in the DB (any sensor)",
+         time.strftime("%Y-%m-%d %H:%M", time.localtime(newest)) if newest else "-",
+         ago(newest)),
+        ("newest alarm row (any subject)",
+         time.strftime("%Y-%m-%d %H:%M", time.localtime(last_alarm)) if last_alarm else "-",
+         ago(last_alarm)),
+        ("readings stored in the last hour", str(fresh_1h), f"{live} sensor(s)"),
+    ])
+    if fresh_1h == 0:
+        print("\n  !! NOTHING was stored in the last hour: the bot is not ingesting.")
+        print("     Then no OFFLINE repeat and no ONLINE can be produced either —")
+        print("     the alarm history going quiet says nothing about the meters.")
+
+    print("\nLast stored reading per Device involved:")
+    rows = []
+    if cfg is not None:
+        devs = {cfg.device_of(n) for n, _, _ in watched if cfg.device_of(n)}
+        for dk in sorted(devs):
+            dev = cfg.devices.get(dk)
+            if dev is None:
+                continue
+            per = []
+            for osc in dev.fields.values():
+                t = con.execute("SELECT MAX(ts) AS t FROM readings WHERE sensor=?",
+                                (osc.name,)).fetchone()["t"]
+                per.append((osc.name, t))
+            newest_dev = max((t for _, t in per if t), default=None)
+            rows.append((dk, dev.interval, dur(dev.interval * 3), ago(newest_dev),
+                         ", ".join(f"{n} {ago(t)}" for n, t in per) or "no stored field"))
+        table(("device", "interval", "offline after", "last seen", "per field"), rows)
+    else:
+        print("  (config unreadable)")
+    print()
+    print("A restart clears the in-memory alarm state: a Device that recovers while")
+    print("the bot is down gets NO 'back online' message — the state it would have")
+    print("cleared no longer exists. Check the bot's uptime (/sysinfo) before")
+    print("reading a gap in the history as a recovery.")
+
+
 # ---------------------------------------------------------------- main
 
 def main():
@@ -428,6 +498,7 @@ def main():
         sec_offline_coverage(cfg, con, watched)
         sec_recipients(cfg, con, watched)
         sec_alarms(cfg, con, watched, since_ts)
+        sec_health(cfg, con, watched)
     finally:
         con.close()
 

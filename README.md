@@ -27,6 +27,7 @@ tools/extract_device.py   →  move a device into its own file (config only)
 tools/cadence.py          →  measure each sensor's real publish cadence, suggest `interval`
 tools/blackout_diag.py    →  replay blackout detection over recorded readings
 tools/silence_diag.py     →  is a Field mute or frozen, and which filter swallowed the message
+tools/mqtt_probe.py       →  watch raw MQTT payloads, show what the bot would parse from them
 tools/migrate_sensors.py  →  convert a monolithic sensors.yaml to sensors.d/
 tools/query.sh            →  ad-hoc SQL over the readings DB
 tools/devstats.py         →  regenerate the Development effort section        (docs/devstats.md)
@@ -222,9 +223,18 @@ symptom — no message at all — and they need telling apart:
   this. The reading is fresh, so the field is classified LIT or DARK on a number
   nobody is updating: a stuck value at/above `below` keeps the group POWERED
   forever, and would end a real blackout.
+- **received but not parsed** — the meter publishes, the bot receives the topic,
+  and the value is dropped because the field is absent from the payload (a
+  changed `json_path`, a renamed key). This one is the quietest of the three:
+  the topic counts as activity, so **no OFFLINE fires either**, while nothing
+  is stored and the blackout holds. `MqttClient._on_message` skips it without
+  a log on purpose — intermittent fields are normal. `tools/mqtt_probe.py`
+  shows the raw payloads and what would be extracted from each.
 
 `python3 tools/silence_diag.py` tells the two apart on real data and prints,
-per field, which of those filters applied (read-only; run it in the deploy with
+per field, which of those filters applied — plus whether the bot itself is still
+ingesting, since a stopped process and a recovered device both simply stop
+producing alarm rows (read-only; run it in the deploy with
 `docker compose exec -T bot python3 - < tools/silence_diag.py`).
 
 Notification is **opt-in**: the group id is a subscribable pseudo-entity — `/digest R2 on`. It carries no reading, so it never appears as a value row in `/get` or the daily digest; it only serves as the notification flag. Any **viewer** of at least one watched field may subscribe (more permissive than offline alarms, which are admin-gated, because subscription is an explicit opt-in). Blackout groups are listed at the bottom of `/list` (with a 🔔/🔕 subscription marker) so users can discover them. See [ADR-0007](docs/adr/0007-blackout-detection-from-current.md).
@@ -466,18 +476,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-08-27
-- **Sessions:** 23 — 10180 messages (3827 user + 6353 assistant)
-- **Active conversation time:** ~2135 min (~35h 35m)
+- **Sessions:** 23 — 10239 messages (3849 user + 6390 assistant)
+- **Active conversation time:** ~2156 min (~35h 56m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 475,219 |
-| Output | 4,990,075 |
-| Cache write | 17,542,284 |
-| Cache read | 1,027,343,402 |
-| **Total** | **~1050 M** |
+| Input (non-cache) | 475,293 |
+| Output | 5,043,987 |
+| Cache write | 17,611,926 |
+| Cache read | 1,032,223,164 |
+| **Total** | **~1055 M** |
 
-The assistant averaged **785 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **789 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

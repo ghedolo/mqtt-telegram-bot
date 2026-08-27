@@ -145,3 +145,104 @@ def test_a_dm_needs_access_registration_and_a_subscription_on_that_key():
 
 def test_no_recipient_is_reported_as_an_empty_set_not_an_error():
     assert sd.dm_targets(set(), {1}, {1: {"CDZ1_I"}}, "CDZ1_I") == set()
+
+
+class _Cfg:
+    """Minimal stand-in for AppConfig: a group watching two Signals, each on a
+    device that also owns a stored current — the production shape."""
+
+    class _Dev:
+        def __init__(self, key, fields, interval=300):
+            self.key, self.fields, self.interval = key, fields, interval
+            self.availability_topic = None
+
+    class _Sc:
+        def __init__(self, name, device_key, interval=300):
+            self.name, self.device_key, self.interval = name, device_key, interval
+
+    def __init__(self):
+        self.blackouts = {"G": _Grp()}
+        self.blackouts["G"].fields = ["CDZ1_IF", "CDZ2_IF"]
+        self.signals = {"CDZ1_IF": object(), "CDZ2_IF": object()}
+        self.sensors = {n: self._Sc(n, n.split("_")[0])
+                        for n in ("CDZ1_I", "CDZ1_T", "CDZ2_I")}
+        self.devices = {
+            "CDZ1": self._Dev("CDZ1", {"I": self.sensors["CDZ1_I"],
+                                       "T": self.sensors["CDZ1_T"]}),
+            "CDZ2": self._Dev("CDZ2", {"I": self.sensors["CDZ2_I"]}),
+        }
+        self._owner = {"CDZ1_IF": "CDZ1", "CDZ2_IF": "CDZ2",
+                       "CDZ1_I": "CDZ1", "CDZ1_T": "CDZ1", "CDZ2_I": "CDZ2"}
+
+    def device_of(self, name):
+        return self._owner.get(name, "")
+
+
+def test_scope_pulls_in_the_stored_siblings_of_a_signal_only_group(diag_db):
+    # a group watching only Signals has no history to read: without the
+    # siblings the whole report comes out empty, which is what happened in
+    # production on 2026-08-27
+    con = sd.ro_conn(diag_db)
+    watched = sd.scope(_Cfg(), [], con)
+    con.close()
+    assert [n for n, _, _ in watched] == [
+        "CDZ1_IF", "CDZ2_IF", "CDZ1_I", "CDZ1_T", "CDZ2_I"]
+    kinds = {n: k for n, k, _ in watched}
+    assert kinds["CDZ1_IF"] == "signal" and kinds["CDZ1_I"] == "sensor"
+    # siblings are tagged as belonging to the group, but marked as such
+    assert dict((n, g) for n, _, g in watched)["CDZ2_I"] == "G*"
+
+
+def test_scope_lists_each_field_once(diag_db):
+    con = sd.ro_conn(diag_db)
+    names = [n for n, _, _ in sd.scope(_Cfg(), ["CDZ*"], con)]
+    con.close()
+    assert len(names) == len(set(names))
+
+
+@pytest.fixture
+def health_db(tmp_path):
+    """A DB whose newest reading is hours old — the bot stopped ingesting."""
+    dbfile = tmp_path / "health.db"
+    con = sqlite3.connect(str(dbfile))
+    con.executescript("""
+        CREATE TABLE readings (id INTEGER PRIMARY KEY, sensor TEXT, value REAL, ts INTEGER);
+        CREATE TABLE alarms (id INTEGER PRIMARY KEY, sensor TEXT, kind TEXT, message TEXT, ts INTEGER);
+    """)
+    old = int(time.time()) - 6 * 3600
+    con.executemany("INSERT INTO readings(sensor,value,ts) VALUES (?,?,?)",
+                    [("CDZ1_I", 2.0, old - i * 300) for i in range(10)])
+    con.execute("INSERT INTO alarms(sensor,kind,message,ts) VALUES "
+                "('CDZ1','OFFLINE','OFFLINE CDZ1: still no data',?)", (old,))
+    con.commit()
+    con.close()
+    return str(dbfile)
+
+
+def test_health_flags_a_bot_that_stopped_ingesting(health_db, capsys):
+    # the decisive distinction: repeats stop because nothing runs, not because
+    # a device recovered. Both look the same in the alarm history.
+    con = sd.ro_conn(health_db)
+    sd.sec_health(None, con, [("CDZ1_I", "sensor", "")])
+    con.close()
+    out = capsys.readouterr().out
+    assert "NOTHING was stored in the last hour" in out
+    assert "no OFFLINE repeat and no ONLINE" in out
+
+
+def test_health_stays_quiet_while_readings_keep_arriving(tmp_path, capsys):
+    dbfile = tmp_path / "live.db"
+    con = sqlite3.connect(str(dbfile))
+    con.executescript("""
+        CREATE TABLE readings (id INTEGER PRIMARY KEY, sensor TEXT, value REAL, ts INTEGER);
+        CREATE TABLE alarms (id INTEGER PRIMARY KEY, sensor TEXT, kind TEXT, message TEXT, ts INTEGER);
+    """)
+    now = int(time.time())
+    con.executemany("INSERT INTO readings(sensor,value,ts) VALUES (?,?,?)",
+                    [("CDZ1_T", 21.0, now - i * 60) for i in range(30)])
+    con.commit()
+    con.close()
+    ro = sd.ro_conn(str(dbfile))
+    sd.sec_health(None, ro, [("CDZ1_T", "sensor", "")])
+    ro.close()
+    assert "NOTHING was stored" not in capsys.readouterr().out

@@ -144,6 +144,15 @@ run tests.
 - `test_classification_matches_the_alarm_managers_order_of_tests` — DARK/LIT/STALE/INVALID in the same order as `AlarmManager._classify_fields`: staleness and out-of-range both win over the value, since neither is evidence.
 - `test_group_verdict_holds_on_stale_and_ends_only_on_lit` — all-DARK raises, any LIT is POWERED, everything else HOLDs in silence — the state that produces the missing message.
 - `test_a_dm_needs_access_registration_and_a_subscription_on_that_key` / `test_no_recipient_is_reported_as_an_empty_set_not_an_error` — the delivery AND from `notify_device`/`notify_blackout`: a user following the blackout group id gets no offline DM about a field, and an unregistered subscriber gets nothing.
+- `test_scope_pulls_in_the_stored_siblings_of_a_signal_only_group` / `test_scope_lists_each_field_once` — a blackout group that watches only Signals has no stored history to read, so the report came out empty against production; the scope now adds each watched Field's Device siblings (tagged `<group>*`), once each.
+- `test_health_flags_a_bot_that_stopped_ingesting` / `test_health_stays_quiet_while_readings_keep_arriving` — an empty last hour of readings means the bot is not running, and then a gap in the alarm history proves nothing about the meters: OFFLINE repeats and the ONLINE recovery both need a live process. The warning fires only in that case.
+
+### `tests/test_mqtt_probe.py` — what the bot would parse from a payload (`tools/mqtt_probe.py`)
+- `test_a_present_field_reports_the_value_the_bot_would_store` / `test_a_nested_path_walks_every_segment` — the walk down `json_path` matches the dispatch loop's, segment by segment.
+- `test_a_missing_field_names_the_silent_branch_and_the_keys_that_are_there` — the case the tool exists for: a payload that parses but lacks the field is dropped with no log and no OFFLINE (the topic counted as activity), so the report must name it and print the keys the payload does carry.
+- `test_a_json_path_against_a_bare_payload_is_reported_not_crashed` — `json.loads("4.2")` succeeds and yields a float, so the walk raises `TypeError` and is swallowed; the report says why instead of crashing.
+- `test_a_plain_numeric_payload_needs_no_json_path` / `test_a_discrete_payload_resolves_through_the_states_map` — the no-`json_path` path, and the reverse label→value lookup shared with `_coerce`.
+- `test_default_scope_covers_the_blackout_fields_and_their_device` / `test_patterns_and_all_select_explicitly` — a group watching only a Signal still brings in its device's stored fields, so the probe listens where the readings should be.
 
 ### `tests/test_cadence.py` — measuring publish cadence (`tools/cadence.py`)
 - `test_a_62s_meter_is_not_rounded_to_a_whole_minute` — the suggested `interval` rounds up proportionally: 62 → 70, not 120, which would double that meter's OFFLINE delay for the sake of a round number.
