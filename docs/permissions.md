@@ -244,7 +244,7 @@ within the caller's visibility, which for a user in no Access Group is empty.
 | `/getAlarm` | viewer of the named Sensor | visible Sensors |
 | `/graph`, `/csv`, `/xlsx` | viewer | visible Sensors; window max 24h, **72h if `is_any_admin`** |
 | `/lastAlarms` | viewer | visible Sensors + the Devices owning them + Blackout Groups the user may view (subscriptions when no expr) |
-| `/last5Alarm` | viewer of the named Sensor | one Sensor + its Device |
+| `/last5Alarm` | viewer of the named Sensor, or of the named Blackout Group | one Sensor + its Device, or one Blackout Group |
 | `/digest` | viewer | visible Sensors + Blackout Groups the user may view |
 | `/silent` | viewer | own mutes only, per-user |
 | `/listSignal` | viewer of a watched Sensor | Blackout Groups the user may view; live Signal value shown only to Admins |

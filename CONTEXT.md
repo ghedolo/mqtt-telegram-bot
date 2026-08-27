@@ -66,7 +66,7 @@ checklist: [docs/permissions.md](docs/permissions.md).
 | `/last` | Timestamp of the last message received from MQTT, any Topic (no content) |
 | `/lastSeen [expr] [-s\|-f]` | Per-Sensor time of the last stored Reading (value, absolute timestamp, age); no expr = all visible Sensors. `never` = no Reading ever stored |
 | `/lastAlarms [expr] [Nh]` | Alarm events in the last N hours (default 8h) for the matching Fields **and the Devices owning them** (offline history); no expr = digest subscriptions, Blackout Groups included. A Blackout Group id is also a valid expr target |
-| `/last5Alarm <name>` | Last 5 alarm events concerning one Sensor: its own threshold events plus the offline events of its Device |
+| `/last5Alarm <name>` | Last 5 alarm events concerning one Sensor: its own threshold events plus the offline events of its Device. A Blackout Group id is accepted as well and lists that group's blackout history |
 | `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions (Blackout Group ids are valid targets) |
 | `/listSignal` | List visible Blackout Groups (subscribable), the Signals feeding each (live value for Admins), and your subscription state |
 | `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute; expr + `Nh` (1–24, clamped) = Mute for N hours |

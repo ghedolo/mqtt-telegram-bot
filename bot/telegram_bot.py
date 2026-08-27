@@ -321,7 +321,7 @@ class TelegramBot:
         "graph": ("📊 /graph — send: <expr> [Nh]", "expr [Nh]"),
         "csv": ("📄 /csv — send: <expr> [Nh]", "expr [Nh]"),
         "xlsx": ("📑 /xlsx — send: <expr> [Nh]", "expr [Nh]"),
-        "last5alarm": ("🔔 /last5Alarm — send: <sensor>", "sensor"),
+        "last5alarm": ("🔔 /last5Alarm — send: <sensor|blackout group>", "sensor or group"),
     }
 
     _ARG_PENDING_WINDOW = 30  # seconds a bare command waits for its argument
@@ -552,6 +552,15 @@ class TelegramBot:
                     result.append(gid)
                     seen.add(gid)
         return result
+
+    def _viewable_blackout(self, arg: str, user_id: int) -> Optional[str]:
+        """Resolve one user-supplied argument to a Blackout Group id the caller
+        may view (case-insensitive, like `resolve_sensor`), or None."""
+        low = arg.lower()
+        for gid in self._cfg.blackouts:
+            if gid.lower() == low:
+                return gid if self._cfg.is_viewer_of_blackout(user_id, gid) else None
+        return None
 
     def _viewable_sensor(self, arg: str, user_id: int) -> Optional[str]:
         """Resolve one user-supplied name to a stored Sensor the caller may view,
@@ -949,7 +958,7 @@ class TelegramBot:
             "/last — last time anything arrived from MQTT\n"
             "/lastSeen [expr] [-s|-f] — last reading time per sensor (no args = all visible)\n"
             "/lastAlarms [expr] [Nh] — alarms in last N hours (default 8h, subscriptions if no expr)\n"
-            "/last5Alarm <name> — last 5 alarms for a sensor\n"
+            "/last5Alarm <name> — last 5 alarms for a sensor or blackout group\n"
             "/digest [expr on|off] — manage daily digest subscriptions (also blackout group ids)\n"
             "/listSignal — blackout detection you can subscribe to (fed by non-stored Signals)\n"
             "/silent [expr [Nh]] — mute alarm DMs (no args=list, expr=unmute sensor, expr Nh (1-24h)=mute sensor)\n"
@@ -1370,13 +1379,23 @@ class TelegramBot:
             await self._prompt_args(reply_chat, "last5alarm")
             return
         name = self._viewable_sensor(ctx.args[0], user_id)
-        if name is None:
-            await self._reply_bad_input(reply_chat, "Unknown sensor.")
-            return
-        # the Field's own threshold history plus its Device's offline history —
-        # "the last 5 things that happened to this sensor" reads that way to a
-        # user, and offline is the event they most often go looking for
-        rows = db.get_last_alarms(subjects=self._alarm_subjects([name]), n=5)
+        if name is not None:
+            # the Field's own threshold history plus its Device's offline history —
+            # "the last 5 things that happened to this sensor" reads that way to a
+            # user, and offline is the event they most often go looking for
+            subjects = self._alarm_subjects([name])
+        else:
+            # a Blackout Group id is an alarm subject of its own (AlarmManager
+            # records BLACKOUT/BLACKOUT_END under it), and /lastAlarms already
+            # accepts one — so does this, capped at 5 instead of by hours.
+            group = self._viewable_blackout(ctx.args[0], user_id)
+            if group is None:
+                await self._reply_bad_input(
+                    reply_chat, "Unknown sensor or blackout group."
+                )
+                return
+            subjects = [group]
+        rows = db.get_last_alarms(subjects=subjects, n=5)
         await self._app.bot.send_message(
             chat_id=reply_chat, text=self._fmt_alarms(rows), **_SILENT
         )
@@ -1698,7 +1717,7 @@ class TelegramBot:
             BotCommand("last", "last time anything arrived from MQTT"),
             BotCommand("lastseen", "last reading time per sensor"),
             BotCommand("lastalarms", "alarms in last N hours"),
-            BotCommand("last5alarm", "last 5 alarms for a sensor"),
+            BotCommand("last5alarm", "last 5 alarms for a sensor or blackout group"),
             BotCommand("digest", "manage daily digest subscriptions"),
             BotCommand("silent", "mute alarm DMs"),
             BotCommand("list", "list all sensors"),

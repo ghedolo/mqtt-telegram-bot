@@ -983,6 +983,19 @@ def test_last5alarm_unknown_sensor(hbot, temp_db):
     assert "unknown" in sent[-1][1].lower()
 
 
+def test_last5alarm_blackout_group(bot, temp_db):
+    # a Blackout Group id is an alarm subject like a sensor name is
+    temp_db.insert_alarm("R2", "BLACKOUT", "\u26a1 BLACKOUT R2: no current for >10s")
+    sent = _run(bot, bot._cmd_last5alarm, 1, "r2")   # case-insensitive
+    assert "no current" in sent[-1][1]
+
+
+def test_last5alarm_blackout_group_hidden_from_outsider(bot, temp_db):
+    temp_db.insert_alarm("R2", "BLACKOUT", "\u26a1 BLACKOUT R2: no current for >10s")
+    sent = _run(bot, bot._cmd_last5alarm, 99, "R2")   # user 99 is in no group
+    assert "unknown" in sent[-1][1].lower()
+
+
 # /usersActivity, /dbStats — superadmin only
 
 def test_usersactivity_requires_superadmin(hbot, temp_db):

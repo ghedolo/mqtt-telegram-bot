@@ -306,7 +306,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/last` | Last time any message arrived from MQTT (no content shown) |
 | `/lastSeen [expr] [-s\|-f]` | Last stored reading per sensor: value, absolute timestamp, age. No arg = all visible sensors. Unlike `/get`'s `min ago` column (which shows `∞` once a sensor counts as silent) this dates a sensor that has been quiet for days; `never` = no reading ever stored |
 | `/lastAlarms [expr] [Nh]` | All alarm events in the last N hours (default 8h, max 24h) for the matching sensors **and the devices they belong to**, so offline history shows up alongside threshold history; no expr = digest subscriptions, plus any subscribed blackout groups. A blackout group id works as an expr too. 🔴 = alarm/offline, 🟢 = recovery/back online, ⚡ = blackout, 🔌 = end of blackout |
-| `/last5Alarm <name>` | Last 5 alarm events concerning one sensor: its own threshold events **and** its device's offline events (🔴/🟢 markers) |
+| `/last5Alarm <name>` | Last 5 alarm events concerning one sensor: its own threshold events **and** its device's offline events (🔴/🟢 markers). A blackout group id works too, and lists that group's ⚡ blackout history |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
 | `/listSignal` | Subscribable blackout groups, the Signals feeding each (live value for admins), and your subscription state — subscribe via `/digest <id> on` |
 | `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute. Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
