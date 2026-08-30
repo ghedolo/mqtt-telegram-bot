@@ -155,6 +155,18 @@ run tests.
 - `test_a_plain_numeric_payload_needs_no_json_path` / `test_a_discrete_payload_resolves_through_the_states_map` — the no-`json_path` path, and the reverse label→value lookup shared with `_coerce`.
 - `test_default_scope_covers_the_blackout_fields_and_their_device` / `test_patterns_and_all_select_explicitly` — a group watching only a Signal still brings in its device's stored fields, so the probe listens where the readings should be.
 
+### `tests/test_floor_diag.py` — meter offset vs real load (`tools/floor_diag.py`)
+- `test_the_db_is_opened_read_only` — the script's READ-ONLY promise: a diagnosis run against production cannot mutate the readings it reads.
+- `test_history_reaches_into_the_archive` / `test_history_survives_a_db_without_the_archive_table` — the floor is a long-run property, so the history spans `readings` **and** `readings_archive`, oldest first; a DB that has no archive table still reports.
+- `test_a_meter_that_never_reads_zero_has_a_floor` — a low tail that never reaches 0.0 and never widens is the zero-current offset: that is what makes a `0.4` reading mean *unpowered* rather than *idle*.
+- `test_a_meter_that_does_read_zero_makes_a_low_value_a_real_load` / `test_a_low_tail_that_is_all_zero_is_genuine_zero_current` — once a field has reported 0.0 it can express zero, so a non-zero low reading there is current that flowed; an all-zero low tail means the field has no offset at all.
+- `test_a_spread_low_tail_without_zero_is_not_separable` — a low tail wider than two storage steps is offset and small load mixed; the tool says so rather than picking one.
+- `test_a_field_that_never_goes_dark_is_named_as_such` — a field that never reads below the threshold can only block detection, never contribute to it.
+- `test_the_floor_verdict_tolerates_one_storage_step_of_jitter` — `0.4`/`0.5` at one decimal is quantisation of one offset, not two states.
+- `test_windows_pair_a_blackout_with_its_end` / `test_repeat_rows_do_not_open_a_second_window` / `test_an_unclosed_blackout_stays_open` / `test_windows_are_per_group` — outage windows are rebuilt from the alarm rows: repeats during one outage stay one window, an outage with no end row runs to `now`, and another group's history never leaks in.
+- `test_a_reading_outside_every_window_is_not_outage_evidence` — the cross-check the verdict rests on: a low value also seen while power was provably present cannot be the outage signature.
+- `test_the_empty_interval_separates_the_offset_from_the_working_range` / `test_a_single_distinct_value_has_no_gap_to_report` — the empty band between the low cluster and the working range is what an offset looks like; a field stuck on one value has no band to report.
+
 ### `tests/test_cadence.py` — measuring publish cadence (`tools/cadence.py`)
 - `test_a_62s_meter_is_not_rounded_to_a_whole_minute` — the suggested `interval` rounds up proportionally: 62 → 70, not 120, which would double that meter's OFFLINE delay for the sake of a round number.
 - `test_measured_cadence_matches_the_data` / `test_a_single_reading_yields_no_cadence` — median and worst gap come out of the real timestamps; one reading yields no cadence rather than a bogus one.

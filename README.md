@@ -26,6 +26,7 @@ tools/split_device.py     →  move fields to a new device key, config + DB    (
 tools/extract_device.py   →  move a device into its own file (config only)
 tools/cadence.py          →  measure each sensor's real publish cadence, suggest `interval`
 tools/blackout_diag.py    →  replay blackout detection over recorded readings
+tools/floor_diag.py       →  is a low current the meter's zero-offset, or a real load?
 tools/silence_diag.py     →  is a Field mute or frozen, and which filter swallowed the message
 tools/mqtt_probe.py       →  watch raw MQTT payloads, show what the bot would parse from them
 tools/migrate_sensors.py  →  convert a monolithic sensors.yaml to sensors.d/
@@ -170,6 +171,8 @@ blackouts:
 Unknown field names are rejected at startup. Each field is classified from its latest reading: **DARK** (fresh — newer than `stale_after` — and below `below`), **LIT** (fresh and at/above `below` → power present), or **UNKNOWN** (stale or missing → no evidence). A blackout alarm (`⚡`) is raised when **every** field is DARK, sustained for `for_seconds`, and repeats no more often than `repeat_seconds`.
 
 The end-of-blackout message (`🔌`) is sent **only on positive proof** — when at least one field becomes LIT. A field going UNKNOWN (its meter stopped publishing) does **not** end the blackout: without a fresh reading the bot can't claim power is back, so it holds the alarm and stays silent, while that field's own device **offline** alarm reports the silence. This avoids a false "power restored" when, during a real outage, one current meter dies but another still reads zero.
+
+DARK does not mean 0.0 A. Many current meters never report zero: with no current flowing the CT and the meter settle on a small constant offset (e.g. 0.4 A), which is why `below` is a threshold and not a test for zero. Set `below` above that offset and under the load's idle draw. The distinction matters when reading a blackout message: a field sitting at the same low value before, during and after the outage is reporting its offset, not a load, so it carries no information about the outage — while a field that does reach 0.0 in its history has no offset, and a steady non-zero low value there is real current. `tools/floor_diag.py` decides which case a field is in from its recorded history: whether it ever reads 0.0, whether its low tail is a tight cluster separated from the working range, and whether that same low value also occurs outside every recorded blackout window (read-only; run it in the deploy with `docker compose exec -T bot python3 - < tools/floor_diag.py`).
 
 A reading outside a field's `validMin`/`validMax` counts as **UNKNOWN** here, exactly as it is skipped for threshold alarms — it is stored but proves nothing. Otherwise one corrupted near-zero sample would keep arguing for a blackout long after it arrived, and one wild spike could end a real one.
 
@@ -477,19 +480,19 @@ This project was built entirely through a conversation with Claude Code, across
 multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
-- **Last message:** 2026-08-27
-- **Sessions:** 23 — 10345 messages (3889 user + 6456 assistant)
-- **Active conversation time:** ~2179 min (~36h 19m)
+- **Last message:** 2026-08-30
+- **Sessions:** 24 — 10478 messages (3940 user + 6538 assistant)
+- **Active conversation time:** ~2195 min (~36h 35m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 475,425 |
-| Output | 5,133,083 |
-| Cache write | 17,712,822 |
-| Cache read | 1,044,786,694 |
-| **Total** | **~1068 M** |
+| Input (non-cache) | 475,589 |
+| Output | 5,188,275 |
+| Cache write | 17,893,077 |
+| Cache read | 1,053,163,495 |
+| **Total** | **~1076 M** |
 
-The assistant averaged **795 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **794 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->
