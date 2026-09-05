@@ -112,6 +112,44 @@ def test_the_floor_verdict_tolerates_one_storage_step_of_jitter():
     assert fd.classify(vals, low_cut=0.6, step=STEP)["kind"] == "floor"
 
 
+def test_a_single_low_reading_is_not_enough_for_a_verdict():
+    # production case: 1 sample below 0.5 A in 78k readings. One sample is
+    # always a "tight cluster", so the floor test would pass on no evidence.
+    vals = [0.44] + [11.6] * 500
+    c = fd.classify(vals, low_cut=0.5, step=0.01)
+    assert c["kind"] == "thin"
+    assert c["low_n"] == 1
+
+
+def test_enough_low_readings_turn_the_same_shape_into_a_floor():
+    vals = [0.44] * 3 + [11.6] * 500
+    assert fd.classify(vals, low_cut=0.5, step=0.01)["kind"] == "floor"
+
+
+# -------------------------------------------------- distance to an outage
+
+def test_a_reading_inside_a_window_is_at_distance_zero():
+    assert fd.window_distance(120, [(100, 160)], now=1000) == 0
+
+
+def test_the_sample_after_a_short_outage_is_measured_from_its_end():
+    # a 60 s meter takes no sample inside a 5 s outage: the reading that follows
+    # is the outage's own tail, and only its distance says so
+    assert fd.window_distance(200, [(100, 160)], now=1000) == 40
+
+
+def test_distance_is_taken_to_the_nearest_of_several_windows():
+    assert fd.window_distance(480, [(100, 160), (500, 900)], now=1000) == 20
+
+
+def test_an_open_window_runs_to_now():
+    assert fd.window_distance(2000, [(100, None)], now=5000) == 0
+
+
+def test_no_recorded_window_yields_no_distance():
+    assert fd.window_distance(200, [], now=1000) is None
+
+
 # ------------------------------------------------------- outage windows
 
 def _alarm_con(rows):
