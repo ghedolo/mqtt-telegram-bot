@@ -844,6 +844,14 @@ def test_list_splits_long_listing_and_closes_every_fence(hbot, temp_db):
         assert text.count("```") % 2 == 0 and text.startswith("```")
 
 
+def test_list_footer_escapes_the_sensor_name_example(hbot, temp_db):
+    # the message is sent as Markdown for the code fence, so an unescaped
+    # SM2_UTA1_T reached Telegram as italics and arrived as SM2UTA1T
+    temp_db.insert_reading("SM1_T", 22.5)
+    body = _run(hbot, hbot._cmd_list, ADMIN)[-1][1]
+    assert "SM2\\_UTA1\\_T" in body and "device\\_field" in body
+
+
 def test_list_empty_when_no_visible(hbot, temp_db):
     sent = _run(hbot, hbot._cmd_list, OUTSIDER)   # sees nothing
     assert "no sensors" in sent[-1][1].lower()

@@ -51,6 +51,16 @@ _trace_outcome: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 _SILENT = {"disable_notification": True}
 
 
+def _md_escape(text: str) -> str:
+    """Escape the legacy-Markdown markers Telegram would otherwise consume.
+    Sensor names carry underscores (`SM2_UTA1_T`), and a message sent with
+    parse_mode Markdown renders the pair as italics — the name arrives as
+    `SM2UTA1T`, which is not a name anyone can type back."""
+    for ch in ("_", "*", "`", "["):
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
 def _fmt_ts(ts: int) -> str:
     return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1095,8 +1105,10 @@ class TelegramBot:
         if not lines and not blackouts:
             await self._app.bot.send_message(chat_id=reply_chat, text="No sensors.", **_SILENT)
             return
+        # the footer rides outside the code fence of a Markdown message, so
+        # every underscore in it has to be escaped by hand
         foot = [
-            "Sensor name = device_field (e.g. SM2_UTA1_T)",
+            _md_escape("Sensor name = device_field (e.g. SM2_UTA1_T)"),
             "Use sensor name with /get /setAlarm /digest /graph",
         ]
         if blackouts:
@@ -1105,10 +1117,14 @@ class TelegramBot:
             foot.append("Blackout groups (subscribe with /digest <id> on):")
             for g in blackouts:
                 mark = "🔔" if g.id in subs else "🔕"
-                foot.append(f"{mark} {g.id} — {g.info}")
+                foot.append(f"{mark} {_md_escape(g.id)} — {_md_escape(g.info)}")
         footer = "\n".join(foot)
         if not lines:
-            await self._app.bot.send_message(chat_id=reply_chat, text=footer, **_SILENT)
+            # blackout groups but no readable field: still a Markdown send, or
+            # the escapes above would print as backslashes
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text=footer, parse_mode="Markdown", **_SILENT
+            )
             return
         await self._send_mono(reply_chat, lines, footer)
 
