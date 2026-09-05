@@ -69,7 +69,7 @@ Ora usa i comandi **nella chat privata col bot**:
 
 | Comando | Cosa fa |
 |---|---|
-| `/list` | Mostra tutto quello che puoi vedere: sensori con i valori, e in fondo i **gruppi blackout** disponibili |
+| `/list` | Mostra tutto quello che puoi vedere: un blocco per dispositivo con i suoi campi, valore e soglie (`△` alta, `▽` bassa, `--` = nessuna lettura), e in fondo i **gruppi blackout** disponibili |
 | `/get` | I valori attuali dei tuoi sensori |
 | `/digest <nome> on` | Ti **iscrivi**: riceverai il riepilogo giornaliero di quel sensore. Es. `/digest SM2_UTA1_T on` |
 | `/digest <id_blackout> on` | Ti iscrivi agli **avvisi di blackout** di un gruppo. Es. `/digest R2 on` (gli id li vedi in fondo a `/list`) |

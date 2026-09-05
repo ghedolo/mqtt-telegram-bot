@@ -867,12 +867,15 @@ class TelegramBot:
         if not names:
             await self._reply_no_match(reply_chat)
             return
-        for name in names:
-            db.unmute_sensor(user_id, name)
+        # count the mutes actually lifted, not the names the pattern matched:
+        # "/silent DEI*" on four unmuted fields must not claim four unmutes.
+        removed = sum(1 for name in names if db.unmute_sensor(user_id, name))
+        if removed:
+            text = f"🔔 Unmuted {removed} field(s)"
+        else:
+            text = f"No active mutes among {len(names)} matching field(s)."
         await self._app.bot.send_message(
-            chat_id=reply_chat,
-            text=f"🔔 Unmuted {len(names)} field(s)",
-            **_SILENT,
+            chat_id=reply_chat, text=text, **_SILENT
         )
 
     @staticmethod
@@ -1014,36 +1017,77 @@ class TelegramBot:
             **_SILENT,
         )
 
+    def _render_device_blocks(self, user_id: int) -> list[str]:
+        """One block per device: the device key, then its visible fields one per
+        line as `field  value  threshold`. Column widths are computed over every
+        device, so the blocks line up with each other inside the same code
+        block. Thresholds read `△ <high>` / `▽ <low>`."""
+        visible = set(self._cfg.visible_sensors(user_id))
+        rows_map = {r["sensor"]: r for r in db.get_all_latest()}
+        thresholds = db.get_all_thresholds()
+        thresholds_low = db.get_all_thresholds_low()
+
+        blocks = []   # (device key, [(field key, value, thresholds)])
+        for dev_key, device in sorted(self._cfg.devices.items()):
+            fields = []
+            for fk, sc in device.fields.items():
+                if sc.name not in visible:
+                    continue
+                r = rows_map.get(sc.name)
+                if r is None:
+                    fields.append((fk, "--", ""))
+                    continue
+                unit = sc.unit or ""
+                thr = []
+                if sc.name in thresholds:
+                    thr.append(f"△ {thresholds[sc.name]}{unit}")
+                if sc.name in thresholds_low:
+                    thr.append(f"▽ {thresholds_low[sc.name]}{unit}")
+                fields.append((fk, f"{self._cfg.fmt(sc.name, r['value'])}{unit}", "  ".join(thr)))
+            if fields:
+                blocks.append((dev_key, fields))
+        if not blocks:
+            return []
+
+        wfk = max(len(f[0]) for _, fs in blocks for f in fs)
+        wval = max(len(f[1]) for _, fs in blocks for f in fs)
+        lines = []
+        for dev_key, fields in blocks:
+            if lines:
+                lines.append("")
+            lines.append(dev_key)
+            for fk, val, thr in fields:
+                lines.append(f"  {fk:<{wfk}}  {val:>{wval}}  {thr}".rstrip())
+        return lines
+
+    async def _send_mono(self, reply_chat: int, lines: list[str], footer: str):
+        """Send a monospace listing, split across as many messages as it takes
+        (each one its own code block, so a split never leaves a fence open).
+        The footer rides outside the fence of the last message."""
+        chunks: list[list[str]] = []
+        buf, size = [], 0
+        for line in lines:
+            if buf and size + len(line) + 1 > self._MAX_MSG:
+                chunks.append(buf)
+                buf, size = [], 0
+            buf.append(line)
+            size += len(line) + 1
+        if buf:
+            chunks.append(buf)
+        for n, chunk in enumerate(chunks):
+            text = "```\n" + "\n".join(chunk) + "\n```"
+            if n == len(chunks) - 1 and footer:
+                text += "\n" + footer
+            await self._app.bot.send_message(
+                chat_id=reply_chat, text=text, parse_mode="Markdown", **_SILENT
+            )
+
     async def _cmd_list(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)
         if reply_chat is None:
             return
         user_id = update.effective_user.id
-        visible = set(self._cfg.visible_sensors(user_id))
-        rows_map = {r["sensor"]: r for r in db.get_all_latest()}
-        thresholds = db.get_all_thresholds()
-        thresholds_low = db.get_all_thresholds_low()
-        lines = []
-        for dev_key, device in sorted(self._cfg.devices.items()):
-            parts = []
-            for fk, sc in device.fields.items():
-                if sc.name not in visible:
-                    continue
-                r = rows_map.get(sc.name)
-                if r:
-                    unit = sc.unit or ""
-                    val_str = f"{self._cfg.fmt(sc.name, r['value'])}{unit}"
-                    thr_parts = []
-                    if sc.name in thresholds:
-                        thr_parts.append(f"Th:{thresholds[sc.name]}{unit}")
-                    if sc.name in thresholds_low:
-                        thr_parts.append(f"Tl:{thresholds_low[sc.name]}{unit}")
-                    thr_str = f"[{' '.join(thr_parts)}]" if thr_parts else ""
-                    parts.append(f"{fk}={val_str}{thr_str}")
-                else:
-                    parts.append(f"{fk}=--")
-            if parts:
-                lines.append(f"{dev_key} {' '.join(parts)}")
+        lines = self._render_device_blocks(user_id)
         blackouts = [
             g for g in self._cfg.blackouts.values()
             if self._cfg.is_viewer_of_blackout(user_id, g.id)
@@ -1051,17 +1095,22 @@ class TelegramBot:
         if not lines and not blackouts:
             await self._app.bot.send_message(chat_id=reply_chat, text="No sensors.", **_SILENT)
             return
-        lines.append("")
-        lines.append("Sensor name = device_field (e.g. SM2_UTA1_T)")
-        lines.append("Use sensor name with /get /setAlarm /digest /graph")
+        foot = [
+            "Sensor name = device_field (e.g. SM2_UTA1_T)",
+            "Use sensor name with /get /setAlarm /digest /graph",
+        ]
         if blackouts:
             subs = set(db.get_digest_subscriptions(user_id))
-            lines.append("")
-            lines.append("Blackout groups (subscribe with /digest <id> on):")
+            foot.append("")
+            foot.append("Blackout groups (subscribe with /digest <id> on):")
             for g in blackouts:
                 mark = "🔔" if g.id in subs else "🔕"
-                lines.append(f"{mark} {g.id} — {g.info}")
-        await self._app.bot.send_message(chat_id=reply_chat, text="\n".join(lines), **_SILENT)
+                foot.append(f"{mark} {g.id} — {g.info}")
+        footer = "\n".join(foot)
+        if not lines:
+            await self._app.bot.send_message(chat_id=reply_chat, text=footer, **_SILENT)
+            return
+        await self._send_mono(reply_chat, lines, footer)
 
     async def _cmd_get(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_chat = await self._get_reply_chat(update)

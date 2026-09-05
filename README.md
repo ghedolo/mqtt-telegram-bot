@@ -172,7 +172,7 @@ Unknown field names are rejected at startup. Each field is classified from its l
 
 The end-of-blackout message (`🔌`) is sent **only on positive proof** — when at least one field becomes LIT. A field going UNKNOWN (its meter stopped publishing) does **not** end the blackout: without a fresh reading the bot can't claim power is back, so it holds the alarm and stays silent, while that field's own device **offline** alarm reports the silence. This avoids a false "power restored" when, during a real outage, one current meter dies but another still reads zero.
 
-DARK does not mean 0.0 A. Many current meters never report zero: with no current flowing the CT and the meter settle on a small constant offset (e.g. 0.4 A), which is why `below` is a threshold and not a test for zero. Set `below` above that offset and under the load's idle draw. The distinction matters when reading a blackout message: a field sitting at the same low value before, during and after the outage is reporting its offset, not a load, so it carries no information about the outage — while a field that does reach 0.0 in its history has no offset, and a steady non-zero low value there is real current. `tools/floor_diag.py` decides which case a field is in from its recorded history: whether it ever reads 0.0, whether its low tail is a tight cluster separated from the working range, and whether that same low value also occurs outside every recorded blackout window (read-only; run it in the deploy with `docker compose exec -T bot python3 - < tools/floor_diag.py`).
+DARK does not mean 0.0 A. Many current meters never report zero: with no current flowing the CT and the meter settle on a small constant offset (e.g. 0.4 A), which is why `below` is a threshold and not a test for zero. Set `below` above that offset and under the load's idle draw. The distinction matters when reading a blackout message: a field sitting at the same low value before, during and after the outage is reporting its offset, not a load, so it carries no information about the outage — while a field that does reach 0.0 in its history has no offset, and a steady non-zero low value there is real current. `tools/floor_diag.py` decides which case a field is in from its recorded history: whether it ever reads 0.0, whether its low tail is a tight cluster separated from the working range, and whether that same low value also occurs outside every recorded blackout window — by more than two publish intervals, since a 62 s meter takes no sample at all inside a 5 s outage and the reading just after it is that outage's own tail. Under three low readings in the whole history it reports insufficient evidence instead of a verdict (read-only; run it in the deploy with `docker compose exec -T bot python3 - < tools/floor_diag.py`).
 
 A reading outside a field's `validMin`/`validMax` counts as **UNKNOWN** here, exactly as it is skipped for threshold alarms — it is stored but proves nothing. Otherwise one corrupted near-zero sample would keep arguing for a blackout long after it arrived, and one wild spike could end a real one.
 
@@ -332,7 +332,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 
 | Command | Description |
 |---|---|
-| `/list` | All devices — one line per device with all visible fields and thresholds; also lists subscribable blackout groups with your subscription state (🔔/🔕) |
+| `/list` | All devices — one monospace block per device: the device key, then its visible fields one per line as `field  value  threshold` (`△` high, `▽` low, `--` = no reading yet). Also lists subscribable blackout groups with your subscription state (🔔/🔕) |
 | `/get [expr] [-s\|-f]` | Filtered sensors (no arg = personal digest subscriptions; see `/exprSyntax`). Sort: `-f` groups by measured quantity (default — all temperatures together, by the sensor name's last `_`-segment), `-s` by full name (keeps a device's fields together). The `min ago` column shows `∞` once the sensor counts as silent — by the same rule the offline alarm uses: `3 × interval`, or zigbee2mqtt availability where the device publishes it |
 | `/getAlarm [name]` | Show alarm threshold(s) as `Tl/Th`, formatted with the sensor's configured `decimals` like every other value; `--` where no threshold is set |
 | `/graph <expr> [Nh]` | Chart last N hours (default 8h, max 24h; 72h for admins) |
@@ -344,7 +344,7 @@ Only the **user commands** below are registered with Telegram via `set_my_comman
 | `/last5Alarm <name>` | Last 5 alarm events concerning one sensor: its own threshold events **and** its device's offline events (🔴/🟢 markers). A blackout group id works too, and lists that group's ⚡ blackout history |
 | `/digest [expr on\|off]` | Manage daily digest subscriptions; also blackout group ids (no arg = show active) |
 | `/listSignal` | Subscribable blackout groups, the Signals feeding each (live value for admins), and your subscription state — subscribe via `/digest <id> on` |
-| `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute. Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
+| `/silent [expr [Nh]]` | Mute your own threshold-alarm DMs per sensor. No arg = list active mutes; `expr Nh` = mute for N hours (1–24); `expr` alone = unmute (the reply counts the mutes actually lifted, not the fields the expr matched). Temporary and per-user; does not affect offline alarms (see `/ackOff`) |
 | `/exprSyntax` | Sensor filter expression syntax |
 | `/sysinfo` | Health summary (any user): bot version, uptime, memory (RSS/limit), DB size, last-MQTT freshness, device/sensor counts |
 | `/myid` | Your Telegram user ID |
@@ -480,19 +480,19 @@ This project was built entirely through a conversation with Claude Code, across
 multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
-- **Last message:** 2026-08-30
-- **Sessions:** 24 — 10478 messages (3940 user + 6538 assistant)
-- **Active conversation time:** ~2195 min (~36h 35m)
+- **Last message:** 2026-09-05
+- **Sessions:** 25 — 10686 messages (4019 user + 6667 assistant)
+- **Active conversation time:** ~2230 min (~37h 10m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 475,589 |
-| Output | 5,188,275 |
-| Cache write | 17,893,077 |
-| Cache read | 1,053,163,495 |
-| **Total** | **~1076 M** |
+| Input (non-cache) | 475,847 |
+| Output | 5,263,292 |
+| Cache write | 18,137,298 |
+| Cache read | 1,062,175,987 |
+| **Total** | **~1086 M** |
 
-The assistant averaged **794 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **789 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

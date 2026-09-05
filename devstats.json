@@ -170,14 +170,25 @@
     },
     "772ffecc-7f81-4c69-9ea5-dc993523bc6e": {
       "first": "2026-08-30T09:06:59.567Z",
-      "last": "2026-08-30T09:15:47.672Z",
-      "active_secs": 528,
-      "user": 39,
-      "asst": 62,
-      "input": 124,
-      "output": 40872,
-      "cache_read": 3884435,
-      "cache_write": 165238
+      "last": "2026-08-30T09:40:06.954Z",
+      "active_secs": 1388,
+      "user": 58,
+      "asst": 95,
+      "input": 190,
+      "output": 70858,
+      "cache_read": 7265195,
+      "cache_write": 204896
+    },
+    "b3bdcd4c-aa6f-4658-b717-18eacebb7279": {
+      "first": "2026-09-05T10:08:20.451Z",
+      "last": "2026-09-05T10:28:44.729Z",
+      "active_secs": 1224,
+      "user": 60,
+      "asst": 96,
+      "input": 192,
+      "output": 45031,
+      "cache_read": 5631732,
+      "cache_write": 204563
     }
   }
 }

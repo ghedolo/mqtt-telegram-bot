@@ -56,7 +56,7 @@ checklist: [docs/permissions.md](docs/permissions.md).
 | Command | Description |
 |---|---|
 | `/start [token]` | Complete DM Registration; the HMAC Token must have been minted for the sender |
-| `/list` | List all visible Devices, one line per Device with all Fields, then visible Blackout Groups |
+| `/list` | List all visible Devices, one monospace block per Device (Device key, then one line per Field: field key, value, `△`/`▽` thresholds), then visible Blackout Groups |
 | `/get [expr] [-s\|-f]` | Get Fields matching expr (Sensor name, glob, comma-separated); no arg = digest subscriptions; `-f` sorts by quantity (default), `-s` by name. `min ago` reads `∞` once the Sensor is silent by the offline rule (`3 × interval`, or zigbee2mqtt availability) |
 | `/exprSyntax` | Help for the expr syntax accepted by `/get`, `/lastSeen`, `/graph`, `/csv`, `/xlsx`, `/lastAlarms`, `/digest`, `/silent` |
 | `/getAlarm [name]` | Show alarm threshold(s) for a Field; no arg = all visible Fields |
@@ -69,7 +69,7 @@ checklist: [docs/permissions.md](docs/permissions.md).
 | `/last5Alarm <name>` | Last 5 alarm events concerning one Sensor: its own threshold events plus the offline events of its Device. A Blackout Group id is accepted as well and lists that group's blackout history |
 | `/digest [expr] [on\|off]` | Show or manage per-user digest subscriptions (Blackout Group ids are valid targets) |
 | `/listSignal` | List visible Blackout Groups (subscribable), the Signals feeding each (live value for Admins), and your subscription state |
-| `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute; expr + `Nh` (1–24, clamped) = Mute for N hours |
+| `/silent [expr] [Nh]` | Mute own threshold Alarm DMs for matching Fields: no args = list active Mutes; expr only = unmute (reply counts the Mutes really lifted, expired ones excluded); expr + `Nh` (1–24, clamped) = Mute for N hours |
 | `/sysinfo` | Bot version, uptime, memory (RSS/limit), DB size, last-MQTT freshness, device/sensor counts — a non-sensitive health summary for any User |
 | `/myid` | Show own Telegram user ID |
 | `/help` | Show command list (admin-aware) |

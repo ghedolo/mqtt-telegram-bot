@@ -466,6 +466,7 @@ devices:
     viewers: [watchers]
     fields:
       T: {}
+      H: {}
   SM2:
     topic: "t/sm2"
     admins: [other]
@@ -701,6 +702,24 @@ def test_silent_unmute(hbot, temp_db):
     assert temp_db.is_muted(ADMIN, "SM1_T") is False
 
 
+def test_silent_unmute_reports_only_real_mutes(hbot, temp_db):
+    # ADMIN sees SM1_T and SM1_H, only one of them is muted
+    temp_db.mute_sensor(ADMIN, "SM1_T", int(time.time()) + 3600)
+    sent = _run(hbot, hbot._cmd_silent, ADMIN, "SM1_*")
+    assert "Unmuted 1 field(s)" in sent[-1][1]
+
+
+def test_silent_unmute_nothing_muted(hbot, temp_db):
+    sent = _run(hbot, hbot._cmd_silent, ADMIN, "SM1_*")
+    assert "No active mutes among 2 matching field(s)." in sent[-1][1]
+
+
+def test_silent_unmute_expired_mute_is_not_counted(hbot, temp_db):
+    temp_db.mute_sensor(ADMIN, "SM1_T", int(time.time()) - 1)
+    sent = _run(hbot, hbot._cmd_silent, ADMIN, "SM1_T")
+    assert "No active mutes" in sent[-1][1]
+
+
 def test_silent_no_args_lists(hbot, temp_db):
     temp_db.mute_sensor(ADMIN, "SM1_T", int(time.time()) + 3600)
     sent = _run(hbot, hbot._cmd_silent, ADMIN)
@@ -787,6 +806,42 @@ def test_list_shows_device_reading(hbot, temp_db):
     temp_db.insert_reading("SM1_T", 22.5)
     sent = _run(hbot, hbot._cmd_list, ADMIN)
     assert "SM1" in sent[-1][1]
+
+
+def test_list_renders_one_block_per_device(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 22.5)
+    temp_db.insert_reading("SM1_H", 55.0)
+    body = _run(hbot, hbot._cmd_list, ADMIN)[-1][1]
+    lines = body.splitlines()
+    assert lines[0] == "```"                 # monospace, or the columns collapse
+    assert "SM1" in lines                    # device key on its own line
+    assert [l for l in lines if l.startswith("  T ")]   # fields indented under it
+
+
+def test_list_thresholds_marked_by_direction(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 22.5)
+    temp_db.set_threshold("SM1_T", 30.0)
+    temp_db.set_threshold_low("SM1_T", 5.0)
+    body = _run(hbot, hbot._cmd_list, ADMIN)[-1][1]
+    assert "\u25b3 30.0" in body and "\u25bd 5.0" in body
+
+
+def test_list_field_without_reading_still_listed(hbot, temp_db):
+    temp_db.insert_reading("SM1_T", 22.5)        # SM1_H never read
+    body = _run(hbot, hbot._cmd_list, ADMIN)[-1][1]
+    assert [l for l in body.splitlines() if l.startswith("  H ") and l.endswith("--")]
+
+
+def test_list_splits_long_listing_and_closes_every_fence(hbot, temp_db):
+    # a listing past the 4096-char limit is split; a chunk that ended mid-block
+    # used to leave its code fence open, so Telegram rendered the rest as text
+    for i in range(900):
+        hbot._cfg.devices["SM1"].fields[f"F{i}"] = hbot._cfg.sensors["SM1_T"]
+    sent = _run(hbot, hbot._cmd_list, ADMIN)
+    assert len(sent) > 1
+    assert all(len(text) <= 4096 for _, text in sent)
+    for _, text in sent:
+        assert text.count("```") % 2 == 0 and text.startswith("```")
 
 
 def test_list_empty_when_no_visible(hbot, temp_db):

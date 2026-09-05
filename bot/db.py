@@ -268,11 +268,18 @@ def mute_sensor(chat_id: int, sensor: str, until_ts: int):
         )
 
 
-def unmute_sensor(chat_id: int, sensor: str):
+def unmute_sensor(chat_id: int, sensor: str) -> bool:
+    """Remove the mute. True only if one was really active: an expired row is
+    dropped as well, but it does not count as an unmute, so the reply matches
+    what /silent with no args would have listed."""
+    now = int(time.time())
     with _conn() as con:
-        con.execute(
-            "DELETE FROM mutes WHERE chat_id=? AND sensor=?", (chat_id, sensor)
+        con.execute("DELETE FROM mutes WHERE until_ts<=?", (now,))
+        cur = con.execute(
+            "DELETE FROM mutes WHERE chat_id=? AND sensor=? AND until_ts>?",
+            (chat_id, sensor, now),
         )
+        return cur.rowcount > 0
 
 
 def is_muted(chat_id: int, sensor: str) -> bool:
