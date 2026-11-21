@@ -257,6 +257,10 @@ All raw readings are always stored in the DB. The optional per-field `validMin`/
 
 See [`credentials.yaml.example`](credentials.yaml.example).
 
+**MQTT TLS.** `mqtt.tls` is optional. When it is omitted, TLS is enabled only if `port` is exactly `8883`; on any other port the bot connects in **plain text**, including a TLS listener on a non-standard port such as `18883` (the handshake then fails, or the credentials travel unencrypted). On a non-standard TLS port set `tls: true` explicitly. The broker certificate is not verified (`CERT_NONE`), so TLS protects against passive sniffing, not against a man-in-the-middle.
+
+**MQTT client id.** The bot connects as `LorteBot_<8 random hex chars>`, drawn once per process start and kept across reconnects; the startup log prints it (`MQTT connected as LorteBot_...`). It is random rather than the PID because in the container the PID is always 1, and two instances with the same id make the broker drop one each time the other connects. Before this, no id was set: paho sent an empty one under MQTT 3.1.1 and the broker assigned an anonymous id.
+
 Access Groups are defined at the top level of `credentials.yaml` and referenced by name in `sensors.d/`.
 
 A group **may be empty** — a legitimate "declared, nobody in it yet", and the way to silence the config warning about a group name that does not exist while you decide who belongs in it. All three YAML spellings work: `ccib: []`, a bare `ccib:`, or `ccib:` followed by a lone `-`. An empty group grants nothing, so anything referencing it stays visible to nobody. A member that is not a number is still an error, as is a group whose value is not a list.
@@ -480,19 +484,19 @@ This project was built entirely through a conversation with Claude Code, across
 multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
-- **Last message:** 2026-09-05
-- **Sessions:** 25 — 10752 messages (4046 user + 6706 assistant)
-- **Active conversation time:** ~2242 min (~37h 22m)
+- **Last message:** 2026-11-21
+- **Sessions:** 26 — 10804 messages (4066 user + 6738 assistant)
+- **Active conversation time:** ~2251 min (~37h 31m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 475,925 |
-| Output | 5,279,205 |
-| Cache write | 18,483,011 |
-| Cache read | 1,065,937,510 |
-| **Total** | **~1090 M** |
+| Input (non-cache) | 475,989 |
+| Output | 5,293,724 |
+| Cache write | 18,542,154 |
+| Cache read | 1,067,665,621 |
+| **Total** | **~1091 M** |
 
-The assistant averaged **787 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **786 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->

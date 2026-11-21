@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import secrets
 import ssl
 from typing import Callable, Awaitable, Optional
 
@@ -11,6 +12,17 @@ from .config import AppConfig
 log = logging.getLogger(__name__)
 
 _MAX_PAYLOAD_BYTES = 64 * 1024
+
+
+def _client_id() -> str:
+    """`LorteBot_` plus a random suffix, drawn once per process.
+
+    With no id paho sends an empty one under MQTT 3.1.1 and the broker
+    assigns an anonymous id, so the bot was unrecognisable in broker logs and
+    could not be targeted by client-id ACLs. The suffix is random, not the PID:
+    in a container the PID is always 1, and two instances sharing an id make
+    the broker kick one off every time the other connects."""
+    return f"LorteBot_{secrets.token_hex(4)}"
 
 
 def _log_future_exc(fut):
@@ -81,7 +93,10 @@ class MqttClient:
             if d.availability_topic
         }
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        self.client_id = _client_id()
+        self._client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2, client_id=self.client_id
+        )
         if cfg.mqtt_username:
             self._client.username_pw_set(cfg.mqtt_username, cfg.mqtt_password)
         if cfg.mqtt_tls:
@@ -92,7 +107,7 @@ class MqttClient:
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:
-            log.info("MQTT connected")
+            log.info("MQTT connected as %s", self.client_id)
             for topic in (*self._topic_map, *self._availability_map):
                 client.subscribe(topic)
                 log.info("Subscribed to %s", topic)

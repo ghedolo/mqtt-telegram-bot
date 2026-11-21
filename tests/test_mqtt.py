@@ -5,6 +5,8 @@ The client dispatches parsed readings via asyncio.run_coroutine_threadsafe;
 we stub that to run the (await-free) recorder coroutine synchronously and
 capture the (sensor, value) pairs.
 """
+import re
+
 from bot import mqtt_client as mqtt_mod
 from bot import config
 
@@ -243,3 +245,13 @@ def test_availability_topic_not_routed_as_reading_or_topic_message(tmp_path, mon
     assert rec.calls == []      # not parsed as a reading
     assert tr.calls == []       # must not feed the data-cadence heuristic
     assert av.calls == [("AV", False)]
+
+
+def test_client_id_is_lortebot_with_random_suffix(tmp_path, monkeypatch):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    a = _build_client(tmp_path / "a", monkeypatch, Recorder())
+    b = _build_client(tmp_path / "b", monkeypatch, Recorder())
+    assert re.fullmatch(r"LorteBot_[0-9a-f]{8}", a.client_id)
+    assert a._client._client_id == a.client_id.encode()
+    assert a.client_id != b.client_id

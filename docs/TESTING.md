@@ -110,6 +110,7 @@ run tests.
 - `test_json_missing_field_skipped` — absent json field skipped (intermittent field is normal).
 - `test_oversized_payload_dropped` — payload over 64 KiB rejected.
 - `test_oversized_availability_payload_dropped` — the size cap is applied before the availability branch too; it used to sit after, so those topics decoded and JSON-parsed a payload of any size.
+- `test_client_id_is_lortebot_with_random_suffix` — the client connects as `LorteBot_<8 hex>`, the id reaches paho, and two instances do not share it. Without an id paho sent an empty one and the broker assigned an anonymous id.
 
 ### `tests/test_rename_device.py` — the DB half of a device rename (`tools/rename_device.py`)
 - `test_mute_follows_the_rename` — a `/silent` mute moves with the sensor. Left behind under the old name it stops matching, and the user's threshold-alarm DMs resume without them asking.
