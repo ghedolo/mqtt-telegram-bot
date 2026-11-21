@@ -9,6 +9,6 @@ set -e
 docker context use rootless
 
 docker compose down
-docker compose build --no-cache
+docker compose build --no-cache --pull
 docker compose up -d
 echo "to see log:  docker compose logs -f"
