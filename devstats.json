@@ -192,14 +192,14 @@
     },
     "dc03c9cc-ba3c-4e95-8e9a-00b8c490eea3": {
       "first": "2026-11-21T12:16:53.644Z",
-      "last": "2026-11-21T12:25:56.856Z",
-      "active_secs": 543,
-      "user": 20,
-      "asst": 32,
-      "input": 64,
-      "output": 14519,
-      "cache_read": 1728111,
-      "cache_write": 59143
+      "last": "2026-11-21T14:27:28.726Z",
+      "active_secs": 4343,
+      "user": 92,
+      "asst": 165,
+      "input": 334,
+      "output": 104649,
+      "cache_read": 16420643,
+      "cache_write": 223711
     }
   }
 }

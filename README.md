@@ -485,18 +485,18 @@ multiple machines. Numbers accumulate in a per-session ledger (`devstats.json`).
 
 - **First message:** 2026-06-13
 - **Last message:** 2026-11-21
-- **Sessions:** 26 — 10804 messages (4066 user + 6738 assistant)
-- **Active conversation time:** ~2251 min (~37h 31m)
+- **Sessions:** 26 — 11009 messages (4138 user + 6871 assistant)
+- **Active conversation time:** ~2315 min (~38h 35m)
 
 *Active time: sum of consecutive gaps ≤ 5 min within each session; cumulative and cross-machine.*
 
 | Metric | Tokens |
 |---|---:|
-| Input (non-cache) | 475,989 |
-| Output | 5,293,724 |
-| Cache write | 18,542,154 |
-| Cache read | 1,067,665,621 |
-| **Total** | **~1091 M** |
+| Input (non-cache) | 476,259 |
+| Output | 5,383,854 |
+| Cache write | 18,706,722 |
+| Cache read | 1,082,358,153 |
+| **Total** | **~1106 M** |
 
-The assistant averaged **786 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
+The assistant averaged **784 output tokens per message**. The early sessions ran with caveman mode — a Claude Code skill that strips filler while keeping full technical content — so this average blends those with later, prose-heavier sessions.
 <!-- devstats:end -->
